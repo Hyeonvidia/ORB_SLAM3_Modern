@@ -1,0 +1,31 @@
+# Usage:
+#   docker compose build
+#   docker compose run --rm dev docker/scripts/container_build.sh   # build
+#   docker compose run --rm dev docker/scripts/run_slam.sh euroc_stereo MH01
+# GUI via XQuartz: same policy as orb_slam3_docker — never set
+# LIBGL_ALWAYS_INDIRECT (breaks Pangolin on macOS Docker).
+services:
+  dev:
+    build:
+      context: docker
+      additional_contexts:
+        pangolinsrc: third_party/Pangolin
+    image: orbslam3-modern-dev:latest
+    platform: linux/arm64
+    shm_size: 2gb
+    working_dir: /workspace
+    environment:
+      - DISPLAY=host.docker.internal:0
+      - XDG_RUNTIME_DIR=/tmp
+      - CCACHE_DIR=/ccache
+    volumes:
+      - .:/workspace
+      - ../Datasets:/datasets:ro
+      - ./results:/results
+      - orbmodern-build:/build
+      - orbmodern-ccache:/ccache
+    command: sleep infinity
+
+volumes:
+  orbmodern-build:
+  orbmodern-ccache:

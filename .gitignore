@@ -5,3 +5,7 @@ bin/
 results/
 .DS_Store
 Vocabulary/ORBvoc.txt
+Thirdparty/g2o/config.h
+Thirdparty/g2o/lib/
+Thirdparty/DBoW2/lib/
+docker_build.log
