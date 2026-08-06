@@ -77,8 +77,6 @@ namespace ORB_SLAM3
 
         // Search matches between MapPoints seen in KF1 and KF2 transforming by a Sim3 [s12*R12|t12]
         // In the stereo and RGB-D case, s12=1
-        // int SearchBySim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPoint *> &vpMatches12, const float &s12, const cv::Mat &R12, const cv::Mat &t12, const float th);
-        int SearchBySim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPoint *> &vpMatches12, const Sophus::Sim3f &S12, const float th);
 
         // Project MapPoints into KeyFrame and search for duplicated MapPoints.
         int Fuse(KeyFrame* pKF, const vector<MapPoint *> &vpMapPoints, const float th=3.0, const bool bRight = false);
@@ -88,9 +86,9 @@ namespace ORB_SLAM3
 
     public:
 
-        static const int TH_LOW;
-        static const int TH_HIGH;
-        static const int HISTO_LENGTH;
+        static constexpr int TH_LOW = 50;
+        static constexpr int TH_HIGH = 100;
+        static constexpr int HISTO_LENGTH = 30;
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     protected:
