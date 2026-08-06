@@ -9,7 +9,9 @@ cd "$(dirname "$0")/../.."
 
 BOUND="${SMOKE_BOUND:-0.084}"   # 2x euroc_stereo baseline median (see BASELINE.md)
 
-docker compose run --rm -e HEADLESS=1 dev docker/scripts/run_slam.sh euroc_stereo MH01 </dev/null >/dev/null
+# Upstream crashes in teardown AFTER saving trajectories (known SIGABRT/SIGSEGV);
+# judge by the result files, never by the process exit code.
+docker compose run --rm -e HEADLESS=1 dev docker/scripts/run_slam.sh euroc_stereo MH01 </dev/null >/dev/null || true
 D=$(ls -td results/euroc_stereo_MH01_* | head -1)
 
 LINES=$(awk 'NF==8' "$D/CameraTrajectory.txt" | wc -l | tr -d ' ')

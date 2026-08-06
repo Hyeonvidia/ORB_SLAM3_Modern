@@ -35,34 +35,34 @@ add_subdirectory(Thirdparty/g2o)
 
 # ---- core library -----------------------------------------------------------
 add_library(orbslam3_core SHARED
-  src/System.cc
-  src/Tracking.cc
-  src/LocalMapping.cc
-  src/LoopClosing.cc
-  src/ORBextractor.cc
-  src/ORBmatcher.cc
-  src/FrameDrawer.cc
-  src/Converter.cc
-  src/MapPoint.cc
-  src/KeyFrame.cc
-  src/Atlas.cc
-  src/Map.cc
-  src/MapDrawer.cc
-  src/Optimizer.cc
-  src/Frame.cc
-  src/KeyFrameDatabase.cc
-  src/Sim3Solver.cc
-  src/Viewer.cc
-  src/ImuTypes.cc
-  src/G2oTypes.cc
-  src/CameraModels/Pinhole.cpp
-  src/CameraModels/KannalaBrandt8.cpp
-  src/OptimizableTypes.cpp
-  src/MLPnPsolver.cpp
-  src/GeometricTools.cc
-  src/TwoViewReconstruction.cc
-  src/Config.cc
-  src/Settings.cc
+  src/core/System.cpp
+  src/core/Settings.cpp
+  src/core/Config.cpp
+  src/camera/Pinhole.cpp
+  src/camera/KannalaBrandt8.cpp
+  src/features/ORBextractor.cpp
+  src/features/ORBmatcher.cpp
+  src/map/Atlas.cpp
+  src/map/Map.cpp
+  src/map/KeyFrame.cpp
+  src/map/MapPoint.cpp
+  src/map/Frame.cpp
+  src/backend/Optimizer.cpp
+  src/backend/G2oTypes.cpp
+  src/backend/OptimizableTypes.cpp
+  src/backend/ImuTypes.cpp
+  src/geometry/TwoViewReconstruction.cpp
+  src/geometry/Sim3Solver.cpp
+  src/geometry/MLPnPsolver.cpp
+  src/geometry/GeometricTools.cpp
+  src/tracking/Tracking.cpp
+  src/mapping/LocalMapping.cpp
+  src/recognition/KeyFrameDatabase.cpp
+  src/closing/LoopClosing.cpp
+  src/io/Converter.cpp
+  src/viz/Viewer.cpp
+  src/viz/FrameDrawer.cpp
+  src/viz/MapDrawer.cpp
 )
 add_library(ORB_SLAM3::core ALIAS orbslam3_core)
 set_target_properties(orbslam3_core PROPERTIES
@@ -71,8 +71,7 @@ set_target_properties(orbslam3_core PROPERTIES
 
 target_include_directories(orbslam3_core PUBLIC
   ${PROJECT_SOURCE_DIR}                    # "Thirdparty/..." relative includes
-  ${PROJECT_SOURCE_DIR}/include
-  ${PROJECT_SOURCE_DIR}/include/CameraModels
+  ${PROJECT_SOURCE_DIR}/include            # module-qualified: "map/KeyFrame.hpp"
   ${PROJECT_SOURCE_DIR}/Thirdparty/Sophus  # bare "sophus/..." includes
   ${EIGEN3_INCLUDE_DIR}
 )

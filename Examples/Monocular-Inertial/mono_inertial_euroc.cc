@@ -26,8 +26,8 @@
 
 #include<opencv2/core/core.hpp>
 
-#include<System.h>
-#include "ImuTypes.h"
+#include "core/System.hpp"
+#include "backend/ImuTypes.hpp"
 
 using namespace std;
 
