@@ -335,6 +335,14 @@ namespace ORB_SLAM3 {
 
         //Load stereo extrinsic calibration
         if(cameraType_ == Rectified){
+            // Upstream leaves calibration2_/originalCalib2_ uninitialized for the
+            // Rectified type, so printing the settings dereferences garbage.
+            // Rectified stereo shares the left calibration by definition.
+            if(calibration1_){
+                vector<float> vCal1 = {calibration1_->getParameter(0),calibration1_->getParameter(1),calibration1_->getParameter(2),calibration1_->getParameter(3)};
+                calibration2_ = new Pinhole(vCal1);
+                originalCalib2_ = new Pinhole(vCal1);
+            }
             b_ = readParameter<float>(fSettings,"Stereo.b",found);
             bf_ = b_ * calibration1_->getParameter(0);
         }
