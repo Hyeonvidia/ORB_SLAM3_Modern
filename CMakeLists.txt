@@ -37,6 +37,7 @@ add_subdirectory(Thirdparty/g2o)
 add_library(orbslam3_core SHARED
   src/core/System.cpp
   src/core/Settings.cpp
+  src/camera/CameraFactory.cpp
   src/camera/Pinhole.cpp
   src/camera/KannalaBrandt8.cpp
   src/features/ORBextractor.cpp
