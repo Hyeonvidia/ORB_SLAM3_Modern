@@ -14,9 +14,11 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# C++ standard is applied PER TARGET below, not globally: the golden baseline
+# built Thirdparty (DBoW2/g2o) as standalone projects with the compiler
+# default (gnu++17), and forcing strict c++17 (__STRICT_ANSI__) onto libg2o
+# measurably degrades stereo-inertial ATE (P1 gate finding, p=0.017 —
+# the same flag-sensitivity class as the Remastered mono-inertial regression).
 
 option(BUILD_EXAMPLES "Build dataset example executables" ON)
 
@@ -63,7 +65,9 @@ add_library(orbslam3_core SHARED
   src/Settings.cc
 )
 add_library(ORB_SLAM3::core ALIAS orbslam3_core)
-set_target_properties(orbslam3_core PROPERTIES OUTPUT_NAME orbslam3)
+set_target_properties(orbslam3_core PROPERTIES
+  OUTPUT_NAME orbslam3
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
 target_include_directories(orbslam3_core PUBLIC
   ${PROJECT_SOURCE_DIR}                    # "Thirdparty/..." relative includes
@@ -100,5 +104,7 @@ if(BUILD_EXAMPLES)
   add_executable(stereo_inertial_euroc Examples/Stereo-Inertial/stereo_inertial_euroc.cc)
   foreach(tgt mono_euroc mono_kitti stereo_euroc stereo_kitti mono_inertial_euroc stereo_inertial_euroc)
     target_link_libraries(${tgt} PRIVATE ORB_SLAM3::core)
+    set_target_properties(${tgt} PROPERTIES
+      CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
   endforeach()
 endif()
