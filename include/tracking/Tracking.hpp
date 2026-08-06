@@ -64,9 +64,6 @@ public:
     ~Tracking();
 
     // Parse the config file
-    bool ParseCamParamFile(cv::FileStorage &fSettings);
-    bool ParseORBParamFile(cv::FileStorage &fSettings);
-    bool ParseIMUParamFile(cv::FileStorage &fSettings);
 
     // Preprocess the input and call Track(). Extract features and performs stereo matching.
     Sophus::SE3f GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRectRight, const double &timestamp, string filename);
@@ -83,7 +80,6 @@ public:
 
     // Load new settings
     // The focal lenght should be similar or scale prediction will fail when projecting points
-    void ChangeCalibration(const string &strSettingPath);
 
     // Use this function if you have deactivated local mapping and you only want to localize the camera.
     void InformOnlyTracking(const bool &flag);
@@ -302,7 +298,7 @@ protected:
     int mMaxFrames;
 
     int mnFirstImuFrameId;
-    int mnFramesToResetIMU;
+    int mnFramesToResetIMU = 0;  // upstream new-format path never set this (see P2-2 note)
 
     // Threshold close/far points
     // Points seen as close by the stereo/RGBD sensor are considered reliable

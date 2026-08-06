@@ -66,7 +66,9 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     else if(mSensor==IMU_RGBD)
         cout << "RGB-D-Inertial" << endl;
 
-    //Check settings file
+    //Check settings file (P2-2: Settings is the single parsing path; the
+    //legacy flat-key format — Examples_old era, no File.version — is no
+    //longer accepted)
     cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
     if(!fsSettings.isOpened())
     {
@@ -75,35 +77,20 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     }
 
     cv::FileNode node = fsSettings["File.version"];
-    if(!node.empty() && node.isString() && node.string() == "1.0"){
-        settings_ = new Settings(strSettingsFile,mSensor);
-
-        mStrLoadAtlasFromFile = settings_->atlasLoadFile();
-        mStrSaveAtlasToFile = settings_->atlasSaveFile();
-
-        cout << (*settings_) << endl;
+    if(node.empty() || !node.isString() || node.string() != "1.0"){
+        cerr << "Settings file " << strSettingsFile << " lacks File.version: \"1.0\".\n"
+             << "Legacy flat-key calibration files are not supported; migrate to the "
+             << "V1.0 format (see Examples/*/EuRoC.yaml)." << endl;
+        exit(-1);
     }
-    else{
-        settings_ = nullptr;
-        cv::FileNode node = fsSettings["System.LoadAtlasFromFile"];
-        if(!node.empty() && node.isString())
-        {
-            mStrLoadAtlasFromFile = (string)node;
-        }
+    settings_ = new Settings(strSettingsFile,mSensor);
 
-        node = fsSettings["System.SaveAtlasToFile"];
-        if(!node.empty() && node.isString())
-        {
-            mStrSaveAtlasToFile = (string)node;
-        }
-    }
+    mStrLoadAtlasFromFile = settings_->atlasLoadFile();
+    mStrSaveAtlasToFile = settings_->atlasSaveFile();
 
-    node = fsSettings["loopClosing"];
-    bool activeLC = true;
-    if(!node.empty())
-    {
-        activeLC = static_cast<int>(fsSettings["loopClosing"]) != 0;
-    }
+    cout << (*settings_) << endl;
+
+    bool activeLC = settings_->activeLoopClosing();
 
     mStrVocabularyFilePath = strVocFile;
 
@@ -196,10 +183,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
                                      mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO || mSensor==IMU_RGBD, strSequence);
     mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
     mpLocalMapper->mInitFr = initFr;
-    if(settings_)
-        mpLocalMapper->mThFarPoints = settings_->thFarPoints();
-    else
-        mpLocalMapper->mThFarPoints = fsSettings["thFarPoints"];
+    mpLocalMapper->mThFarPoints = settings_->thFarPoints();
     if(mpLocalMapper->mThFarPoints!=0)
     {
         cout << "Discard points further than " << mpLocalMapper->mThFarPoints << " m from current camera" << endl;

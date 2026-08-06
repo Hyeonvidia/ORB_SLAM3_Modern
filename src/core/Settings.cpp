@@ -488,6 +488,20 @@ namespace ORB_SLAM3 {
         bool found;
 
         thFarPoints_ = readParameter<float>(fSettings,"System.thFarPoints",found,false);
+
+        // Absorbed from the removed legacy parsing paths (P2-2 unification).
+        // All optional with legacy-equivalent defaults; none of the gate yamls
+        // set them, so gate behavior is unchanged.
+        int lc = readParameter<int>(fSettings,"loopClosing",found,false);
+        activeLoopClosing_ = found ? (lc != 0) : true;
+        int fi = readParameter<int>(fSettings,"IMU.fastInit",found,false);
+        fastInit_ = found ? (fi != 0) : false;
+        float is = readParameter<float>(fSettings,"Camera.imageScale",found,false);
+        imageScale_ = found ? is : 1.0f;
+        if(imageScale_ != 1.0f){
+            std::cerr << "Camera.imageScale is not supported by the unified settings path yet." << std::endl;
+            exit(-1);
+        }
     }
 
     void Settings::precomputeRectificationMaps() {
