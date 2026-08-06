@@ -36,6 +36,7 @@
 #include "core/System.hpp"
 #include "backend/ImuTypes.hpp"
 #include "core/Settings.hpp"
+#include "geometry/TwoViewInitializer.hpp"
 
 #include "camera/GeometricCamera.hpp"
 
@@ -346,6 +347,9 @@ protected:
     double mTime_NewKF_Dec;
 
     GeometricCamera* mpCamera, *mpCamera2;
+
+    // P3-3: monocular two-view init orchestrator (moved out of camera models)
+    TwoViewInitializer mTwoViewInit;
 
     int initID, lastID;
 

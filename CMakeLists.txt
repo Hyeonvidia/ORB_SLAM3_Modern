@@ -52,6 +52,7 @@ add_library(orbslam3_core SHARED
   src/backend/OptimizableTypes.cpp
   src/backend/ImuTypes.cpp
   src/geometry/TwoViewReconstruction.cpp
+  src/geometry/TwoViewInitializer.cpp
   src/geometry/Sim3Solver.cpp
   src/geometry/MLPnPsolver.cpp
   src/geometry/GeometricTools.cpp

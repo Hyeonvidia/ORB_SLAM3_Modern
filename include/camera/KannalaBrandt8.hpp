@@ -24,7 +24,6 @@
 
 #include "camera/GeometricCamera.hpp"
 
-#include "geometry/TwoViewReconstruction.hpp"
 
 namespace ORB_SLAM3 {
     class KannalaBrandt8 : public GeometricCamera {
@@ -44,7 +43,7 @@ namespace ORB_SLAM3 {
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
         }
-        KannalaBrandt8(const std::vector<float> _vParameters) : GeometricCamera(_vParameters), precision(1e-6), mvLappingArea(2,0) ,tvr(nullptr) {
+        KannalaBrandt8(const std::vector<float> _vParameters) : GeometricCamera(_vParameters), precision(1e-6), mvLappingArea(2,0) {
             assert(mvParameters.size() == 8);
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
@@ -56,7 +55,7 @@ namespace ORB_SLAM3 {
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
         }
-        KannalaBrandt8(KannalaBrandt8* pKannala) : GeometricCamera(pKannala->mvParameters), precision(pKannala->precision), mvLappingArea(2,0) ,tvr(nullptr) {
+        KannalaBrandt8(KannalaBrandt8* pKannala) : GeometricCamera(pKannala->mvParameters), precision(pKannala->precision), mvLappingArea(2,0) {
             assert(mvParameters.size() == 8);
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
@@ -73,10 +72,7 @@ namespace ORB_SLAM3 {
         cv::Point3f unproject(const cv::Point2f &p2D);
 
         Eigen::Matrix<double,2,3> projectJac(const Eigen::Vector3d& v3D);
-
-
-        bool ReconstructWithTwoViews(const std::vector<cv::KeyPoint>& vKeys1, const std::vector<cv::KeyPoint>& vKeys2, const std::vector<int> &vMatches12,
-                                     Sophus::SE3f &T21, std::vector<cv::Point3f> &vP3D, std::vector<bool> &vbTriangulated);
+        std::vector<cv::KeyPoint> UndistortKeyPoints(const std::vector<cv::KeyPoint>& vKeys) override;
 
         cv::Mat toK();
         Eigen::Matrix3f toK_();
@@ -104,7 +100,6 @@ namespace ORB_SLAM3 {
         //Parameters vector corresponds to
         //[fx, fy, cx, cy, k0, k1, k2, k3]
 
-        TwoViewReconstruction* tvr;
 
         void Triangulate(const cv::Point2f &p1, const cv::Point2f &p2, const Eigen::Matrix<float,3,4> &Tcw1,
                          const Eigen::Matrix<float,3,4> &Tcw2, Eigen::Vector3f &x3D);
