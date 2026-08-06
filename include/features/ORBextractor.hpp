@@ -58,25 +58,25 @@ public:
                     std::vector<cv::KeyPoint>& _keypoints,
                     cv::OutputArray _descriptors, std::vector<int> &vLappingArea);
 
-    int inline GetLevels(){
+    int inline GetLevels() const {
         return nlevels;}
 
-    float inline GetScaleFactor(){
+    float inline GetScaleFactor() const {
         return scaleFactor;}
 
-    std::vector<float> inline GetScaleFactors(){
+    std::vector<float> inline GetScaleFactors() const {
         return mvScaleFactor;
     }
 
-    std::vector<float> inline GetInverseScaleFactors(){
+    std::vector<float> inline GetInverseScaleFactors() const {
         return mvInvScaleFactor;
     }
 
-    std::vector<float> inline GetScaleSigmaSquares(){
+    std::vector<float> inline GetScaleSigmaSquares() const {
         return mvLevelSigma2;
     }
 
-    std::vector<float> inline GetInverseScaleSigmaSquares(){
+    std::vector<float> inline GetInverseScaleSigmaSquares() const {
         return mvInvLevelSigma2;
     }
 
@@ -89,7 +89,6 @@ protected:
     std::vector<cv::KeyPoint> DistributeOctTree(const std::vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
                                            const int &maxX, const int &minY, const int &maxY, const int &nFeatures, const int &level);
 
-    void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
     std::vector<cv::Point> pattern;
 
     int nfeatures;
