@@ -34,10 +34,6 @@ namespace ORB_SLAM3
 {
 
 long unsigned int Frame::nNextId=0;
-bool Frame::mbInitialComputations=true;
-float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
-float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
-float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
 
 //For stereo fisheye matching
 cv::BFMatcher Frame::BFmatcher = cv::BFMatcher(cv::NORM_HAMMING);
@@ -70,6 +66,9 @@ Frame::Frame(const Frame &frame)
      monoLeft(frame.monoLeft), monoRight(frame.monoRight), mvLeftToRightMatch(frame.mvLeftToRightMatch),
      mvRightToLeftMatch(frame.mvRightToLeftMatch), mvStereo3Dpoints(frame.mvStereo3Dpoints),
      mTlr(frame.mTlr), mRlr(frame.mRlr), mtlr(frame.mtlr), mTrl(frame.mTrl),
+     fx(frame.fx), fy(frame.fy), cx(frame.cx), cy(frame.cy), invfx(frame.invfx), invfy(frame.invfy),
+     mfGridElementWidthInv(frame.mfGridElementWidthInv), mfGridElementHeightInv(frame.mfGridElementHeightInv),
+     mnMinX(frame.mnMinX), mnMaxX(frame.mnMaxX), mnMinY(frame.mnMinY), mnMaxY(frame.mnMaxY),
      mTcw(frame.mTcw), mbHasPose(false), mbHasVelocity(false)
 {
     for(int i=0;i<FRAME_GRID_COLS;i++)
@@ -151,25 +150,19 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mmMatchedInImage.clear();
 
 
-    // This is done only for the first Frame (or after a change in the calibration)
-    if(mbInitialComputations)
-    {
-        ComputeImageBounds(imLeft);
+    ComputeImageBounds(imLeft);
 
-        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/(mnMaxX-mnMinX);
-        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/(mnMaxY-mnMinY);
+    mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/(mnMaxX-mnMinX);
+    mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/(mnMaxY-mnMinY);
 
 
 
-        fx = K.at<float>(0,0);
-        fy = K.at<float>(1,1);
-        cx = K.at<float>(0,2);
-        cy = K.at<float>(1,2);
-        invfx = 1.0f/fx;
-        invfy = 1.0f/fy;
-
-        mbInitialComputations=false;
-    }
+    fx = K.at<float>(0,0);
+    fy = K.at<float>(1,1);
+    cx = K.at<float>(0,2);
+    cy = K.at<float>(1,2);
+    invfx = 1.0f/fx;
+    invfy = 1.0f/fy;
 
     mb = mbf/fx;
 
@@ -243,23 +236,17 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
 
     mvbOutlier = vector<bool>(N,false);
 
-    // This is done only for the first Frame (or after a change in the calibration)
-    if(mbInitialComputations)
-    {
-        ComputeImageBounds(imGray);
+    ComputeImageBounds(imGray);
 
-        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
-        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
+    mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
+    mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
 
-        fx = K.at<float>(0,0);
-        fy = K.at<float>(1,1);
-        cx = K.at<float>(0,2);
-        cy = K.at<float>(1,2);
-        invfx = 1.0f/fx;
-        invfy = 1.0f/fy;
-
-        mbInitialComputations=false;
-    }
+    fx = K.at<float>(0,0);
+    fy = K.at<float>(1,1);
+    cx = K.at<float>(0,2);
+    cy = K.at<float>(1,2);
+    invfx = 1.0f/fx;
+    invfy = 1.0f/fy;
 
     mb = mbf/fx;
 
@@ -334,23 +321,17 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
 
     mvbOutlier = vector<bool>(N,false);
 
-    // This is done only for the first Frame (or after a change in the calibration)
-    if(mbInitialComputations)
-    {
-        ComputeImageBounds(imGray);
+    ComputeImageBounds(imGray);
 
-        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
-        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
+    mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
+    mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
 
-        fx = static_cast<Pinhole*>(mpCamera)->toK().at<float>(0,0);
-        fy = static_cast<Pinhole*>(mpCamera)->toK().at<float>(1,1);
-        cx = static_cast<Pinhole*>(mpCamera)->toK().at<float>(0,2);
-        cy = static_cast<Pinhole*>(mpCamera)->toK().at<float>(1,2);
-        invfx = 1.0f/fx;
-        invfy = 1.0f/fy;
-
-        mbInitialComputations=false;
-    }
+    fx = static_cast<Pinhole*>(mpCamera)->toK().at<float>(0,0);
+    fy = static_cast<Pinhole*>(mpCamera)->toK().at<float>(1,1);
+    cx = static_cast<Pinhole*>(mpCamera)->toK().at<float>(0,2);
+    cy = static_cast<Pinhole*>(mpCamera)->toK().at<float>(1,2);
+    invfx = 1.0f/fx;
+    invfy = 1.0f/fy;
 
 
     mb = mbf/fx;
@@ -1073,23 +1054,17 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     if(N == 0)
         return;
 
-    // This is done only for the first Frame (or after a change in the calibration)
-    if(mbInitialComputations)
-    {
-        ComputeImageBounds(imLeft);
+    ComputeImageBounds(imLeft);
 
-        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/(mnMaxX-mnMinX);
-        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/(mnMaxY-mnMinY);
+    mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/(mnMaxX-mnMinX);
+    mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/(mnMaxY-mnMinY);
 
-        fx = K.at<float>(0,0);
-        fy = K.at<float>(1,1);
-        cx = K.at<float>(0,2);
-        cy = K.at<float>(1,2);
-        invfx = 1.0f/fx;
-        invfy = 1.0f/fy;
-
-        mbInitialComputations=false;
-    }
+    fx = K.at<float>(0,0);
+    fy = K.at<float>(1,1);
+    cx = K.at<float>(0,2);
+    cy = K.at<float>(1,2);
+    invfx = 1.0f/fx;
+    invfy = 1.0f/fy;
 
     mb = mbf / fx;
 

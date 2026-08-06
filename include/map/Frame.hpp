@@ -201,12 +201,12 @@ public:
     // Calibration matrix and OpenCV distortion parameters.
     cv::Mat mK;
     Eigen::Matrix3f mK_;
-    static float fx;
-    static float fy;
-    static float cx;
-    static float cy;
-    static float invfx;
-    static float invfy;
+    float fx = 0.f;
+    float fy = 0.f;
+    float cx = 0.f;
+    float cy = 0.f;
+    float invfx = 0.f;
+    float invfy = 0.f;
     cv::Mat mDistCoef;
 
     // Stereo baseline multiplied by fx.
@@ -247,8 +247,8 @@ public:
     int mnCloseMPs;
 
     // Keypoints are assigned to cells in a grid to reduce matching complexity when projecting MapPoints.
-    static float mfGridElementWidthInv;
-    static float mfGridElementHeightInv;
+    float mfGridElementWidthInv = 0.f;
+    float mfGridElementHeightInv = 0.f;
     std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];
 
     IMU::Bias mPredBias;
@@ -283,13 +283,13 @@ public:
     vector<float> mvLevelSigma2;
     vector<float> mvInvLevelSigma2;
 
-    // Undistorted Image Bounds (computed once).
-    static float mnMinX;
-    static float mnMaxX;
-    static float mnMinY;
-    static float mnMaxY;
+    // Undistorted image bounds (P3-1: per-instance; recomputed each frame
+    // — the old once-only static latch could never legally refresh anyway).
+    float mnMinX = 0.f;
+    float mnMaxX = 0.f;
+    float mnMinY = 0.f;
+    float mnMaxY = 0.f;
 
-    static bool mbInitialComputations;
 
     map<long unsigned int, cv::Point2f> mmProjectPoints;
     map<long unsigned int, cv::Point2f> mmMatchedInImage;
