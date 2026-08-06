@@ -72,7 +72,7 @@
 |---|---|---|
 | **P0** | 저장소/서브모듈/Docker/골든 하네스 구축, evo 파이프라인, AUDIT_BRIEF 계승 | 하네스가 원본 이미지로 기준선 재산출 |
 | **P1** | pristine upstream 임포트 + 새 빌드 시스템(모던 CMake, 타깃 분리)으로 빌드 그린 | 5모드 골든 회귀 통과 (= 기준선 재현) |
-| **P2** | **기반 계층**: Settings 재설계(Config.h 죽은 코드 제거, 이중 파싱 경로 통합), 로깅, Converter 정리, 타입/Lie 유틸 통합(double/float 중복 제거) | 게이트 통과 |
+| **P2** | **기반 계층**: ⓪ 모듈 디렉터리 재배치(선행, 순수 기계적) — `src\|include/{core, camera, features, map, backend, geometry, tracking, mapping, recognition, closing, io, viz}`로 파일 분산(.hpp/.cpp 정규화 포함), git mv로 이력 보존, 동작 변경 없음 → 이후 모든 Phase의 diff가 제 위치에 쌓임. ① Settings 재설계(Config.h 죽은 코드 제거, 이중 파싱 경로 통합) ② 로깅 ③ Converter 정리, 타입/Lie 유틸 통합(double/float 중복 제거) | 게이트 통과 |
 | **P3** | **카메라 계층**: GeometricCamera 계열 정리 + CameraFactory, Frame static 내부파라미터 제거(추상화 누수 22건), TwoViewReconstruction을 카메라 모델 밖으로 | 게이트 통과 |
 | **P4** | **특징 계층**: ORBextractor/ORBmatcher 순수함수화 — 원본과 출력 비트 동일성 테스트 가능한 유일한 계층 | 비트 동일 테스트 + 게이트 |
 | **P5** | **데이터 계층**: MapPoint→KeyFrame→Frame→Map→Atlas→KeyFrameDatabase. 소유권 규칙 명문화, 낙서 필드(mnBALocalForKF류) 외부화, Atlas 자기 데드락 제거(CreateNewMapNoLock), mGlobalMutex 전략 재검토(동작 보존 범위 내) | 게이트 통과 |
