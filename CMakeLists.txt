@@ -21,6 +21,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 # the same flag-sensitivity class as the Remastered mono-inertial regression).
 
 option(BUILD_EXAMPLES "Build dataset example executables" ON)
+option(BUILD_TESTS "Build bit-identity test harness" ON)
 
 add_compile_options(-Wall -O3)
 
@@ -107,4 +108,13 @@ if(BUILD_EXAMPLES)
     set_target_properties(${tgt} PROPERTIES
       CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
   endforeach()
+endif()
+
+# ---- bit-identity test harness (P4) -----------------------------------------
+if(BUILD_TESTS)
+  add_executable(extract_hash tests/bit_identity/extract_hash.cpp)
+  target_link_libraries(extract_hash PRIVATE ORB_SLAM3::core OpenSSL::Crypto)
+  set_target_properties(extract_hash PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endif()
