@@ -1501,8 +1501,9 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
-                                       const map<KeyFrame *, set<KeyFrame *> > &LoopConnections, const bool &bFixScale)
-{   
+                                       const map<KeyFrame *, set<KeyFrame *> > &LoopConnections, const bool &bFixScale,
+                                       const std::map<MapPoint*, unsigned long> &correctedRefs)
+{
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
@@ -1757,9 +1758,10 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
             continue;
 
         int nIDr;
-        if(pMP->mnCorrectedByKF==pCurKF->mnId)
+        auto it = correctedRefs.find(pMP);
+        if(it != correctedRefs.end())
         {
-            nIDr = pMP->mnCorrectedReference;
+            nIDr = it->second;
         }
         else
         {

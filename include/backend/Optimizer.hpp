@@ -61,11 +61,14 @@ public:
     int static PoseInertialOptimizationLastFrame(Frame *pFrame, bool bRecInit = false);
 
     // if bFixScale is true, 6DoF optimization (stereo,rgbd), 7DoF otherwise (mono)
+    // correctedRefs: map points corrected during the loop closure, mapped to the id of
+    // their corrected reference keyframe (points not in the map use their reference KF)
     void static OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
                                        const map<KeyFrame *, set<KeyFrame *> > &LoopConnections,
-                                       const bool &bFixScale);
+                                       const bool &bFixScale,
+                                       const std::map<MapPoint*, unsigned long> &correctedRefs);
     void static OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFixedKFs, vector<KeyFrame*> &vpFixedCorrectedKFs,
                                        vector<KeyFrame*> &vpNonFixedKFs, vector<MapPoint*> &vpNonCorrectedMPs);
 

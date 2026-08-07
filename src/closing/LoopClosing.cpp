@@ -25,6 +25,7 @@
 #include "features/ORBmatcher.hpp"
 #include "backend/G2oTypes.hpp"
 
+#include<map>
 #include<mutex>
 #include<thread>
 
@@ -1036,6 +1037,11 @@ void LoopClosing::CorrectLoop()
     std::chrono::steady_clock::time_point time_StartFusion = std::chrono::steady_clock::now();
 #endif
 
+    // Map points corrected by this loop closure. The value is the id of the keyframe
+    // whose corrected pose was used as reference; key presence marks a point as already
+    // corrected (this replaces the former per-MapPoint correction stamp fields).
+    std::map<MapPoint*, unsigned long> mCorrectedRefs;
+
     {
         // Get Map Mutex
         unique_lock<mutex> lock(pLoopMap->mMutexMapUpdate);
@@ -1086,7 +1092,7 @@ void LoopClosing::CorrectLoop()
                     continue;
                 if(pMPi->isBad())
                     continue;
-                if(pMPi->mnCorrectedByKF==mpCurrentKF->mnId)
+                if(mCorrectedRefs.count(pMPi))
                     continue;
 
                 // Project with non-corrected pose and project back with corrected pose
@@ -1094,8 +1100,7 @@ void LoopClosing::CorrectLoop()
                 Eigen::Vector3d eigCorrectedP3Dw = g2oCorrectedSwi.map(g2oSiw.map(P3Dw));
 
                 pMPi->SetWorldPos(eigCorrectedP3Dw.cast<float>());
-                pMPi->mnCorrectedByKF = mpCurrentKF->mnId;
-                pMPi->mnCorrectedReference = pKFi->mnId;
+                mCorrectedRefs[pMPi] = pKFi->mnId;
                 pMPi->UpdateNormalAndDepth();
             }
 
@@ -1180,7 +1185,7 @@ void LoopClosing::CorrectLoop()
     else
     {
         //cout << "Loop -> Scale correction: " << mg2oLoopScw.scale() << endl;
-        Optimizer::OptimizeEssentialGraph(pLoopMap, mpLoopMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, bFixedScale);
+        Optimizer::OptimizeEssentialGraph(pLoopMap, mpLoopMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, bFixedScale, mCorrectedRefs);
     }
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_EndOpt = std::chrono::steady_clock::now();

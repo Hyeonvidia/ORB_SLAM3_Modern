@@ -79,8 +79,6 @@ class MapPoint
         //ar & mnBALocalForKF;
 
         // Variables used by loop closing and merging
-        //ar & mnCorrectedByKF;
-        //ar & mnCorrectedReference;
         //serializeMatrix(ar,mPosGBA,version);
         //ar & mnBAGlobalForKF;
         //ar & mnBALocalForMerge;
@@ -189,8 +187,6 @@ public:
     long unsigned int mnBALocalForKF;
 
     // Variables used by loop closing
-    long unsigned int mnCorrectedByKF;
-    long unsigned int mnCorrectedReference;    
     Eigen::Vector3f mPosGBA;
     long unsigned int mnBAGlobalForKF;
     long unsigned int mnBALocalForMerge;
