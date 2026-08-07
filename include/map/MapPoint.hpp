@@ -17,6 +17,13 @@
 */
 
 
+/**
+ * Ownership/lifetime: raw pointers by upstream design — KeyFrame/MapPoint are
+ * NEVER deleted on the normal path; removal is SetBadFlag() + tombstone
+ * (a lock-free concurrency contract, not a leak bug). See docs/OWNERSHIP.md
+ * before changing any lifetime or lock-order behavior here. (P5-3)
+ */
+
 #ifndef MAPPOINT_H
 #define MAPPOINT_H
 
