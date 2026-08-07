@@ -7,12 +7,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-BOUND="${SMOKE_BOUND:-0.084}"   # 2x euroc_stereo baseline median (see BASELINE.md)
+BOUND="${SMOKE_BOUND:-0.0758}"  # 2x euroc_stereo N=5 baseline MEDIAN 0.0379 (baseline_ate_distribution.csv)
 
 # Upstream crashes in teardown AFTER saving trajectories (known SIGABRT/SIGSEGV);
 # judge by the result files, never by the process exit code.
+START_EPOCH=$(date +%s)
 docker compose run --rm -e HEADLESS=1 dev docker/scripts/run_slam.sh euroc_stereo MH01 </dev/null >/dev/null || true
 D=$(ls -td results/euroc_stereo_MH01_* | head -1)
+# Freshness guard: judge only a run created by THIS invocation (checkpoint
+# review: a totally failed run must not silently re-judge yesterday's dir).
+DIR_EPOCH=$(stat -f %B "$D" 2>/dev/null || stat -c %Y "$D")
+[ "$DIR_EPOCH" -ge "$START_EPOCH" ] || { echo "SMOKE FAIL: no fresh run produced (latest: $D)"; exit 1; }
 
 LINES=$(awk 'NF==8' "$D/CameraTrajectory.txt" | wc -l | tr -d ' ')
 [ "$LINES" -ge 3600 ] || { echo "SMOKE FAIL: trajectory only $LINES well-formed lines (expect ~3682)"; exit 1; }

@@ -2,13 +2,16 @@
 # Full gate v2.1 (docs/phase_reports/P2.md): interleaved paired original-vs-new
 # runs, judged by exact rank-sum. Run on a RESTED machine (daytime policy).
 #
-#   ./benchmark/scripts/full_gate_paired.sh [rounds]   (default 2)
+#   ./benchmark/scripts/full_gate_paired.sh [rounds]   (default 4 — the minimum with formal statistical power)
 #
 # Requires the sibling golden harness at ../orb_slam3_docker (original image).
 # Writes verdict + per-run CSV to benchmark/gate_runs/<timestamp>/.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-ROUNDS="${1:-2}"
+ROUNDS="${1:-4}"
+# Statistical power: with R rounds/side the exact rank-sum minimum p is
+# 1/C(2R,R); p<0.05 needs R>=4 (checkpoint review finding). Fewer rounds
+# produce an UNDERPOWERED verdict, never a formal PASS.
 ORIG_DIR="$(cd ../orb_slam3_docker && pwd)"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT="benchmark/gate_runs/$STAMP"
@@ -28,8 +31,8 @@ for r in $(seq 1 "$ROUNDS"); do
   for m in euroc_mono euroc_stereo euroc_mono_inertial euroc_stereo_inertial; do
     run_pair "$m" MH01
   done
+  run_pair kitti_stereo 00
 done
-run_pair kitti_stereo 00
 
 ./benchmark/scripts/evaluate_all.sh "$ORIG_DIR/results" > "$OUT/orig.csv"
 ./benchmark/scripts/evaluate_all.sh results > "$OUT/new.csv"
@@ -68,7 +71,12 @@ for m in sorted(set(orig)|set(new)):
     ok &= not fail
     lines.append(f"{m:24s} {am:>8.4f}({len(a)}) {bm:>8.4f}({len(b)}) {d:>+6.1f}% {p:>6.3f} {'FAIL' if fail else 'PASS'}")
 lines.append("")
-lines.append("FULL GATE: " + ("PASS" if ok else "FAIL — bisect-replicate before acting (gate v2.1)"))
+import math
+minp = 1.0/math.comb(2*min(len(v) for d in (orig,new) for v in d.values() if v), min(len(v) for d in (orig,new) for v in d.values() if v)) if orig and new else 1.0
+if minp >= 0.05:
+    lines.append(f"FULL GATE: UNDERPOWERED (min achievable p={minp:.3f} >= 0.05) — run >=4 rounds for a formal verdict")
+else:
+    lines.append("FULL GATE: " + ("PASS" if ok else "FAIL — bisect-replicate before acting (gate v2.1)"))
 report="\n".join(lines)
 (out/"verdict.txt").write_text(report+"\n")
 print(report)

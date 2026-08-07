@@ -1,0 +1,2 @@
+dev image digest: sha256:fbee3fbc0be62db4527a0a2f90d899510ef8cb84f4d7ad45a480b5d473ad352f
+opencv: Version: 4.5.4+dfsg-9ubuntu4

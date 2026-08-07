@@ -17,7 +17,8 @@ OUT=$(docker compose run --rm dev bash -c '
   IMGS=$(ls "$IMDIR" | sed -n "1p;1800p;3600p")
   for img in $IMGS; do
     for case in "1000 1.2 8 20 7 0 0" "1000 1.2 8 20 7 0 1000" "5000 1.2 8 20 7 0 1000"; do
-      H=$("$BIN" "$IMDIR/$img" $case | head -1)
+      OUT2=$("$BIN" "$IMDIR/$img" $case) || { echo "NONDETERMINISM in $img [$case]"; exit 3; }
+      H=$(echo "$OUT2" | head -1)
       echo "$img [$case] $H"
     done
   done' </dev/null)

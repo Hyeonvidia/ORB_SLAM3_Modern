@@ -10,3 +10,10 @@ Thirdparty/g2o/lib/
 Thirdparty/DBoW2/lib/
 docker_build.log
 benchmark/gate_runs/
+CameraTrajectory.txt
+KeyFrameTrajectory.txt
+f_*.txt
+kf_*.txt
+CMakeCache.txt
+cmake_install.cmake
+CMakeFiles/
