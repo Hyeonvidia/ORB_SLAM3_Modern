@@ -34,7 +34,7 @@
 // closing/LoopClosing.hpp cannot be included here because System.hpp (which
 // carries G2oBackend and therefore this header) is itself reached from inside
 // LoopClosing.hpp's include chain (Tracking.hpp -> Viewer.hpp -> System.hpp).
-#include "g2o/types/sim3/sim3.h"
+#include "Thirdparty/g2o/g2o/types/sim3.h"
 
 namespace ORB_SLAM3
 {

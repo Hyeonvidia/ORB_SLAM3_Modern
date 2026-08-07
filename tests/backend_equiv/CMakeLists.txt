@@ -4,7 +4,7 @@
 #   -DEQUIV_BACKEND=vendored : frozen reference_backend/ snapshot + vendored
 #                              Thirdparty/g2o (golden pre-migration backend)
 #   -DEQUIV_BACKEND=modern   : live src/backend/ + third_party/g2o submodule
-#                              (P6-2 — not wired yet)
+#                              (P6-2)
 #
 # Two independent build trees, one binary each (ODR: the two g2o's share
 # symbols and cannot coexist in one binary — design §B.3).
@@ -43,14 +43,41 @@ if(EQUIV_BACKEND STREQUAL "vendored")
     ${CMAKE_CURRENT_SOURCE_DIR}/reference_backend/G2oTypes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reference_backend/OptimizableTypes.cpp
   )
-  # Frozen snapshot headers shadow include/backend/* (priority include dir,
-  # see target_include_directories BEFORE below): every TU of this variant —
-  # including live shared sources such as src/map/Frame.cpp, which includes
-  # backend/G2oTypes.hpp — must see the golden headers, not the migrating ones.
+  # Frozen snapshot headers shadow the live include/ tree (priority include
+  # dir, see target_include_directories BEFORE below): every TU of this
+  # variant — including live shared sources such as src/map/Frame.cpp, which
+  # includes backend/G2oTypes.hpp — must see the golden headers, not the
+  # migrated ones. Since P6-2 the snapshot also freezes the pre-migration
+  # io/Converter.hpp, closing/LoopClosing.hpp and backend/ILoopOptimizer.hpp
+  # (their only change was the g2o include path; the live copies now point at
+  # the upstream submodule, which this variant must not see).
   set(EQUIV_BACKEND_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/reference_backend/include)
-  set(EQUIV_G2O_TARGET g2o)
+  set(EQUIV_G2O_TARGETS g2o)
 elseif(EQUIV_BACKEND STREQUAL "modern")
-  message(FATAL_ERROR "EQUIV_BACKEND=modern not yet implemented — P6-2")
+  # Live migrated backend + pinned upstream g2o submodule (20241228_git).
+  # Same option matrix as the root CMakeLists (docs/P6_DESIGN.md §A(5)).
+  set(G2O_BUILD_APPS OFF CACHE BOOL "" FORCE)
+  set(G2O_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(G2O_USE_LOGGING OFF CACHE BOOL "" FORCE)
+  set(G2O_USE_CHOLMOD OFF CACHE BOOL "" FORCE)
+  set(G2O_USE_CSPARSE OFF CACHE BOOL "" FORCE)
+  set(G2O_USE_OPENGL OFF CACHE BOOL "" FORCE)
+  set(BUILD_WITH_MARCH_NATIVE OFF CACHE BOOL "" FORCE)
+  set(G2O_FAST_MATH OFF CACHE BOOL "" FORCE)
+  add_subdirectory(${REPO_ROOT}/third_party/g2o ${CMAKE_BINARY_DIR}/third_party/g2o)
+  add_subdirectory(${REPO_ROOT}/Thirdparty/DBoW2 ${CMAKE_BINARY_DIR}/Thirdparty/DBoW2)
+
+  set(EQUIV_BACKEND_SOURCES
+    ${REPO_ROOT}/src/backend/Optimizer.cpp
+    ${REPO_ROOT}/src/backend/G2oTypes.cpp
+    ${REPO_ROOT}/src/backend/OptimizableTypes.cpp
+  )
+  # No shadow include dir: the live include/ tree is the modern contract.
+  set(EQUIV_BACKEND_INCLUDE "")
+  # Upstream g2o exports its include dirs on these targets (submodule root +
+  # generated config.h build dir), so "g2o/..." includes need no extra wiring.
+  set(EQUIV_G2O_TARGETS core stuff solver_eigen solver_dense
+                        types_sba types_sim3 types_slam3d)
 else()
   message(FATAL_ERROR "EQUIV_BACKEND must be 'vendored' or 'modern' (got '${EQUIV_BACKEND}')")
 endif()
@@ -91,8 +118,11 @@ add_executable(equiv_runner
 set_target_properties(equiv_runner PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
-# BEFORE: the backend snapshot headers MUST win over ${REPO_ROOT}/include.
-target_include_directories(equiv_runner BEFORE PRIVATE ${EQUIV_BACKEND_INCLUDE})
+# BEFORE: the backend snapshot headers MUST win over ${REPO_ROOT}/include
+# (vendored variant only; the modern variant sets no shadow dir).
+if(EQUIV_BACKEND_INCLUDE)
+  target_include_directories(equiv_runner BEFORE PRIVATE ${EQUIV_BACKEND_INCLUDE})
+endif()
 target_include_directories(equiv_runner PRIVATE
   ${REPO_ROOT}                     # "Thirdparty/..." relative includes
   ${REPO_ROOT}/include             # module-qualified: "map/Frame.hpp"
@@ -107,7 +137,7 @@ target_compile_definitions(equiv_runner PRIVATE
 
 target_link_libraries(equiv_runner PRIVATE
   DBoW2
-  ${EQUIV_G2O_TARGET}
+  ${EQUIV_G2O_TARGETS}
   ${OpenCV_LIBS}
   ${Pangolin_LIBRARIES}
   Boost::serialization

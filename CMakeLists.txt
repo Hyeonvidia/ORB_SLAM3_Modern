@@ -5,8 +5,10 @@ project(ORB_SLAM3_Modern VERSION 0.1.0 LANGUAGES C CXX)
 # Modern CMake replacement for the upstream flat build (Phase 1).
 # Behavior parity with the golden baseline (benchmark/golden/BASELINE.md):
 #   -O3, -std=c++17, NO -march=native anywhere, BOOST_BIND_GLOBAL_PLACEHOLDERS.
-# Vendored Thirdparty (DBoW2/g2o/Sophus) is still the backend at this phase;
-# submodules under third_party/ take over in later phases (backend swap = P6).
+# P6-2: the backend now builds against the pinned upstream g2o submodule
+# (third_party/g2o @ 20241228_git); DBoW2/Sophus remain vendored Thirdparty.
+# The vendored Thirdparty/g2o stays in-tree only for the frozen reference
+# variant of tests/backend_equiv (equivalence harness, docs/P6_DESIGN.md §B).
 # =============================================================================
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -32,7 +34,20 @@ find_package(Boost REQUIRED COMPONENTS serialization)
 find_package(OpenSSL REQUIRED)
 
 add_subdirectory(Thirdparty/DBoW2)
-add_subdirectory(Thirdparty/g2o)
+
+# ---- upstream g2o submodule (pinned 20241228_git) ---------------------------
+# Option matrix per docs/P6_DESIGN.md §A(5): no apps/examples, no external
+# solver/GL deps, logging off (blocks the quiet spdlog fallback), and the
+# numeric-determinism pins (march-native/fast-math OFF) made explicit.
+set(G2O_BUILD_APPS OFF CACHE BOOL "" FORCE)
+set(G2O_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(G2O_USE_LOGGING OFF CACHE BOOL "" FORCE)
+set(G2O_USE_CHOLMOD OFF CACHE BOOL "" FORCE)
+set(G2O_USE_CSPARSE OFF CACHE BOOL "" FORCE)
+set(G2O_USE_OPENGL OFF CACHE BOOL "" FORCE)
+set(BUILD_WITH_MARCH_NATIVE OFF CACHE BOOL "" FORCE)
+set(G2O_FAST_MATH OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/g2o)
 
 # ---- core library -----------------------------------------------------------
 add_library(orbslam3_core SHARED
@@ -84,9 +99,13 @@ target_compile_definitions(orbslam3_core PUBLIC
   BOOST_BIND_GLOBAL_PLACEHOLDERS    # silence deprecated Boost.Bind placeholders
 )
 
+# Upstream g2o targets export their include dirs (submodule root + generated
+# config.h dir) PUBLIC, so no extra include wiring is needed for "g2o/..."
+# includes. core self-manages cxx_std_17 PUBLIC (compatible with the
+# gnu++17-for-thirdparty note above — the feature is a floor, not a dialect).
 target_link_libraries(orbslam3_core PUBLIC
   DBoW2
-  g2o
+  core stuff solver_eigen solver_dense types_sba types_sim3 types_slam3d
   ${OpenCV_LIBS}
   ${Pangolin_LIBRARIES}
   Boost::serialization

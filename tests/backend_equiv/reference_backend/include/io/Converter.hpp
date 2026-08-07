@@ -22,7 +22,7 @@
 #include <opencv2/core/core.hpp>
 
 #include <Eigen/Dense>
-#include "g2o/types/sim3/sim3.h"
+#include "Thirdparty/g2o/g2o/types/sim3.h"
 #include "sophus/se3.hpp"
 #include "sophus/sim3.hpp"
 
