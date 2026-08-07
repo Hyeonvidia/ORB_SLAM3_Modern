@@ -58,6 +58,16 @@ Atlas::~Atlas()
 void Atlas::CreateNewMap()
 {
     unique_lock<mutex> lock(mMutexAtlas);
+    CreateNewMap_impl();
+}
+
+// Precondition: caller holds mMutexAtlas. Split out so GetCurrentMap can
+// create the first map without re-locking the non-recursive mutex — the
+// old GetCurrentMap()->CreateNewMap() path self-deadlocked whenever another
+// thread called GetCurrentMap during Tracking's reset window (P5-1; same
+// defect the Remastered audit observed live as E4b).
+void Atlas::CreateNewMap_impl()
+{
     cout << "Creation of new map with id: " << Map::nNextId << endl;
     if(mpCurrentMap){
         if(!mspMaps.empty() && mnLastInitKFidMap < mpCurrentMap->GetMaxKFid())
@@ -250,7 +260,7 @@ Map* Atlas::GetCurrentMap()
 {
     unique_lock<mutex> lock(mMutexAtlas);
     if(!mpCurrentMap)
-        CreateNewMap();
+        CreateNewMap_impl();
     while(mpCurrentMap->IsBad())
         usleep(3000);
 

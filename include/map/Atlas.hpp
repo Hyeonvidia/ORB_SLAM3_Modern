@@ -160,6 +160,9 @@ protected:
     ORBVocabulary* mpORBVocabulary;
 
     // Mutex
+    // Precondition: mMutexAtlas held by caller (see Atlas.cpp P5-1 note).
+    void CreateNewMap_impl();
+
     std::mutex mMutexAtlas;
 
 
