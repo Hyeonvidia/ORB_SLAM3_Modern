@@ -78,10 +78,6 @@ class MapPoint
         // Variables used by local mapping
         //ar & mnBALocalForKF;
 
-        // Variables used by loop closing and merging
-        //serializeMatrix(ar,mPosGBA,version);
-        //ar & mnBAGlobalForKF;
-
         // Protected variables
         ar & boost::serialization::make_array(mWorldPos.data(), mWorldPos.size());
         ar & boost::serialization::make_array(mNormalVector.data(), mNormalVector.size());
@@ -183,9 +179,8 @@ public:
     // Variables used by local mapping
     long unsigned int mnBALocalForKF;
 
-    // Variables used by loop closing
-    Eigen::Vector3f mPosGBA;
-    long unsigned int mnBAGlobalForKF;
+    // P5-D: the per-GBA result fields (mPosGBA/mnBAGlobalForKF) were
+    // externalized into GBAResult (include/backend/GBAResult.hpp).
 
     // P5-G: the per-merge scribble fields (mnBALocalForMerge/mPosMerge/
     // mNormalVectorMerge) were externalized into MergeScratch

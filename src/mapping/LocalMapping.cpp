@@ -21,6 +21,7 @@
 #include "closing/LoopClosing.hpp"
 #include "features/ORBmatcher.hpp"
 #include "backend/Optimizer.hpp"
+#include "backend/GBAResult.hpp"
 #include "io/Converter.hpp"
 #include "geometry/GeometricTools.hpp"
 
@@ -1305,12 +1306,17 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     }
 
     std::chrono::steady_clock::time_point t4 = std::chrono::steady_clock::now();
+
+    // Result buffers of this GBA invocation (P5-D, was the KeyFrame/MapPoint
+    // *GBA scribble fields stamped with mnBAGlobalForKF==mpCurrentKeyFrame->mnId)
+    GBAResult gbaResult;
+
     if (bFIBA)
     {
         if (priorA!=0.f)
-            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, mpCurrentKeyFrame->mnId, NULL, true, priorG, priorA);
+            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, mpCurrentKeyFrame->mnId, NULL, true, priorG, priorA, NULL, NULL, &gbaResult);
         else
-            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, mpCurrentKeyFrame->mnId, NULL, false);
+            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, mpCurrentKeyFrame->mnId, NULL, false, 1e2, 1e6, NULL, NULL, &gbaResult);
     }
 
     std::chrono::steady_clock::time_point t5 = std::chrono::steady_clock::now();
@@ -1319,8 +1325,6 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
     // Get Map Mutex
     unique_lock<mutex> lock(mpAtlas->GetCurrentMap()->mMutexMapUpdate);
-
-    unsigned long GBAid = mpCurrentKeyFrame->mnId;
 
     // Process keyframes in the queue
     while(CheckNewKeyFrames())
@@ -1333,45 +1337,53 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     // Correct keyframes starting at map first keyframe
     list<KeyFrame*> lpKFtoCheck(mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.begin(),mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.end());
 
+    // Pre-correction pose of every keyframe updated in this pass
+    // (was KeyFrame::mTcwBefGBA), read below to re-anchor map points
+    std::map<KeyFrame*, Sophus::SE3f> tcwBefGBA;
+
     while(!lpKFtoCheck.empty())
     {
         KeyFrame* pKF = lpKFtoCheck.front();
         const set<KeyFrame*> sChilds = pKF->GetChilds();
         Sophus::SE3f Twc = pKF->GetPoseInverse();
+        KeyFrameGBAResult& rKF = gbaResult.kfs[pKF];
         for(set<KeyFrame*>::const_iterator sit=sChilds.begin();sit!=sChilds.end();sit++)
         {
             KeyFrame* pChild = *sit;
             if(!pChild || pChild->isBad())
                 continue;
 
-            if(pChild->mnBAGlobalForKF!=GBAid)
+            if(!gbaResult.kfs.count(pChild))
             {
                 Sophus::SE3f Tchildc = pChild->GetPose() * Twc;
-                pChild->mTcwGBA = Tchildc * pKF->mTcwGBA;
+                KeyFrameGBAResult& rChild = gbaResult.kfs[pChild];
+                rChild.Tcw = Tchildc * rKF.Tcw;
 
-                Sophus::SO3f Rcor = pChild->mTcwGBA.so3().inverse() * pChild->GetPose().so3();
+                Sophus::SO3f Rcor = rChild.Tcw.so3().inverse() * pChild->GetPose().so3();
                 if(pChild->isVelocitySet()){
-                    pChild->mVwbGBA = Rcor * pChild->GetVelocity();
+                    rChild.Vwb = Rcor * pChild->GetVelocity();
+                    rChild.hasVwb = true;
                 }
                 else {
                     Verbose::PrintMess("Child velocity empty!! ", Verbose::VERBOSITY_NORMAL);
                 }
 
-                pChild->mBiasGBA = pChild->GetImuBias();
-                pChild->mnBAGlobalForKF = GBAid;
+                rChild.Bias = pChild->GetImuBias();
+                rChild.hasBias = true;
 
             }
             lpKFtoCheck.push_back(pChild);
         }
 
-        pKF->mTcwBefGBA = pKF->GetPose();
-        pKF->SetPose(pKF->mTcwGBA);
+        tcwBefGBA[pKF] = pKF->GetPose();
+        pKF->SetPose(rKF.Tcw);
 
         if(pKF->bImu)
         {
-            
-            pKF->SetVelocity(pKF->mVwbGBA);
-            pKF->SetNewBias(pKF->mBiasGBA);
+            if(rKF.hasVwb)
+                pKF->SetVelocity(rKF.Vwb);
+            if(rKF.hasBias)
+                pKF->SetNewBias(rKF.Bias);
         } else {
             cout << "KF " << pKF->mnId << " not set to inertial!! \n";
         }
@@ -1389,21 +1401,23 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
         if(pMP->isBad())
             continue;
 
-        if(pMP->mnBAGlobalForKF==GBAid)
+        std::map<MapPoint*, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
+        if(itMP != gbaResult.mps.end())
         {
             // If optimized by Global BA, just update
-            pMP->SetWorldPos(pMP->mPosGBA);
+            pMP->SetWorldPos(itMP->second);
         }
         else
         {
             // Update according to the correction of its reference keyframe
             KeyFrame* pRefKF = pMP->GetReferenceKeyFrame();
 
-            if(pRefKF->mnBAGlobalForKF!=GBAid)
+            std::map<KeyFrame*, Sophus::SE3f>::const_iterator itBef = tcwBefGBA.find(pRefKF);
+            if(itBef == tcwBefGBA.end())
                 continue;
 
             // Map to non-corrected camera
-            Eigen::Vector3f Xc = pRefKF->mTcwBefGBA * pMP->GetWorldPos();
+            Eigen::Vector3f Xc = itBef->second * pMP->GetWorldPos();
 
             // Backproject using corrected camera
             pMP->SetWorldPos(pRefKF->GetPoseInverse() * Xc);

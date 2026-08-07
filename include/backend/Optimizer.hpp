@@ -25,6 +25,7 @@
 #include "map/KeyFrame.hpp"
 #include "closing/LoopClosing.hpp"
 #include "closing/MergeScratch.hpp"
+#include "backend/GBAResult.hpp"
 #include "map/Frame.hpp"
 
 #include <math.h>
@@ -48,12 +49,17 @@ class Optimizer
 {
 public:
 
+    // pResult (owned by the caller that later propagates the GBA correction)
+    // receives the optimized poses/velocities/biases/positions when nLoopKF
+    // identifies a deferred update; with pResult==NULL those results are
+    // dropped (no caller reads them afterwards).
     void static BundleAdjustment(const std::vector<KeyFrame*> &vpKF, const std::vector<MapPoint*> &vpMP,
                                  int nIterations = 5, bool *pbStopFlag=NULL, const unsigned long nLoopKF=0,
-                                 const bool bRobust = true);
+                                 const bool bRobust = true, GBAResult *pResult=NULL);
     void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, bool *pbStopFlag=NULL,
-                                       const unsigned long nLoopKF=0, const bool bRobust = true);
-    void static FullInertialBA(Map *pMap, int its, const bool bFixLocal=false, const unsigned long nLoopKF=0, bool *pbStopFlag=NULL, bool bInit=false, float priorG = 1e2, float priorA=1e6, Eigen::VectorXd *vSingVal = NULL, bool *bHess=NULL);
+                                       const unsigned long nLoopKF=0, const bool bRobust = true,
+                                       GBAResult *pResult=NULL);
+    void static FullInertialBA(Map *pMap, int its, const bool bFixLocal=false, const unsigned long nLoopKF=0, bool *pbStopFlag=NULL, bool bInit=false, float priorG = 1e2, float priorA=1e6, Eigen::VectorXd *vSingVal = NULL, bool *bHess=NULL, GBAResult *pResult=NULL);
 
     void static LocalBundleAdjustment(KeyFrame* pKF, bool *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges);
 

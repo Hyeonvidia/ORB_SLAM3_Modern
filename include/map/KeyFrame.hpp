@@ -77,12 +77,6 @@ class KeyFrame
         // Variables of local mapping
         //ar & mnBALocalForKF;
         //ar & mnBAFixedForKF;
-        // Variables of loop closing
-        //serializeMatrix(ar,mTcwGBA,version);
-        //serializeMatrix(ar,mTcwBefGBA,version);
-        //serializeMatrix(ar,mVwbGBA,version);
-        //ar & mBiasGBA;
-        //ar & mnBAGlobalForKF;
 
         // Scale
         ar & mfScale;
@@ -312,12 +306,10 @@ public:
     // m*Score for Loop/Merge/PlaceRecognition/Reloc) were externalized into
     // function-local scratch maps in KeyFrameDatabase.cpp.
 
-    // Variables used by loop closing
-    Sophus::SE3f mTcwGBA;
-    Sophus::SE3f mTcwBefGBA;
-    Eigen::Vector3f mVwbGBA;
-    IMU::Bias mBiasGBA;
-    long unsigned int mnBAGlobalForKF;
+    // P5-D: the per-GBA result fields (mTcwGBA/mTcwBefGBA/mVwbGBA/mBiasGBA/
+    // mnBAGlobalForKF) were externalized into GBAResult
+    // (include/backend/GBAResult.hpp) and a propagation-local tcwBefGBA map
+    // in LoopClosing.cpp/LocalMapping.cpp.
 
     // P5-G: the per-merge scribble fields (mTcwMerge/mTcwBefMerge/mTwcBefMerge/
     // mVwbMerge/mnBALocalForMerge) were externalized into MergeScratch

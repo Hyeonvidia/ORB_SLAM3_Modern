@@ -40,3 +40,8 @@
   신선도 가드 추가. 비트 게이트는 비결정성 감지 exit code를 전파.
 - 골든 해시의 환경 전제(dev 이미지 digest, OpenCV 버전)를
   benchmark/golden/bit_hashes_env.txt에 고정.
+
+8. **GBA 전파의 stamped-but-bad refKF 엣지** (P5-4 그룹 D) — 업스트림은 GBA
+   스탬프는 찍혔으나 pop되지 않은(bad) 참조 KF의 stale/미기록 mTcwBefGBA로
+   맵포인트를 변환할 수 있었다(가비지 읽기). 사이드테이블화 이후 해당 엣지는
+   결정적으로 스킵된다(비퇴화 실행에서는 stamped ⟺ popped라 동작 동일).

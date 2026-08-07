@@ -49,16 +49,16 @@ bool sortByVal(const pair<MapPoint*, int> &a, const pair<MapPoint*, int> &b)
     return (a.second < b.second);
 }
 
-void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)
+void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust, GBAResult *pResult)
 {
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
     vector<MapPoint*> vpMP = pMap->GetAllMapPoints();
-    BundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
+    BundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust, pResult);
 }
 
 
 void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<MapPoint *> &vpMP,
-                                 int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)
+                                 int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust, GBAResult *pResult)
 {
     vector<bool> vbNotIncludedMP;
     vbNotIncludedMP.resize(vpMP.size());
@@ -294,13 +294,13 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
         {
             pKF->SetPose(Sophus::SE3f(SE3quat.rotation().cast<float>(), SE3quat.translation().cast<float>()));
         }
-        else
+        else if(pResult)
         {
-            pKF->mTcwGBA = Sophus::SE3d(SE3quat.rotation(),SE3quat.translation()).cast<float>();
-            pKF->mnBAGlobalForKF = nLoopKF;
+            KeyFrameGBAResult& rKF = pResult->kfs[pKF];
+            rKF.Tcw = Sophus::SE3d(SE3quat.rotation(),SE3quat.translation()).cast<float>();
 
             Sophus::SE3f mTwc = pKF->GetPoseInverse();
-            Sophus::SE3f mTcGBA_c = pKF->mTcwGBA * mTwc;
+            Sophus::SE3f mTcGBA_c = rKF.Tcw * mTwc;
             Eigen::Vector3f vector_dist =  mTcGBA_c.translation();
             double dist = vector_dist.norm();
             if(dist > 1)
@@ -381,15 +381,14 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
             pMP->SetWorldPos(vPoint->estimate().cast<float>());
             pMP->UpdateNormalAndDepth();
         }
-        else
+        else if(pResult)
         {
-            pMP->mPosGBA = vPoint->estimate().cast<float>();
-            pMP->mnBAGlobalForKF = nLoopKF;
+            pResult->mps[pMP] = vPoint->estimate().cast<float>();
         }
     }
 }
 
-void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const long unsigned int nLoopId, bool *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess)
+void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const long unsigned int nLoopId, bool *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess, GBAResult *pResult)
 {
     long unsigned int maxKFid = pMap->GetMaxKFid();
     const vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
@@ -740,11 +739,9 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
             Sophus::SE3f Tcw(VP->estimate().Rcw[0].cast<float>(), VP->estimate().tcw[0].cast<float>());
             pKFi->SetPose(Tcw);
         }
-        else
+        else if(pResult)
         {
-            pKFi->mTcwGBA = Sophus::SE3f(VP->estimate().Rcw[0].cast<float>(),VP->estimate().tcw[0].cast<float>());
-            pKFi->mnBAGlobalForKF = nLoopId;
-
+            pResult->kfs[pKFi].Tcw = Sophus::SE3f(VP->estimate().Rcw[0].cast<float>(),VP->estimate().tcw[0].cast<float>());
         }
         if(pKFi->bImu)
         {
@@ -753,9 +750,11 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
             {
                 pKFi->SetVelocity(VV->estimate().cast<float>());
             }
-            else
+            else if(pResult)
             {
-                pKFi->mVwbGBA = VV->estimate().cast<float>();
+                KeyFrameGBAResult& rKF = pResult->kfs[pKFi];
+                rKF.Vwb = VV->estimate().cast<float>();
+                rKF.hasVwb = true;
             }
 
             VertexGyroBias* VG;
@@ -778,9 +777,11 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
             {
                 pKFi->SetNewBias(b);
             }
-            else
+            else if(pResult)
             {
-                pKFi->mBiasGBA = b;
+                KeyFrameGBAResult& rKF = pResult->kfs[pKFi];
+                rKF.Bias = b;
+                rKF.hasBias = true;
             }
         }
     }
@@ -799,10 +800,9 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
             pMP->SetWorldPos(vPoint->estimate().cast<float>());
             pMP->UpdateNormalAndDepth();
         }
-        else
+        else if(pResult)
         {
-            pMP->mPosGBA = vPoint->estimate().cast<float>();
-            pMP->mnBAGlobalForKF = nLoopId;
+            pResult->mps[pMP] = vPoint->estimate().cast<float>();
         }
 
     }

@@ -20,6 +20,7 @@
 #include "closing/LoopClosing.hpp"
 
 #include "closing/MergeScratch.hpp"
+#include "backend/GBAResult.hpp"
 #include "geometry/Sim3Solver.hpp"
 #include "io/Converter.hpp"
 #include "backend/Optimizer.hpp"
@@ -2289,10 +2290,14 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
 
     const bool bImuInit = pActiveMap->isImuInitialized();
 
+    // Result buffers of this GBA invocation (P5-D, was the KeyFrame/MapPoint
+    // *GBA scribble fields stamped with mnBAGlobalForKF==nLoopKF)
+    GBAResult gbaResult;
+
     if(!bImuInit)
-        Optimizer::GlobalBundleAdjustemnt(pActiveMap,10,&mbStopGBA,nLoopKF,false);
+        Optimizer::GlobalBundleAdjustemnt(pActiveMap,10,&mbStopGBA,nLoopKF,false,&gbaResult);
     else
-        Optimizer::FullInertialBA(pActiveMap,7,false,nLoopKF,&mbStopGBA);
+        Optimizer::FullInertialBA(pActiveMap,7,false,nLoopKF,&mbStopGBA,false,1e2,1e6,NULL,NULL,&gbaResult);
 
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_EndGBA = std::chrono::steady_clock::now();
@@ -2342,116 +2347,61 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
             // Correct keyframes starting at map first keyframe
             list<KeyFrame*> lpKFtoCheck(pActiveMap->mvpKeyFrameOrigins.begin(),pActiveMap->mvpKeyFrameOrigins.end());
 
+            // Pre-correction pose of every keyframe updated in this pass
+            // (was KeyFrame::mTcwBefGBA), read below to re-anchor map points
+            std::map<KeyFrame*, Sophus::SE3f> tcwBefGBA;
+
             while(!lpKFtoCheck.empty())
             {
                 KeyFrame* pKF = lpKFtoCheck.front();
                 const set<KeyFrame*> sChilds = pKF->GetChilds();
                 //cout << "---Updating KF " << pKF->mnId << " with " << sChilds.size() << " childs" << endl;
-                //cout << " KF mnBAGlobalForKF: " << pKF->mnBAGlobalForKF << endl;
                 Sophus::SE3f Twc = pKF->GetPoseInverse();
                 //cout << "Twc: " << Twc << endl;
                 //cout << "GBA: Correct KeyFrames" << endl;
+                KeyFrameGBAResult& rKF = gbaResult.kfs[pKF];
                 for(set<KeyFrame*>::const_iterator sit=sChilds.begin();sit!=sChilds.end();sit++)
                 {
                     KeyFrame* pChild = *sit;
                     if(!pChild || pChild->isBad())
                         continue;
 
-                    if(pChild->mnBAGlobalForKF!=nLoopKF)
+                    if(!gbaResult.kfs.count(pChild))
                     {
-                        //cout << "++++New child with flag " << pChild->mnBAGlobalForKF << "; LoopKF: " << nLoopKF << endl;
                         //cout << " child id: " << pChild->mnId << endl;
                         Sophus::SE3f Tchildc = pChild->GetPose() * Twc;
                         //cout << "Child pose: " << Tchildc << endl;
-                        //cout << "pKF->mTcwGBA: " << pKF->mTcwGBA << endl;
-                        pChild->mTcwGBA = Tchildc * pKF->mTcwGBA;//*Tcorc*pKF->mTcwGBA;
+                        KeyFrameGBAResult& rChild = gbaResult.kfs[pChild];
+                        rChild.Tcw = Tchildc * rKF.Tcw;//*Tcorc*rKF.Tcw;
 
-                        Sophus::SO3f Rcor = pChild->mTcwGBA.so3().inverse() * pChild->GetPose().so3();
+                        Sophus::SO3f Rcor = rChild.Tcw.so3().inverse() * pChild->GetPose().so3();
                         if(pChild->isVelocitySet()){
-                            pChild->mVwbGBA = Rcor * pChild->GetVelocity();
+                            rChild.Vwb = Rcor * pChild->GetVelocity();
+                            rChild.hasVwb = true;
                         }
                         else
                             Verbose::PrintMess("Child velocity empty!! ", Verbose::VERBOSITY_NORMAL);
 
 
                         //cout << "Child bias: " << pChild->GetImuBias() << endl;
-                        pChild->mBiasGBA = pChild->GetImuBias();
-
-
-                        pChild->mnBAGlobalForKF = nLoopKF;
+                        rChild.Bias = pChild->GetImuBias();
+                        rChild.hasBias = true;
 
                     }
                     lpKFtoCheck.push_back(pChild);
                 }
 
                 //cout << "-------Update pose" << endl;
-                pKF->mTcwBefGBA = pKF->GetPose();
-                //cout << "pKF->mTcwBefGBA: " << pKF->mTcwBefGBA << endl;
-                pKF->SetPose(pKF->mTcwGBA);
-                /*cv::Mat Tco_cn = pKF->mTcwBefGBA * pKF->mTcwGBA.inv();
-                cv::Vec3d trasl = Tco_cn.rowRange(0,3).col(3);
-                double dist = cv::norm(trasl);
-                cout << "GBA: KF " << pKF->mnId << " had been moved " << dist << " meters" << endl;
-                double desvX = 0;
-                double desvY = 0;
-                double desvZ = 0;
-                if(pKF->mbHasHessian)
-                {
-                    cv::Mat hessianInv = pKF->mHessianPose.inv();
-
-                    double covX = hessianInv.at<double>(3,3);
-                    desvX = std::sqrt(covX);
-                    double covY = hessianInv.at<double>(4,4);
-                    desvY = std::sqrt(covY);
-                    double covZ = hessianInv.at<double>(5,5);
-                    desvZ = std::sqrt(covZ);
-                    pKF->mbHasHessian = false;
-                }
-                if(dist > 1)
-                {
-                    cout << "--To much distance correction: It has " << pKF->GetConnectedKeyFrames().size() << " connected KFs" << endl;
-                    cout << "--It has " << pKF->GetCovisiblesByWeight(80).size() << " connected KF with 80 common matches or more" << endl;
-                    cout << "--It has " << pKF->GetCovisiblesByWeight(50).size() << " connected KF with 50 common matches or more" << endl;
-                    cout << "--It has " << pKF->GetCovisiblesByWeight(20).size() << " connected KF with 20 common matches or more" << endl;
-
-                    cout << "--STD in meters(x, y, z): " << desvX << ", " << desvY << ", " << desvZ << endl;
-
-
-                    string strNameFile = pKF->mNameFile;
-                    cv::Mat imLeft = cv::imread(strNameFile, CV_LOAD_IMAGE_UNCHANGED);
-
-                    cv::cvtColor(imLeft, imLeft, CV_GRAY2BGR);
-
-                    vector<MapPoint*> vpMapPointsKF = pKF->GetMapPointMatches();
-                    int num_MPs = 0;
-                    for(int i=0; i<vpMapPointsKF.size(); ++i)
-                    {
-                        if(!vpMapPointsKF[i] || vpMapPointsKF[i]->isBad())
-                        {
-                            continue;
-                        }
-                        num_MPs += 1;
-                        string strNumOBs = to_string(vpMapPointsKF[i]->Observations());
-                        cv::circle(imLeft, pKF->mvKeys[i].pt, 2, cv::Scalar(0, 255, 0));
-                        cv::putText(imLeft, strNumOBs, pKF->mvKeys[i].pt, CV_FONT_HERSHEY_DUPLEX, 1, cv::Scalar(255, 0, 0));
-                    }
-                    cout << "--It has " << num_MPs << " MPs matched in the map" << endl;
-
-                    string namefile = "./test_GBA/GBA_" + to_string(nLoopKF) + "_KF" + to_string(pKF->mnId) +"_D" + to_string(dist) +".png";
-                    cv::imwrite(namefile, imLeft);
-                }*/
-
+                tcwBefGBA[pKF] = pKF->GetPose();
+                pKF->SetPose(rKF.Tcw);
 
                 if(pKF->bImu)
                 {
                     //cout << "-------Update inertial values" << endl;
-                    
-                    //if (pKF->mVwbGBA.empty())
-                    //    Verbose::PrintMess("pKF->mVwbGBA is empty", Verbose::VERBOSITY_NORMAL);
-
-                    //assert(!pKF->mVwbGBA.empty());
-                    pKF->SetVelocity(pKF->mVwbGBA);
-                    pKF->SetNewBias(pKF->mBiasGBA);                    
+                    if(rKF.hasVwb)
+                        pKF->SetVelocity(rKF.Vwb);
+                    if(rKF.hasBias)
+                        pKF->SetNewBias(rKF.Bias);
                 }
 
                 lpKFtoCheck.pop_front();
@@ -2468,26 +2418,23 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
                 if(pMP->isBad())
                     continue;
 
-                if(pMP->mnBAGlobalForKF==nLoopKF)
+                std::map<MapPoint*, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
+                if(itMP != gbaResult.mps.end())
                 {
                     // If optimized by Global BA, just update
-                    pMP->SetWorldPos(pMP->mPosGBA);
+                    pMP->SetWorldPos(itMP->second);
                 }
                 else
                 {
                     // Update according to the correction of its reference keyframe
                     KeyFrame* pRefKF = pMP->GetReferenceKeyFrame();
 
-                    if(pRefKF->mnBAGlobalForKF!=nLoopKF)
+                    std::map<KeyFrame*, Sophus::SE3f>::const_iterator itBef = tcwBefGBA.find(pRefKF);
+                    if(itBef == tcwBefGBA.end())
                         continue;
 
-                    /*if(pRefKF->mTcwBefGBA.empty())
-                        continue;*/
-
                     // Map to non-corrected camera
-                    // cv::Mat Rcw = pRefKF->mTcwBefGBA.rowRange(0,3).colRange(0,3);
-                    // cv::Mat tcw = pRefKF->mTcwBefGBA.rowRange(0,3).col(3);
-                    Eigen::Vector3f Xc = pRefKF->mTcwBefGBA * pMP->GetWorldPos();
+                    Eigen::Vector3f Xc = itBef->second * pMP->GetWorldPos();
 
                     // Backproject using corrected camera
                     pMP->SetWorldPos(pRefKF->GetPoseInverse() * Xc);
