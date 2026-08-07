@@ -7,6 +7,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <sophus/se3.hpp>
+#include <sophus/so3.hpp>
 
 #include <cmath>
 
@@ -149,6 +150,169 @@ FrameFixture MakeMonoGridFixture()
 
     fx.expectedInliers = kNumPoints - 4;  // 36
     fx.outlierIndices.assign(kOutlierIndices, kOutlierIndices + 4);
+    return fx;
+}
+
+// ===========================================================================
+// imu_chain — ImuKfChainFixture (design §B 1.2, class C)
+// ===========================================================================
+
+namespace {
+
+// IMU / trajectory constants (see EquivFixtures.hpp for the rationale).
+constexpr double kKfSpacing = 0.5;                  // s between KFs
+constexpr int kImuHz = 200;
+constexpr int kSamplesPerInterval = 100;            // 0.5 s * 200 Hz
+constexpr float kImuSampleDt = 1.0f / kImuHz;
+// s_true must lie in the SOLVER's convergence region (see the P6-3 finding
+// documented in EquivFixtures.hpp): upstream ORB-SLAM3 pairs an ADDITIVE
+// scale Jacobian (EdgeInertialGS::linearizeOplus, d r/d s) with a
+// MULTIPLICATIVE vertex update (VertexScale::oplusImpl, s*exp(u)), so the
+// GN fixed-point iteration is s <- s*exp(s_true - s) with multiplier
+// -(s_true - 1) at the optimum: it contracts only for 0 < s_true < 2 and is
+// marginally stable (pure oscillation) at exactly 2.0. s_true = 1.1 gives a
+// 0.1x contraction per iteration -> machine precision within the function's
+// fixed 10 GN iterations.
+constexpr double kSTrue = 1.1;
+constexpr double kGravityTiltRad = 10.0 * M_PI / 180.0;  // ~10 deg
+
+}  // namespace
+
+ImuChainFixture MakeImuChainFixture()
+{
+    using ORB_SLAM3::IMU::Bias;
+    using ORB_SLAM3::IMU::Calib;
+    using ORB_SLAM3::IMU::Preintegrated;
+
+    ImuChainFixture fx;
+    fx.sTrue = kSTrue;
+
+    // ---- IMU calibration --------------------------------------------------
+    // Non-trivial Tbc so the Tcw <-> Twb conversion path (GetImuRotation /
+    // GetImuPosition / mOwb) is exercised with non-identity values.
+    const Eigen::Vector3f axisTbc = Eigen::Vector3f(0.2f, -0.1f, 0.3f).normalized();
+    const Sophus::SE3f Tbc(Eigen::Quaternionf(Eigen::AngleAxisf(0.3f, axisTbc)),
+                           Eigen::Vector3f(0.05f, -0.02f, 0.03f));
+    // EuRoC-class continuous-time densities, discretized exactly as
+    // Tracking::ParseIMUParamFile does: noise * sqrt(freq), walk / sqrt(freq).
+    const float sf = std::sqrt(static_cast<float>(kImuHz));
+    const Calib calib(Tbc, 1.7e-4f * sf, 2e-3f * sf, 1.9e-5f / sf, 3e-3f / sf);
+
+    // ---- ground truth: gravity direction + scale --------------------------
+    // Map-frame gravity is the canonical gI = (0,0,-G) tilted by ~10 deg
+    // about a horizontal axis; the optimizer must recover this direction.
+    // G must be the same float->double value EdgeInertialGS uses.
+    const double G = static_cast<double>(ORB_SLAM3::IMU::GRAVITY_VALUE);
+    const Eigen::Vector3d tiltAxis = Eigen::Vector3d(0.6, 0.8, 0.0).normalized();
+    const Eigen::Matrix3d RwgPerturb =
+        Eigen::AngleAxisd(kGravityTiltRad, tiltAxis).toRotationMatrix();
+    const Eigen::Vector3d gWorld = RwgPerturb * Eigen::Vector3d(0.0, 0.0, -G);
+    fx.gDirTrue = gWorld.normalized();
+    fx.RwgTrue = RwgPerturb;
+    fx.gWorldTrue = gWorld;
+
+    // ---- true (metric) trajectory -----------------------------------------
+    // Constant world acceleration with a mandatory vertical component (see
+    // header: horizontal-only excitation makes scale/tilt degenerate) and a
+    // small constant body rate. v0 centers the velocities around zero to
+    // minimize float-quantization noise in the stored states.
+    const Eigen::Vector3d aWorld(0.3, 0.0, 0.9);
+    const Eigen::Vector3d omegaBody(0.02, -0.015, 0.01);
+    const double totalT = (ImuChainFixture::kNumKFs - 1) * kKfSpacing;  // 2 s
+    const Eigen::Vector3d v0 = -aWorld * (totalT / 2.0);
+    const Eigen::Vector3d p0 = Eigen::Vector3d::Zero();
+    const Eigen::Matrix3d R0 = Eigen::Matrix3d::Identity();
+
+    // ---- preintegrate each interval through the SHARED float path ---------
+    fx.preints.resize(ImuChainFixture::kNumKFs);  // [0] stays null
+    for (int k = 1; k < ImuChainFixture::kNumKFs; k++) {
+        auto pre = std::make_unique<Preintegrated>(Bias(), calib);
+        for (int j = 0; j < kSamplesPerInterval; j++) {
+            // Midpoint sampling of the continuous model; the recursion below
+            // defines GT from whatever these measurements integrate to, so
+            // the sampling rule only affects realism, not consistency.
+            const double tMid =
+                (k - 1) * kKfSpacing + (j + 0.5) / static_cast<double>(kImuHz);
+            const Eigen::Matrix3d Rwb =
+                R0 * Sophus::SO3d::exp(omegaBody * tMid).matrix();
+            const Eigen::Vector3d aMeas = Rwb.transpose() * (aWorld - gWorld);
+            pre->IntegrateNewMeasurement(aMeas.cast<float>(),
+                                         omegaBody.cast<float>(),
+                                         kImuSampleDt);
+        }
+        fx.preints[k] = std::move(pre);
+    }
+
+    // ---- KFs: contiguous block (deterministic std::set order) -------------
+    fx.camera.reset(new ORB_SLAM3::Pinhole(
+        {458.654f, 457.296f, 367.215f, 248.375f}));
+    fx.kfBlock.reset(new KfChainBlock(ImuChainFixture::kNumKFs));
+
+    // KeyFrame convention: GetImuPose() = Twc * mTcb (mTcb = mTbc.inverse()),
+    // i.e. Twb = Twc * Tcb  =>  Tcw = Tcb * Twb^{-1}  (NOT Tbc * Twb^{-1} —
+    // the classic Tcw/Twb trap called out in design §B).
+    const Sophus::SE3d TcbD = Tbc.cast<double>().inverse();
+    auto setupKF = [&](int k, const Eigen::Matrix3d& Rwb,
+                       const Eigen::Vector3d& pwb, const Eigen::Vector3d& vw) {
+        ORB_SLAM3::KeyFrame* pKF = fx.kfBlock->at(k);
+        pKF->mImuCalib = calib;  // BEFORE SetPose: mOwb needs mbIsSet
+        pKF->mnId = static_cast<unsigned long>(k);
+        pKF->bImu = true;
+        pKF->mpCamera = fx.camera.get();
+        pKF->mpCamera2 = nullptr;  // default ctor leaves it uninitialized
+        pKF->mPrevKF = (k == 0) ? nullptr : fx.kfBlock->at(k - 1);
+        pKF->mNextKF = nullptr;
+        if (k > 0)
+            fx.kfBlock->at(k - 1)->mNextKF = pKF;
+        pKF->mpImuPreintegrated = (k == 0) ? nullptr : fx.preints[k].get();
+
+        Eigen::Quaterniond qwb(Rwb);
+        qwb.normalize();
+        const Sophus::SE3d Twb(qwb, pwb);
+        const Sophus::SE3d Tcw = TcbD * Twb.inverse();  // Tcw = Tcb * Tbw
+        pKF->SetPose(Tcw.cast<float>());
+        pKF->SetVelocity(vw.cast<float>());
+        pKF->SetNewBias(Bias());  // GT biases are zero
+    };
+
+    // Stored (distorted) chain: states are 1/s_true-scaled, gravity-tilted.
+    // KF0 from the analytic initial conditions; KF k>=1 from the discrete
+    // recursion evaluated on the READ-BACK (float-quantized) predecessor
+    // state via the exact accessors EdgeInertialGS/VertexPose use, so each
+    // edge residual at (s_true, gDirTrue) is a single float quantization.
+    setupKF(0, R0, p0 / kSTrue, v0 / kSTrue);
+    for (int k = 1; k < ImuChainFixture::kNumKFs; k++) {
+        ORB_SLAM3::KeyFrame* pPrev = fx.kfBlock->at(k - 1);
+        const Eigen::Matrix3d R1 = pPrev->GetImuRotation().cast<double>();
+        const Eigen::Vector3d t1 = pPrev->GetImuPosition().cast<double>();
+        const Eigen::Vector3d v1 = pPrev->GetVelocity().cast<double>();
+
+        Preintegrated* pre = fx.preints[k].get();
+        const Bias b0;  // zero — matches the (fixed, zero) bias vertices
+        const double dt = static_cast<double>(pre->dT);
+        const Eigen::Matrix3d dR = pre->GetDeltaRotation(b0).cast<double>();
+        const Eigen::Vector3d dV = pre->GetDeltaVelocity(b0).cast<double>();
+        const Eigen::Vector3d dP = pre->GetDeltaPosition(b0).cast<double>();
+
+        // The edge computes R1^T * (...) - dX, so exact zero requires the
+        // recursion to apply R1^{-T}, NOT R1: the read-back R1 is a
+        // float-quantized rotation whose orthonormality defect is O(1e-7),
+        // and R1 * dX vs R1^{-T} * dX differ by defect * |dX| — with
+        // |dV| ~ 5 m/s that alone costs ~2e-7 per residual (measured), which
+        // pushed the recovered scale just past the 1e-7 GT gate.
+        const Eigen::Matrix3d R1invT = R1.transpose().inverse();
+        const Eigen::Matrix3d R2 = R1invT * dR;
+        const Eigen::Vector3d v2 = v1 + (gWorld * dt + R1invT * dV) / kSTrue;
+        const Eigen::Vector3d p2 =
+            t1 + v1 * dt + (0.5 * gWorld * dt * dt + R1invT * dP) / kSTrue;
+        setupKF(k, R2, p2, v2);
+    }
+
+    // ---- Map --------------------------------------------------------------
+    fx.map.reset(new ORB_SLAM3::Map(0));
+    for (int k = 0; k < ImuChainFixture::kNumKFs; k++)
+        fx.map->AddKeyFrame(fx.kfBlock->at(k));
+
     return fx;
 }
 

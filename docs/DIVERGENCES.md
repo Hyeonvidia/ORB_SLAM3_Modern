@@ -45,3 +45,11 @@
    스탬프는 찍혔으나 pop되지 않은(bad) 참조 KF의 stale/미기록 mTcwBefGBA로
    맵포인트를 변환할 수 있었다(가비지 읽기). 사이드테이블화 이후 해당 엣지는
    결정적으로 스킵된다(비퇴화 실행에서는 stamped ⟺ popped라 동작 동일).
+
+9. **[발견/보존] EdgeInertialGS 스케일 갱신 발산 결함** (P6-3 실증) — 스케일
+   야코비안은 가산(∂r/∂s)인데 VertexScale::oplusImpl은 승산(s·eʷ). GN 고정점
+   s←s·exp(s*−s)의 수렴 배율이 −(s*−1)이라 **s*>2에서 발산, s*=2가 한계진동**
+   (2.4% 오차 정지 실측), s*≈1 근방만 급수렴. 스케일이 2배 이상 틀어진
+   단안-관성 초기화가 InertialOptimization으로 영영 복구되지 않는 메커니즘.
+   bug-for-bug 원칙에 따라 양 백엔드에 동일 보존(등가성이 곧 증거), 수정은
+   FixLevel 후보 1순위. 재현: EQUIV_INERTIAL_DEBUG=1 + s_true=2.0 픽스처.

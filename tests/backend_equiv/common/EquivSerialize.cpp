@@ -35,6 +35,32 @@ void AppendPose(std::ostringstream& os, const char* prefix,
        << ' ' << FormatDouble(q.y()) << ' ' << FormatDouble(q.z()) << '\n';
 }
 
+void AppendQuat(std::ostringstream& os, const char* label,
+                const Eigen::Quaterniond& qIn)
+{
+    const Eigen::Quaterniond q = NormalizedSign(qIn);
+    os << label << ' ' << FormatDouble(q.w()) << ' ' << FormatDouble(q.x())
+       << ' ' << FormatDouble(q.y()) << ' ' << FormatDouble(q.z()) << '\n';
+}
+
+void AppendVec3(std::ostringstream& os, const char* label,
+                const Eigen::Vector3d& v)
+{
+    os << label << ' ' << FormatDouble(v.x()) << ' ' << FormatDouble(v.y())
+       << ' ' << FormatDouble(v.z()) << '\n';
+}
+
+template <typename Derived>
+void AppendMatRowMajor(std::ostringstream& os, const char* label,
+                       const Eigen::MatrixBase<Derived>& m)
+{
+    os << label;
+    for (int r = 0; r < m.rows(); r++)
+        for (int c = 0; c < m.cols(); c++)
+            os << ' ' << FormatDouble(static_cast<double>(m(r, c)));
+    os << '\n';
+}
+
 }  // namespace
 
 std::string FormatDouble(double v)
@@ -114,6 +140,95 @@ std::string MakePoseOptimizationRecord(const std::string& function,
     os << "INPUT_HASH " << inputHash << '\n';
     os << SerializeStage0Edges();
     os << SerializePoseOptimizationResult(inliers, F);
+    return os.str();
+}
+
+std::string SerializeInertialOptimizationInput(const ImuChainFixture& fx,
+                                               const Eigen::Matrix3d& Rwg0,
+                                               double scale0)
+{
+    std::ostringstream os;
+    os << "INPUT inertial_optimization v1\n";
+    os << "nkfs " << ImuChainFixture::kNumKFs << '\n';
+
+    // IMU calibration (identical on every KF; read from KF 0).
+    const ORB_SLAM3::IMU::Calib& calib = fx.kf(0)->mImuCalib;
+    AppendPose(os, "calib_tbc", calib.mTbc.cast<double>());
+    AppendMatRowMajor(os, "calib_cov", calib.Cov.diagonal());
+    AppendMatRowMajor(os, "calib_covwalk", calib.CovWalk.diagonal());
+
+    // Initial estimate handed to the optimizer.
+    AppendQuat(os, "init_rwg_q", Eigen::Quaterniond(Rwg0));
+    os << "init_scale " << FormatDouble(scale0) << '\n';
+
+    // Per-KF stored state, read back through the optimizer's accessors.
+    for (int k = 0; k < ImuChainFixture::kNumKFs; k++) {
+        ORB_SLAM3::KeyFrame* pKF = fx.kf(k);
+        os << "kf " << pKF->mnId << '\n';
+        AppendPose(os, "tcw", pKF->GetPose().cast<double>());
+        AppendVec3(os, "twb", pKF->GetImuPosition().cast<double>());
+        AppendQuat(os, "rwb_q",
+                   Eigen::Quaterniond(
+                       pKF->GetImuRotation().cast<double>()));
+        AppendVec3(os, "vel", pKF->GetVelocity().cast<double>());
+        AppendVec3(os, "bg", pKF->GetGyroBias().cast<double>());
+        AppendVec3(os, "ba", pKF->GetAccBias().cast<double>());
+    }
+
+    // Per-interval preintegration (everything EdgeInertialGS reads).
+    for (int k = 1; k < ImuChainFixture::kNumKFs; k++) {
+        ORB_SLAM3::IMU::Preintegrated* pre = fx.preints[k].get();
+        const ORB_SLAM3::IMU::Bias b0;
+        os << "preint " << k << '\n';
+        os << "dT " << FormatDouble(static_cast<double>(pre->dT)) << '\n';
+        AppendQuat(os, "dR_q",
+                   Eigen::Quaterniond(
+                       pre->GetDeltaRotation(b0).cast<double>()));
+        AppendVec3(os, "dV", pre->GetDeltaVelocity(b0).cast<double>());
+        AppendVec3(os, "dP", pre->GetDeltaPosition(b0).cast<double>());
+        AppendMatRowMajor(os, "JRg", pre->JRg);
+        AppendMatRowMajor(os, "JVg", pre->JVg);
+        AppendMatRowMajor(os, "JVa", pre->JVa);
+        AppendMatRowMajor(os, "JPg", pre->JPg);
+        AppendMatRowMajor(os, "JPa", pre->JPa);
+        AppendMatRowMajor(os, "C9", pre->C.block<9, 9>(0, 0));
+    }
+    return os.str();
+}
+
+std::string SerializeInertialOptimizationResult(double scale,
+                                                const Eigen::Matrix3d& Rwg,
+                                                const ImuChainFixture& fx)
+{
+    std::ostringstream os;
+    os << "RESULT\n";
+    os << "scale " << FormatDouble(scale) << '\n';
+    AppendQuat(os, "rwg_q", Eigen::Quaterniond(Rwg));
+    AppendVec3(os, "gdir", Rwg * Eigen::Vector3d(0.0, 0.0, -1.0));
+    for (int k = 0; k < ImuChainFixture::kNumKFs; k++) {
+        const Eigen::Vector3d v = fx.kf(k)->GetVelocity().cast<double>();
+        os << "vel " << k << ' ' << FormatDouble(v.x()) << ' '
+           << FormatDouble(v.y()) << ' ' << FormatDouble(v.z()) << '\n';
+    }
+    os << "END_RESULT\n";
+    return os.str();
+}
+
+std::string MakeInertialOptimizationRecord(const std::string& function,
+                                           const std::string& fixture,
+                                           const std::string& inputHash,
+                                           const ImuChainFixture& fx,
+                                           double scale,
+                                           const Eigen::Matrix3d& Rwg)
+{
+    std::ostringstream os;
+    os << "EQUIV_RECORD v1\n";
+    os << "function " << function << '\n';
+    os << "fixture " << fixture << '\n';
+    os << "INPUT_HASH " << inputHash << '\n';
+    os << "GT_scale " << FormatDouble(fx.sTrue) << '\n';
+    AppendVec3(os, "GT_gdir", fx.gDirTrue);
+    os << SerializeInertialOptimizationResult(scale, Rwg, fx);
     return os.str();
 }
 

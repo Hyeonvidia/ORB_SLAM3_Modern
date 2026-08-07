@@ -6,6 +6,8 @@
 #ifndef EQUIV_SERIALIZE_HPP
 #define EQUIV_SERIALIZE_HPP
 
+#include "EquivFixtures.hpp"
+
 #include "map/Frame.hpp"
 
 #include <string>
@@ -51,6 +53,34 @@ std::string MakePoseOptimizationRecord(const std::string& function,
                                        const std::string& inputHash,
                                        int inliers,
                                        const ORB_SLAM3::Frame& F);
+
+// Canonical dump of everything InertialOptimization(Map*, Rwg&, scale&)
+// reads from the fixture: per-KF stored state (Tcw, velocity, biases — read
+// back through the same accessors the optimizer uses), the IMU calibration,
+// the initial (Rwg, scale) handed to the optimizer, and per-interval
+// preintegration output (dT, ΔR/ΔV/ΔP, bias Jacobians, 9x9 covariance
+// block). Hash of this dump is the INPUT_HASH gate.
+std::string SerializeInertialOptimizationInput(const ImuChainFixture& fx,
+                                               const Eigen::Matrix3d& Rwg0,
+                                               double scale0);
+
+// RESULT section for InertialOptimization: final scale (double, %.17g),
+// final Rwg (sign-normalized quaternion) plus the gravity direction
+// Rwg*(0,0,-1), and per-KF velocities in mnId order (fixed vertices in this
+// variant — doubles as an "inputs not clobbered" check).
+std::string SerializeInertialOptimizationResult(double scale,
+                                                const Eigen::Matrix3d& Rwg,
+                                                const ImuChainFixture& fx);
+
+// Full record. GT_scale / GT_gdir header lines (fixture ground truth) let
+// compare.py --gt-check assert analytic recovery without re-deriving the
+// fixture.
+std::string MakeInertialOptimizationRecord(const std::string& function,
+                                           const std::string& fixture,
+                                           const std::string& inputHash,
+                                           const ImuChainFixture& fx,
+                                           double scale,
+                                           const Eigen::Matrix3d& Rwg);
 
 }  // namespace equiv
 
