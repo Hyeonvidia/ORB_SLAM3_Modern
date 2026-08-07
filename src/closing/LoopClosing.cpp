@@ -333,7 +333,7 @@ bool LoopClosing::NewDetectCommonRegions()
         mlpLoopKeyFrameQueue.pop_front();
         // Avoid that a keyframe can be erased while it is being process by this thread
         mpCurrentKF->SetNotErase();
-        mpCurrentKF->mbCurrentPlaceRecognition = true;
+        
 
         mpLastMap = mpCurrentKF->GetMap();
     }
@@ -527,7 +527,7 @@ bool LoopClosing::NewDetectCommonRegions()
     }
 
     mpCurrentKF->SetErase();
-    mpCurrentKF->mbCurrentPlaceRecognition = false;
+    
 
     return false;
 }
@@ -1525,7 +1525,7 @@ void LoopClosing::MergeLocal()
 
             // Make sure connections are updated
             pKFi->UpdateMap(pMergeMap);
-            pKFi->mnMergeCorrectedForKF = mpCurrentKF->mnId;
+            
             pMergeMap->AddKeyFrame(pKFi);
             pCurrentMap->EraseKeyFrame(pKFi);
 
@@ -2436,7 +2436,7 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
                 if(pKF->bImu)
                 {
                     //cout << "-------Update inertial values" << endl;
-                    pKF->mVwbBefGBA = pKF->GetVelocity();
+                    
                     //if (pKF->mVwbGBA.empty())
                     //    Verbose::PrintMess("pKF->mVwbGBA is empty", Verbose::VERBOSITY_NORMAL);
 

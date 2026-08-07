@@ -67,11 +67,9 @@ class KeyFrame
 
         // Variables of tracking
         //ar & mnTrackReferenceForFrame;
-        //ar & mnFuseTargetForKF;
         // Variables of local mapping
         //ar & mnBALocalForKF;
         //ar & mnBAFixedForKF;
-        //ar & mnNumberOfOpt;
         // Variables used by KeyFrameDatabase
         //ar & mnLoopQuery;
         //ar & mnLoopWords;
@@ -85,12 +83,10 @@ class KeyFrame
         //ar & mnPlaceRecognitionQuery;
         //ar & mnPlaceRecognitionWords;
         //ar & mPlaceRecognitionScore;
-        //ar & mbCurrentPlaceRecognition;
         // Variables of loop closing
         //serializeMatrix(ar,mTcwGBA,version);
         //serializeMatrix(ar,mTcwBefGBA,version);
         //serializeMatrix(ar,mVwbGBA,version);
-        //serializeMatrix(ar,mVwbBefGBA,version);
         //ar & mBiasGBA;
         //ar & mnBAGlobalForKF;
         // Variables of Merging
@@ -98,11 +94,6 @@ class KeyFrame
         //serializeMatrix(ar,mTcwBefMerge,version);
         //serializeMatrix(ar,mTwcBefMerge,version);
         //serializeMatrix(ar,mVwbMerge,version);
-        //serializeMatrix(ar,mVwbBefMerge,version);
-        //ar & mBiasMerge;
-        //ar & mnMergeCorrectedForKF;
-        //ar & mnMergeForKF;
-        //ar & mfScaleMerge;
         //ar & mnBALocalForMerge;
 
         // Scale
@@ -322,14 +313,12 @@ public:
 
     // Variables used by the tracking
     long unsigned int mnTrackReferenceForFrame;
-    long unsigned int mnFuseTargetForKF;
 
     // Variables used by the local mapping
     long unsigned int mnBALocalForKF;
     long unsigned int mnBAFixedForKF;
 
     //Number of optimizations by BA(amount of iterations in BA)
-    long unsigned int mnNumberOfOpt;
 
     // Variables used by the keyframe database
     long unsigned int mnLoopQuery;
@@ -345,14 +334,12 @@ public:
     int mnPlaceRecognitionWords;
     float mPlaceRecognitionScore;
 
-    bool mbCurrentPlaceRecognition;
 
 
     // Variables used by loop closing
     Sophus::SE3f mTcwGBA;
     Sophus::SE3f mTcwBefGBA;
     Eigen::Vector3f mVwbGBA;
-    Eigen::Vector3f mVwbBefGBA;
     IMU::Bias mBiasGBA;
     long unsigned int mnBAGlobalForKF;
 
@@ -361,11 +348,6 @@ public:
     Sophus::SE3f mTcwBefMerge;
     Sophus::SE3f mTwcBefMerge;
     Eigen::Vector3f mVwbMerge;
-    Eigen::Vector3f mVwbBefMerge;
-    IMU::Bias mBiasMerge;
-    long unsigned int mnMergeCorrectedForKF;
-    long unsigned int mnMergeForKF;
-    float mfScaleMerge;
     long unsigned int mnBALocalForMerge;
 
     float mfScale;

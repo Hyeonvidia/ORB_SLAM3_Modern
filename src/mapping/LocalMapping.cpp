@@ -713,6 +713,10 @@ void LocalMapping::CreateNewMapPoints()
 
 void LocalMapping::SearchInNeighbors()
 {
+    // P5-2: per-call dedup scratch, externalized from KeyFrame::mnFuseTargetForKF
+    // and MapPoint::mnFuseCandidateForKF (their lifetime was one call anyway).
+    set<KeyFrame*> sFuseTargets;
+    set<MapPoint*> sFuseCandidates;
     // Retrieve neighbor keyframes
     int nn = 10;
     if(mbMonocular)
@@ -722,10 +726,10 @@ void LocalMapping::SearchInNeighbors()
     for(vector<KeyFrame*>::const_iterator vit=vpNeighKFs.begin(), vend=vpNeighKFs.end(); vit!=vend; vit++)
     {
         KeyFrame* pKFi = *vit;
-        if(pKFi->isBad() || pKFi->mnFuseTargetForKF == mpCurrentKeyFrame->mnId)
+        if(pKFi->isBad() || sFuseTargets.count(pKFi))
             continue;
         vpTargetKFs.push_back(pKFi);
-        pKFi->mnFuseTargetForKF = mpCurrentKeyFrame->mnId;
+        sFuseTargets.insert(pKFi);
     }
 
     // Add some covisible of covisible
@@ -736,10 +740,10 @@ void LocalMapping::SearchInNeighbors()
         for(vector<KeyFrame*>::const_iterator vit2=vpSecondNeighKFs.begin(), vend2=vpSecondNeighKFs.end(); vit2!=vend2; vit2++)
         {
             KeyFrame* pKFi2 = *vit2;
-            if(pKFi2->isBad() || pKFi2->mnFuseTargetForKF==mpCurrentKeyFrame->mnId || pKFi2->mnId==mpCurrentKeyFrame->mnId)
+            if(pKFi2->isBad() || sFuseTargets.count(pKFi2) || pKFi2->mnId==mpCurrentKeyFrame->mnId)
                 continue;
             vpTargetKFs.push_back(pKFi2);
-            pKFi2->mnFuseTargetForKF=mpCurrentKeyFrame->mnId;
+            sFuseTargets.insert(pKFi2);
         }
         if (mbAbortBA)
             break;
@@ -751,13 +755,13 @@ void LocalMapping::SearchInNeighbors()
         KeyFrame* pKFi = mpCurrentKeyFrame->mPrevKF;
         while(vpTargetKFs.size()<20 && pKFi)
         {
-            if(pKFi->isBad() || pKFi->mnFuseTargetForKF==mpCurrentKeyFrame->mnId)
+            if(pKFi->isBad() || sFuseTargets.count(pKFi))
             {
                 pKFi = pKFi->mPrevKF;
                 continue;
             }
             vpTargetKFs.push_back(pKFi);
-            pKFi->mnFuseTargetForKF=mpCurrentKeyFrame->mnId;
+            sFuseTargets.insert(pKFi);
             pKFi = pKFi->mPrevKF;
         }
     }
@@ -792,9 +796,9 @@ void LocalMapping::SearchInNeighbors()
             MapPoint* pMP = *vitMP;
             if(!pMP)
                 continue;
-            if(pMP->isBad() || pMP->mnFuseCandidateForKF == mpCurrentKeyFrame->mnId)
+            if(pMP->isBad() || sFuseCandidates.count(pMP))
                 continue;
-            pMP->mnFuseCandidateForKF = mpCurrentKeyFrame->mnId;
+            sFuseCandidates.insert(pMP);
             vpFuseCandidates.push_back(pMP);
         }
     }
@@ -1365,7 +1369,7 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
         if(pKF->bImu)
         {
-            pKF->mVwbBefGBA = pKF->GetVelocity();
+            
             pKF->SetVelocity(pKF->mVwbGBA);
             pKF->SetNewBias(pKF->mBiasGBA);
         } else {
