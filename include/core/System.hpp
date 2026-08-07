@@ -37,6 +37,7 @@
 #include "recognition/KeyFrameDatabase.hpp"
 #include "features/ORBVocabulary.hpp"
 #include "viz/Viewer.hpp"
+#include "backend/BAEpochs.hpp"
 #include "backend/ImuTypes.hpp"
 #include "core/Settings.hpp"
 #include "core/Verbose.hpp"
@@ -194,6 +195,11 @@ private:
 
     // Local Mapper. It manages the local map and performs local bundle adjustment.
     LocalMapping* mpLocalMapper;
+
+    // Persistent local-BA epoch marks shared by LocalMapping and LoopClosing
+    // (P5-C, was KeyFrame::mnBALocalForKF/mnBAFixedForKF and
+    // MapPoint::mnBALocalForKF). See include/backend/BAEpochs.hpp.
+    BAEpochs mBAEpochs;
 
     // Loop Closer. It searches loops with every new keyframe. If there is a loop it performs
     // a pose graph optimization and full bundle adjustment (in a new thread) afterwards.

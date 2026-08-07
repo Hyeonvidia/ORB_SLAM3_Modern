@@ -75,9 +75,6 @@ class MapPoint
         //ar & mnTrackReferenceForFrame;
         //ar & mnLastFrameSeen;
 
-        // Variables used by local mapping
-        //ar & mnBALocalForKF;
-
         // Protected variables
         ar & boost::serialization::make_array(mWorldPos.data(), mWorldPos.size());
         ar & boost::serialization::make_array(mNormalVector.data(), mNormalVector.size());
@@ -176,8 +173,10 @@ public:
     long unsigned int mnTrackReferenceForFrame;
     long unsigned int mnLastFrameSeen;
 
-    // Variables used by local mapping
-    long unsigned int mnBALocalForKF;
+    // P5-C: the local-BA epoch mark (mnBALocalForKF) was externalized into
+    // BAEpochs (include/backend/BAEpochs.hpp), a persistent table owned by
+    // System and threaded through LocalMapping/LoopClosing into the Optimizer
+    // local-BA functions.
 
     // P5-D: the per-GBA result fields (mPosGBA/mnBAGlobalForKF) were
     // externalized into GBAResult (include/backend/GBAResult.hpp).

@@ -74,9 +74,6 @@ class KeyFrame
 
         // Variables of tracking
         //ar & mnTrackReferenceForFrame;
-        // Variables of local mapping
-        //ar & mnBALocalForKF;
-        //ar & mnBAFixedForKF;
 
         // Scale
         ar & mfScale;
@@ -296,9 +293,11 @@ public:
     // Variables used by the tracking
     long unsigned int mnTrackReferenceForFrame;
 
-    // Variables used by the local mapping
-    long unsigned int mnBALocalForKF;
-    long unsigned int mnBAFixedForKF;
+    // P5-C: the local-BA epoch marks (mnBALocalForKF/mnBAFixedForKF) were
+    // externalized into BAEpochs (include/backend/BAEpochs.hpp), a persistent
+    // table owned by System and threaded through LocalMapping/LoopClosing
+    // into the Optimizer local-BA functions (values cross call boundaries:
+    // FullInertialBA(bFixLocal=true) reads marks left by a previous call).
 
     //Number of optimizations by BA(amount of iterations in BA)
 

@@ -37,12 +37,13 @@ class System;
 class Tracking;
 class LoopClosing;
 class Atlas;
+struct BAEpochs;
 
 class LocalMapping
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    LocalMapping(System* pSys, Atlas* pAtlas, const float bMonocular, bool bInertial, const string &_strSeqName=std::string());
+    LocalMapping(System* pSys, Atlas* pAtlas, const float bMonocular, bool bInertial, BAEpochs* pBAEpochs, const string &_strSeqName=std::string());
 
     void SetLoopCloser(LoopClosing* pLoopCloser);
 
@@ -157,6 +158,9 @@ protected:
     std::mutex mMutexFinish;
 
     Atlas* mpAtlas;
+
+    // Persistent local-BA epoch marks, owned by System (P5-C).
+    BAEpochs* mpBAEpochs;
 
     LoopClosing* mpLoopCloser;
     Tracking* mpTracker;

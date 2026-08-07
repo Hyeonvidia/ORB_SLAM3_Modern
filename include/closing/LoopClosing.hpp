@@ -40,6 +40,7 @@ class Tracking;
 class LocalMapping;
 class KeyFrameDatabase;
 class Map;
+struct BAEpochs;
 
 
 class LoopClosing
@@ -52,7 +53,7 @@ public:
 
 public:
 
-    LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale, const bool bActiveLC);
+    LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs);
 
     void SetTracker(Tracking* pTracker);
 
@@ -161,6 +162,9 @@ protected:
 
     KeyFrameDatabase* mpKeyFrameDB;
     ORBVocabulary* mpORBVocabulary;
+
+    // Persistent local-BA epoch marks, owned by System (P5-C).
+    BAEpochs* mpBAEpochs;
 
     LocalMapping *mpLocalMapper;
 
