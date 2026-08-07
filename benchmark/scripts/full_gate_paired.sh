@@ -72,9 +72,14 @@ for m in sorted(set(orig)|set(new)):
     lines.append(f"{m:24s} {am:>8.4f}({len(a)}) {bm:>8.4f}({len(b)}) {d:>+6.1f}% {p:>6.3f} {'FAIL' if fail else 'PASS'}")
 lines.append("")
 import math
-minp = 1.0/math.comb(2*min(len(v) for d in (orig,new) for v in d.values() if v), min(len(v) for d in (orig,new) for v in d.values() if v)) if orig and new else 1.0
-if minp >= 0.05:
-    lines.append(f"FULL GATE: UNDERPOWERED (min achievable p={minp:.3f} >= 0.05) — run >=4 rounds for a formal verdict")
+# Per-mode exact power: min achievable one-sided p for na-vs-nb is 1/C(na+nb, nb).
+underpowered = []
+for m in sorted(set(orig)&set(new)):
+    na, nb = len(orig[m]), len(new[m])
+    if na and nb and 1.0/math.comb(na+nb, nb) >= 0.05:
+        underpowered.append(f"{m}({na}v{nb})")
+if underpowered:
+    lines.append("FULL GATE: UNDERPOWERED for " + ", ".join(underpowered) + " — add rounds for those modes")
 else:
     lines.append("FULL GATE: " + ("PASS" if ok else "FAIL — bisect-replicate before acting (gate v2.1)"))
 report="\n".join(lines)
