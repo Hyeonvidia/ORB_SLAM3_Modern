@@ -1785,7 +1785,8 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
 }
 
 void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFixedKFs, vector<KeyFrame*> &vpFixedCorrectedKFs,
-                                       vector<KeyFrame*> &vpNonFixedKFs, vector<MapPoint*> &vpNonCorrectedMPs)
+                                       vector<KeyFrame*> &vpNonFixedKFs, vector<MapPoint*> &vpNonCorrectedMPs,
+                                       MergeScratch& scratch)
 {
     Verbose::PrintMess("Opt_Essential: There are " + to_string(vpFixedKFs.size()) + " KFs fixed in the merged map", Verbose::VERBOSITY_DEBUG);
     Verbose::PrintMess("Opt_Essential: There are " + to_string(vpFixedCorrectedKFs.size()) + " KFs fixed in the old map", Verbose::VERBOSITY_DEBUG);
@@ -1860,7 +1861,7 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
         vCorrectedSwc[nIDi]=Siw.inverse();
         VSim3->setEstimate(Siw);
 
-        Sophus::SE3d Tcw_bef = pKFi->mTcwBefMerge.cast<double>();
+        Sophus::SE3d Tcw_bef = scratch.kfs[pKFi].TcwBef.cast<double>();
         vScw[nIDi] = g2o::Sim3(Tcw_bef.unit_quaternion(),Tcw_bef.translation(),1.0);
 
         VSim3->setFixed(true);
@@ -2072,8 +2073,8 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
         double s = CorrectedSiw.scale();
         Sophus::SE3d Tiw(CorrectedSiw.rotation(),CorrectedSiw.translation() / s);
 
-        pKFi->mTcwBefMerge = pKFi->GetPose();
-        pKFi->mTwcBefMerge = pKFi->GetPoseInverse();
+        scratch.kfs[pKFi].TcwBef = pKFi->GetPose();
+        scratch.kfs[pKFi].TwcBef = pKFi->GetPoseInverse();
         pKFi->SetPose(Tiw.cast<float>());
     }
 
@@ -2098,7 +2099,7 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
 
         if(vpBadPose[pRefKF->mnId])
         {
-            Sophus::SE3f TNonCorrectedwr = pRefKF->mTwcBefMerge;
+            Sophus::SE3f TNonCorrectedwr = scratch.kfs[pRefKF].TwcBef;
             Sophus::SE3f Twr = pRefKF->GetPoseInverse();
 
             Eigen::Vector3f eigCorrectedP3Dw = Twr * TNonCorrectedwr.inverse() * pMPi->GetWorldPos();
@@ -3519,7 +3520,9 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
         optimizer.setForceStopFlag(pbStopFlag);
 
     long unsigned int maxKFid = 0;
+    // Per-call membership sets (replace the old KeyFrame/MapPoint mnBALocalForMerge epoch stamps, P5-G)
     set<KeyFrame*> spKeyFrameBA;
+    set<MapPoint*> spMapPointBA;
 
     Map* pCurrentMap = pMainKF->GetMap();
 
@@ -3532,8 +3535,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
             Verbose::PrintMess("ERROR LBA: KF is bad or is not in the current map", Verbose::VERBOSITY_NORMAL);
             continue;
         }
-
-        pKFi->mnBALocalForMerge = pMainKF->mnId;
 
         g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
         Sophus::SE3<float> Tcw = pKFi->GetPose();
@@ -3550,10 +3551,10 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
             if(pMPi)
                 if(!pMPi->isBad() && pMPi->GetMap() == pCurrentMap)
 
-                    if(pMPi->mnBALocalForMerge!=pMainKF->mnId)
+                    if(!spMapPointBA.count(pMPi))
                     {
                         vpMPs.push_back(pMPi);
-                        pMPi->mnBALocalForMerge=pMainKF->mnId;
+                        spMapPointBA.insert(pMPi);
                         numInsertedPoints++;
                     }
         }
@@ -3568,8 +3569,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     {
         if(pKFi->isBad() || pKFi->GetMap() != pCurrentMap)
             continue;
-
-        pKFi->mnBALocalForMerge = pMainKF->mnId;
 
         g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
         Sophus::SE3<float> Tcw = pKFi->GetPose();
@@ -3586,10 +3585,10 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
             {
                 if(!pMPi->isBad() && pMPi->GetMap() == pCurrentMap)
                 {
-                    if(pMPi->mnBALocalForMerge != pMainKF->mnId)
+                    if(!spMapPointBA.count(pMPi))
                     {
                         vpMPs.push_back(pMPi);
-                        pMPi->mnBALocalForMerge = pMainKF->mnId;
+                        spMapPointBA.insert(pMPi);
                         numInsertedPoints++;
                     }
                 }
@@ -3646,7 +3645,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
         for(map<KeyFrame*,tuple<int,int>>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
         {
             KeyFrame* pKF = mit->first;
-            if(pKF->isBad() || pKF->mnId>maxKFid || pKF->mnBALocalForMerge != pMainKF->mnId || !pKF->GetMapPoint(get<0>(mit->second)))
+            if(pKF->isBad() || pKF->mnId>maxKFid || !spKeyFrameBA.count(pKF) || !pKF->GetMapPoint(get<0>(mit->second)))
                 continue;
 
             nEdges++;

@@ -83,12 +83,6 @@ class KeyFrame
         //serializeMatrix(ar,mVwbGBA,version);
         //ar & mBiasGBA;
         //ar & mnBAGlobalForKF;
-        // Variables of Merging
-        //serializeMatrix(ar,mTcwMerge,version);
-        //serializeMatrix(ar,mTcwBefMerge,version);
-        //serializeMatrix(ar,mTwcBefMerge,version);
-        //serializeMatrix(ar,mVwbMerge,version);
-        //ar & mnBALocalForMerge;
 
         // Scale
         ar & mfScale;
@@ -325,12 +319,9 @@ public:
     IMU::Bias mBiasGBA;
     long unsigned int mnBAGlobalForKF;
 
-    // Variables used by merging
-    Sophus::SE3f mTcwMerge;
-    Sophus::SE3f mTcwBefMerge;
-    Sophus::SE3f mTwcBefMerge;
-    Eigen::Vector3f mVwbMerge;
-    long unsigned int mnBALocalForMerge;
+    // P5-G: the per-merge scribble fields (mTcwMerge/mTcwBefMerge/mTwcBefMerge/
+    // mVwbMerge/mnBALocalForMerge) were externalized into MergeScratch
+    // (include/closing/MergeScratch.hpp) and function-local sets in Optimizer.cpp.
 
     float mfScale;
 

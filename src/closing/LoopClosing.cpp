@@ -19,6 +19,7 @@
 
 #include "closing/LoopClosing.hpp"
 
+#include "closing/MergeScratch.hpp"
 #include "geometry/Sim3Solver.hpp"
 #include "io/Converter.hpp"
 #include "backend/Optimizer.hpp"
@@ -1417,6 +1418,9 @@ void LoopClosing::MergeLocal()
     vCorrectedSim3[mpCurrentKF]=g2oCorrectedScw;
     vNonCorrectedSim3[mpCurrentKF]=g2oNonCorrectedScw;
 
+    // Per-merge scratch state (externalized KeyFrame/MapPoint merge fields, P5-G)
+    MergeScratch scratch;
+
 
 #ifdef REGISTER_TIMES
     vnMergeKFs.push_back(spLocalWindowKFs.size() + spMergeConnectedKFs.size());
@@ -1451,19 +1455,19 @@ void LoopClosing::MergeLocal()
         {
             g2oCorrectedSiw = g2oCorrectedScw;
         }
-        pKFi->mTcwMerge  = pKFi->GetPose();
+        scratch.kfs[pKFi].Tcw = pKFi->GetPose();
 
         // Update keyframe pose with corrected Sim3. First transform Sim3 to SE3 (scale translation)
         double s = g2oCorrectedSiw.scale();
         pKFi->mfScale = s;
         Sophus::SE3d correctedTiw(g2oCorrectedSiw.rotation(), g2oCorrectedSiw.translation() / s);
 
-        pKFi->mTcwMerge = correctedTiw.cast<float>();
+        scratch.kfs[pKFi].Tcw = correctedTiw.cast<float>();
 
         if(pCurrentMap->isImuInitialized())
         {
             Eigen::Quaternionf Rcor = (g2oCorrectedSiw.rotation().inverse() * vNonCorrectedSim3[pKFi].rotation()).cast<float>();
-            pKFi->mVwbMerge = Rcor * pKFi->GetVelocity();
+            scratch.kfs[pKFi].Vwb = Rcor * pKFi->GetVelocity();
         }
 
         //TODO DEBUG to know which are the KFs that had been moved to the other map
@@ -1497,8 +1501,8 @@ void LoopClosing::MergeLocal()
         Eigen::Vector3d eigCorrectedP3Dw = g2oCorrectedSwi.map(g2oNonCorrectedSiw.map(P3Dw));
         Eigen::Quaterniond Rcor = g2oCorrectedSwi.rotation() * g2oNonCorrectedSiw.rotation();
 
-        pMPi->mPosMerge = eigCorrectedP3Dw.cast<float>();
-        pMPi->mNormalVectorMerge = Rcor.cast<float>() * pMPi->GetNormal();
+        scratch.mps[pMPi].Pos = eigCorrectedP3Dw.cast<float>();
+        scratch.mps[pMPi].Normal = Rcor.cast<float>() * pMPi->GetNormal();
 
         itMP++;
     }
@@ -1524,9 +1528,9 @@ void LoopClosing::MergeLocal()
 
             //std::cout << "KF id: " << pKFi->mnId << std::endl;
 
-            pKFi->mTcwBefMerge = pKFi->GetPose();
-            pKFi->mTwcBefMerge = pKFi->GetPoseInverse();
-            pKFi->SetPose(pKFi->mTcwMerge);
+            scratch.kfs[pKFi].TcwBef = pKFi->GetPose();
+            scratch.kfs[pKFi].TwcBef = pKFi->GetPoseInverse();
+            pKFi->SetPose(scratch.kfs[pKFi].Tcw);
 
             // Make sure connections are updated
             pKFi->UpdateMap(pMergeMap);
@@ -1536,7 +1540,7 @@ void LoopClosing::MergeLocal()
 
             if(pCurrentMap->isImuInitialized())
             {
-                pKFi->SetVelocity(pKFi->mVwbMerge);
+                pKFi->SetVelocity(scratch.kfs[pKFi].Vwb);
             }
         }
 
@@ -1545,8 +1549,8 @@ void LoopClosing::MergeLocal()
             if(!pMPi || pMPi->isBad())
                 continue;
 
-            pMPi->SetWorldPos(pMPi->mPosMerge);
-            pMPi->SetNormalVector(pMPi->mNormalVectorMerge);
+            pMPi->SetWorldPos(scratch.mps[pMPi].Pos);
+            pMPi->SetNormalVector(scratch.mps[pMPi].Normal);
             pMPi->UpdateMap(pMergeMap);
             pMergeMap->AddMapPoint(pMPi);
             pCurrentMap->EraseMapPoint(pMPi);
@@ -1679,8 +1683,8 @@ void LoopClosing::MergeLocal()
 
                 Sophus::SE3d correctedTiw(g2oCorrectedSiw.rotation(),g2oCorrectedSiw.translation() / s);
 
-                pKFi->mTcwBefMerge = pKFi->GetPose();
-                pKFi->mTwcBefMerge = pKFi->GetPoseInverse();
+                scratch.kfs[pKFi].TcwBef = pKFi->GetPose();
+                scratch.kfs[pKFi].TwcBef = pKFi->GetPoseInverse();
 
                 pKFi->SetPose(correctedTiw.cast<float>());
 
@@ -1719,7 +1723,7 @@ void LoopClosing::MergeLocal()
         // Optimize graph (and update the loop position for each element form the begining to the end)
         if(mpTracker->mSensor != System::MONOCULAR)
         {
-            Optimizer::OptimizeEssentialGraph(mpCurrentKF, vpMergeConnectedKFs, vpLocalCurrentWindowKFs, vpCurrentMapKFs, vpCurrentMapMPs);
+            Optimizer::OptimizeEssentialGraph(mpCurrentKF, vpMergeConnectedKFs, vpLocalCurrentWindowKFs, vpCurrentMapKFs, vpCurrentMapMPs, scratch);
         }
 
 

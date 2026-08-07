@@ -24,6 +24,7 @@
 #include "map/MapPoint.hpp"
 #include "map/KeyFrame.hpp"
 #include "closing/LoopClosing.hpp"
+#include "closing/MergeScratch.hpp"
 #include "map/Frame.hpp"
 
 #include <math.h>
@@ -70,7 +71,8 @@ public:
                                        const bool &bFixScale,
                                        const std::map<MapPoint*, unsigned long> &correctedRefs);
     void static OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFixedKFs, vector<KeyFrame*> &vpFixedCorrectedKFs,
-                                       vector<KeyFrame*> &vpNonFixedKFs, vector<MapPoint*> &vpNonCorrectedMPs);
+                                       vector<KeyFrame*> &vpNonFixedKFs, vector<MapPoint*> &vpNonCorrectedMPs,
+                                       MergeScratch& scratch);
 
     // For inertial loopclosing
     void static OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,

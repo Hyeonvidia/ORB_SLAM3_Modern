@@ -81,9 +81,6 @@ class MapPoint
         // Variables used by loop closing and merging
         //serializeMatrix(ar,mPosGBA,version);
         //ar & mnBAGlobalForKF;
-        //ar & mnBALocalForMerge;
-        //serializeMatrix(ar,mPosMerge,version);
-        //serializeMatrix(ar,mNormalVectorMerge,version);
 
         // Protected variables
         ar & boost::serialization::make_array(mWorldPos.data(), mWorldPos.size());
@@ -189,12 +186,10 @@ public:
     // Variables used by loop closing
     Eigen::Vector3f mPosGBA;
     long unsigned int mnBAGlobalForKF;
-    long unsigned int mnBALocalForMerge;
 
-    // Variable used by merging
-    Eigen::Vector3f mPosMerge;
-    Eigen::Vector3f mNormalVectorMerge;
-
+    // P5-G: the per-merge scribble fields (mnBALocalForMerge/mPosMerge/
+    // mNormalVectorMerge) were externalized into MergeScratch
+    // (include/closing/MergeScratch.hpp) and function-local sets in Optimizer.cpp.
 
     // Fopr inverse depth optimization
     double mInvDepth;
