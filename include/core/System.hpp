@@ -38,6 +38,7 @@
 #include "features/ORBVocabulary.hpp"
 #include "viz/Viewer.hpp"
 #include "backend/BAEpochs.hpp"
+#include "backend/G2oBackend.hpp"
 #include "backend/ImuTypes.hpp"
 #include "core/Settings.hpp"
 #include "core/Verbose.hpp"
@@ -200,6 +201,12 @@ private:
     // (P5-C, was KeyFrame::mnBALocalForKF/mnBAFixedForKF and
     // MapPoint::mnBALocalForKF). See include/backend/BAEpochs.hpp.
     BAEpochs mBAEpochs;
+
+    // Concrete optimizer backend (P6-A ISP split): implements
+    // ITrackingOptimizer + IMappingOptimizer + ILoopOptimizer; each module
+    // receives only its narrow interface pointer (constructor injection,
+    // same ownership pattern as mBAEpochs above).
+    G2oBackend mBackend;
 
     // Loop Closer. It searches loops with every new keyframe. If there is a loop it performs
     // a pose graph optimization and full bundle adjustment (in a new thread) afterwards.

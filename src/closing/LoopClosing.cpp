@@ -23,7 +23,8 @@
 #include "backend/GBAResult.hpp"
 #include "geometry/Sim3Solver.hpp"
 #include "io/Converter.hpp"
-#include "backend/Optimizer.hpp"
+#include "backend/ILoopOptimizer.hpp"
+#include "backend/BAEpochs.hpp"
 #include "features/ORBmatcher.hpp"
 #include "backend/G2oTypes.hpp"
 
@@ -35,9 +36,9 @@
 namespace ORB_SLAM3
 {
 
-LoopClosing::LoopClosing(Atlas *pAtlas, KeyFrameDatabase *pDB, ORBVocabulary *pVoc, const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs):
+LoopClosing::LoopClosing(Atlas *pAtlas, KeyFrameDatabase *pDB, ORBVocabulary *pVoc, const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs, ILoopOptimizer* pOptimizer):
     mbResetRequested(false), mbResetActiveMapRequested(false), mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas),
-    mpKeyFrameDB(pDB), mpORBVocabulary(pVoc), mpBAEpochs(pBAEpochs), mpMatchedKF(NULL), mLastLoopKFid(0), mbRunningGBA(false), mbFinishedGBA(true),
+    mpKeyFrameDB(pDB), mpORBVocabulary(pVoc), mpBAEpochs(pBAEpochs), mpOptimizer(pOptimizer), mpMatchedKF(NULL), mLastLoopKFid(0), mbRunningGBA(false), mbFinishedGBA(true),
     mbStopGBA(false), mpThreadGBA(NULL), mbFixScale(bFixScale), mnFullBAIdx(0), mnLoopNumCoincidences(0), mnMergeNumCoincidences(0),
     mbLoopDetected(false), mbMergeDetected(false), mnLoopNumNotFound(0), mnMergeNumNotFound(0), mbActiveLC(bActiveLC)
 {
@@ -556,7 +557,7 @@ bool LoopClosing::DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF, KeyFrame*
         bool bFixedScale = mbFixScale;       // TODO CHECK; Solo para el monocular inertial
         if(mpTracker->mSensor==System::IMU_MONOCULAR && !pCurrentKF->GetMap()->GetIniertialBA2())
             bFixedScale=false;
-        int numOptMatches = Optimizer::OptimizeSim3(mpCurrentKF, pMatchedKF, vpMatchedMPs, gScm, 10, bFixedScale, mHessian7x7, true);
+        int numOptMatches = mpOptimizer->OptimizeSim3(mpCurrentKF, pMatchedKF, vpMatchedMPs, gScm, 10, bFixedScale, mHessian7x7, true);
 
         //Verbose::PrintMess("Sim3 reffine: There are " + to_string(numOptMatches) + " matches after of the optimization ", Verbose::VERBOSITY_DEBUG);
 
@@ -767,7 +768,7 @@ bool LoopClosing::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, 
                     if(mpTracker->mSensor==System::IMU_MONOCULAR && !mpCurrentKF->GetMap()->GetIniertialBA2())
                         bFixedScale=false;
 
-                    int numOptMatches = Optimizer::OptimizeSim3(mpCurrentKF, pKFi, vpMatchedMP, gScm, 10, mbFixScale, mHessian7x7, true);
+                    int numOptMatches = mpOptimizer->OptimizeSim3(mpCurrentKF, pKFi, vpMatchedMP, gScm, 10, mbFixScale, mHessian7x7, true);
 
                     if(numOptMatches >= nSim3Inliers)
                     {
@@ -1182,12 +1183,12 @@ void LoopClosing::CorrectLoop()
     //cout << "Optimize essential graph" << endl;
     if(pLoopMap->IsInertial() && pLoopMap->isImuInitialized())
     {
-        Optimizer::OptimizeEssentialGraph4DoF(pLoopMap, mpLoopMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections);
+        mpOptimizer->OptimizeEssentialGraph4DoF(pLoopMap, mpLoopMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections);
     }
     else
     {
         //cout << "Loop -> Scale correction: " << mg2oLoopScw.scale() << endl;
-        Optimizer::OptimizeEssentialGraph(pLoopMap, mpLoopMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, bFixedScale, mCorrectedRefs);
+        mpOptimizer->OptimizeEssentialGraph(pLoopMap, mpLoopMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, bFixedScale, mCorrectedRefs);
     }
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_EndOpt = std::chrono::steady_clock::now();
@@ -1630,11 +1631,11 @@ void LoopClosing::MergeLocal()
     std::copy(spMergeConnectedKFs.begin(), spMergeConnectedKFs.end(), std::back_inserter(vpMergeConnectedKFs));
     if (mpTracker->mSensor==System::IMU_MONOCULAR || mpTracker->mSensor==System::IMU_STEREO || mpTracker->mSensor==System::IMU_RGBD)
     {
-        Optimizer::MergeInertialBA(mpCurrentKF,mpMergeMatchedKF,&bStop, pCurrentMap,vCorrectedSim3, *mpBAEpochs);
+        mpOptimizer->MergeInertialBA(mpCurrentKF,mpMergeMatchedKF,&bStop, pCurrentMap,vCorrectedSim3, *mpBAEpochs);
     }
     else
     {
-        Optimizer::LocalBundleAdjustment(mpCurrentKF, vpLocalCurrentWindowKFs, vpMergeConnectedKFs,&bStop, *mpBAEpochs);
+        mpOptimizer->LocalBundleAdjustment(mpCurrentKF, vpLocalCurrentWindowKFs, vpMergeConnectedKFs,&bStop, *mpBAEpochs);
     }
 
 #ifdef REGISTER_TIMES
@@ -1724,7 +1725,7 @@ void LoopClosing::MergeLocal()
         // Optimize graph (and update the loop position for each element form the begining to the end)
         if(mpTracker->mSensor != System::MONOCULAR)
         {
-            Optimizer::OptimizeEssentialGraph(mpCurrentKF, vpMergeConnectedKFs, vpLocalCurrentWindowKFs, vpCurrentMapKFs, vpCurrentMapMPs, scratch);
+            mpOptimizer->OptimizeEssentialGraph(mpCurrentKF, vpMergeConnectedKFs, vpLocalCurrentWindowKFs, vpCurrentMapKFs, vpCurrentMapMPs, scratch);
         }
 
 
@@ -1870,7 +1871,7 @@ void LoopClosing::MergeLocal2()
         Eigen::Vector3d bg, ba;
         bg << 0., 0., 0.;
         ba << 0., 0., 0.;
-        Optimizer::InertialOptimization(pCurrentMap,bg,ba);
+        mpOptimizer->InertialOptimization(pCurrentMap,bg,ba);
         IMU::Bias b (ba[0],ba[1],ba[2],bg[0],bg[1],bg[2]);
         unique_lock<mutex> lock(mpAtlas->GetCurrentMap()->mMutexMapUpdate);
         mpTracker->UpdateFrameIMU(1.0f,b,mpTracker->GetLastKeyFrame());
@@ -2058,7 +2059,7 @@ void LoopClosing::MergeLocal2()
     bool bStopFlag=false;
     KeyFrame* pCurrKF = mpTracker->GetLastKeyFrame();
     //cout << "start MergeInertialBA" << endl;
-    Optimizer::MergeInertialBA(pCurrKF, mpMergeMatchedKF, &bStopFlag, pCurrentMap,CorrectedSim3, *mpBAEpochs);
+    mpOptimizer->MergeInertialBA(pCurrKF, mpMergeMatchedKF, &bStopFlag, pCurrentMap,CorrectedSim3, *mpBAEpochs);
     //cout << "end MergeInertialBA" << endl;
 
     /*good = pCurrentMap->CheckEssentialGraph();
@@ -2295,9 +2296,9 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
     GBAResult gbaResult;
 
     if(!bImuInit)
-        Optimizer::GlobalBundleAdjustemnt(pActiveMap,10,&mbStopGBA,nLoopKF,false,&gbaResult);
+        mpOptimizer->GlobalBundleAdjustment(pActiveMap,10,&mbStopGBA,nLoopKF,false,&gbaResult);
     else
-        Optimizer::FullInertialBA(pActiveMap,7,false,nLoopKF,&mbStopGBA,false,1e2,1e6,NULL,NULL,&gbaResult, *mpBAEpochs);
+        mpOptimizer->FullInertialBA(pActiveMap,7,false,nLoopKF,&mbStopGBA,false,1e2,1e6,NULL,NULL,&gbaResult, *mpBAEpochs);
 
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_EndGBA = std::chrono::steady_clock::now();
@@ -2312,7 +2313,6 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
 #endif
 
     int idx =  mnFullBAIdx;
-    // Optimizer::GlobalBundleAdjustemnt(mpMap,10,&mbStopGBA,nLoopKF,false);
 
     // Update all MapPoints and KeyFrames
     // Local Mapping was active during BA, that means that there might be new keyframes

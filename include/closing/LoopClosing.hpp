@@ -41,6 +41,7 @@ class LocalMapping;
 class KeyFrameDatabase;
 class Map;
 struct BAEpochs;
+class ILoopOptimizer;
 
 
 class LoopClosing
@@ -53,7 +54,7 @@ public:
 
 public:
 
-    LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs);
+    LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs, ILoopOptimizer* pOptimizer);
 
     void SetTracker(Tracking* pTracker);
 
@@ -165,6 +166,12 @@ protected:
 
     // Persistent local-BA epoch marks, owned by System (P5-C).
     BAEpochs* mpBAEpochs;
+
+    // Narrow optimizer interface, owned by System (G2oBackend value member,
+    // P6-A ISP split — see include/backend/ILoopOptimizer.hpp). Also used by
+    // the detached GBA thread (stateless const contract, same thread
+    // semantics as the previous static calls).
+    ILoopOptimizer* mpOptimizer;
 
     LocalMapping *mpLocalMapper;
 

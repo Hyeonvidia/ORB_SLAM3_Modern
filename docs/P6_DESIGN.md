@@ -5,6 +5,17 @@
 > 보정 1건: §1의 '업스트림 투영 엣지로 커스텀 대체 가능' 결론은 핀홀 전용에만
 > 해당한다. ORB_SLAM3::Edge* 커스텀 엣지는 GeometricCamera(KB8 어안) 경유라
 > 대체 불가 — 커스텀 유지가 마이그레이션 계약이다.
+>
+> 보정 2건 (P6-1 Phase A 구현 중 발견): §C의 'ILoopOptimizer.hpp가
+> closing/LoopClosing.hpp를 include'하는 설계는 포함 사이클로 불성립 —
+> System.hpp(G2oBackend 값 멤버)가 LoopClosing.hpp의 include 체인 내부에서
+> 도달된다 (LoopClosing.hpp → Tracking.hpp → Viewer.hpp → System.hpp →
+> G2oBackend.hpp → ILoopOptimizer.hpp). 실제 구현은 Converter.hpp 선례대로
+> 협소한 `Thirdparty/g2o/g2o/types/sim3.h`만 include하고, LoopClosing::
+> KeyFrameAndPose와 **동일 타입**의 typedef를 ILoopOptimizer 클래스 내부에
+> 재선언한다 (`ILoopOptimizer::KeyFrameAndPose`) — 타입 동일성으로 시그니처
+> 호환은 그대로 성립하며, 헤더 g2o 노출은 sim3.h 1개로 §C 의도(비용을
+> ILoopOptimizer만 부담)를 오히려 더 좁게 달성한다.
 
 
 ## A. g2o 20241228_git API 계약 (헤더 실측)

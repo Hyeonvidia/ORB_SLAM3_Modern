@@ -53,6 +53,7 @@ class LocalMapping;
 class LoopClosing;
 class System;
 class Settings;
+class ITrackingOptimizer;
 
 class Tracking
 {  
@@ -60,7 +61,8 @@ class Tracking
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Tracking(System* pSys, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Atlas* pAtlas,
-             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq=std::string());
+             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings,
+             ITrackingOptimizer* pOptimizer, const string &_nameSeq=std::string());
 
     ~Tracking();
 
@@ -253,6 +255,10 @@ protected:
     //Other Thread Pointers
     LocalMapping* mpLocalMapper;
     LoopClosing* mpLoopClosing;
+
+    // Narrow optimizer interface, owned by System (G2oBackend value member,
+    // P6-A ISP split — see include/backend/ITrackingOptimizer.hpp).
+    ITrackingOptimizer* mpOptimizer;
 
     //ORB
     ORBextractor* mpORBextractorLeft, *mpORBextractorRight;

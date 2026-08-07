@@ -38,12 +38,13 @@ class Tracking;
 class LoopClosing;
 class Atlas;
 struct BAEpochs;
+class IMappingOptimizer;
 
 class LocalMapping
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    LocalMapping(System* pSys, Atlas* pAtlas, const float bMonocular, bool bInertial, BAEpochs* pBAEpochs, const string &_strSeqName=std::string());
+    LocalMapping(System* pSys, Atlas* pAtlas, const float bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer, const string &_strSeqName=std::string());
 
     void SetLoopCloser(LoopClosing* pLoopCloser);
 
@@ -161,6 +162,10 @@ protected:
 
     // Persistent local-BA epoch marks, owned by System (P5-C).
     BAEpochs* mpBAEpochs;
+
+    // Narrow optimizer interface, owned by System (G2oBackend value member,
+    // P6-A ISP split — see include/backend/IMappingOptimizer.hpp).
+    IMappingOptimizer* mpOptimizer;
 
     LoopClosing* mpLoopCloser;
     Tracking* mpTracker;

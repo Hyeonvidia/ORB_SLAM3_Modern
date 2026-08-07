@@ -23,7 +23,7 @@
 #include "viz/FrameDrawer.hpp"
 #include "io/Converter.hpp"
 #include "backend/G2oTypes.hpp"
-#include "backend/Optimizer.hpp"
+#include "backend/ITrackingOptimizer.hpp"
 #include "camera/Pinhole.hpp"
 #include "camera/KannalaBrandt8.hpp"
 #include "geometry/MLPnPsolver.hpp"
@@ -41,9 +41,9 @@ namespace ORB_SLAM3
 {
 
 
-Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq):
+Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, ITrackingOptimizer* pOptimizer, const string &_nameSeq):
     mState(NO_IMAGES_YET), mSensor(sensor), mTrackedFr(0), mbStep(false),
-    mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
+    mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpOptimizer(pOptimizer), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
     mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
@@ -1732,7 +1732,7 @@ void Tracking::CreateInitialMapMonocular()
 
     // Bundle Adjustment
     Verbose::PrintMess("New Map created with " + to_string(mpAtlas->MapPointsInMap()) + " points", Verbose::VERBOSITY_QUIET);
-    Optimizer::GlobalBundleAdjustemnt(mpAtlas->GetCurrentMap(),20);
+    mpOptimizer->GlobalBundleAdjustment(mpAtlas->GetCurrentMap(),20);
 
     float medianDepth = pKFini->ComputeSceneMedianDepth(2);
     float invMedianDepth;
@@ -1897,7 +1897,7 @@ bool Tracking::TrackReferenceKeyFrame()
 
 
     // cout << " TrackReferenceKeyFrame mLastFrame.mTcw:  " << mLastFrame.mTcw << endl;
-    Optimizer::PoseOptimization(&mCurrentFrame);
+    mpOptimizer->PoseOptimization(&mCurrentFrame);
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -2061,7 +2061,7 @@ bool Tracking::TrackWithMotionModel()
     }
 
     // Optimize frame pose with all matches
-    Optimizer::PoseOptimization(&mCurrentFrame);
+    mpOptimizer->PoseOptimization(&mCurrentFrame);
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -2123,13 +2123,13 @@ bool Tracking::TrackLocalMap()
 
     int inliers;
     if (!mpAtlas->isImuInitialized())
-        Optimizer::PoseOptimization(&mCurrentFrame);
+        mpOptimizer->PoseOptimization(&mCurrentFrame);
     else
     {
         if(mCurrentFrame.mnId<=mnLastRelocFrameId+mnFramesToResetIMU)
         {
             Verbose::PrintMess("TLM: PoseOptimization ", Verbose::VERBOSITY_DEBUG);
-            Optimizer::PoseOptimization(&mCurrentFrame);
+            mpOptimizer->PoseOptimization(&mCurrentFrame);
         }
         else
         {
@@ -2137,12 +2137,12 @@ bool Tracking::TrackLocalMap()
             if(!mbMapUpdated) //  && (mnMatchesInliers>30))
             {
                 Verbose::PrintMess("TLM: PoseInertialOptimizationLastFrame ", Verbose::VERBOSITY_DEBUG);
-                inliers = Optimizer::PoseInertialOptimizationLastFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
+                inliers = mpOptimizer->PoseInertialOptimizationLastFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
             }
             else
             {
                 Verbose::PrintMess("TLM: PoseInertialOptimizationLastKeyFrame ", Verbose::VERBOSITY_DEBUG);
-                inliers = Optimizer::PoseInertialOptimizationLastKeyFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
+                inliers = mpOptimizer->PoseInertialOptimizationLastKeyFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
             }
         }
     }
@@ -2866,7 +2866,7 @@ bool Tracking::Relocalization()
                         mCurrentFrame.mvpMapPoints[j]=NULL;
                 }
 
-                int nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                int nGood = mpOptimizer->PoseOptimization(&mCurrentFrame);
 
                 if(nGood<10)
                     continue;
@@ -2882,7 +2882,7 @@ bool Tracking::Relocalization()
 
                     if(nadditional+nGood>=50)
                     {
-                        nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                        nGood = mpOptimizer->PoseOptimization(&mCurrentFrame);
 
                         // If many inliers but still not enough, search by projection again in a narrower window
                         // the camera has been already optimized with many points
@@ -2897,7 +2897,7 @@ bool Tracking::Relocalization()
                             // Final optimization
                             if(nGood+nadditional>=50)
                             {
-                                nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                                nGood = mpOptimizer->PoseOptimization(&mCurrentFrame);
 
                                 for(int io =0; io<mCurrentFrame.N; io++)
                                     if(mCurrentFrame.mvbOutlier[io])
