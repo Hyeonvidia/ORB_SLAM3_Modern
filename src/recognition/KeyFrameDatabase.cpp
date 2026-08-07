@@ -23,11 +23,25 @@
 #include "Thirdparty/DBoW2/DBoW2/BowVector.h"
 
 #include<mutex>
+#include<unordered_map>
 
 using namespace std;
 
 namespace ORB_SLAM3
 {
+
+namespace {
+// P5-3: per-query scratch, externalized from KeyFrame's mn*Query/mn*Words/m*Score
+// scribble fields. Lifetime is one Detect* call; 'candidate' mirrors the old
+// "query id was stamped" condition (i.e. the KF entered the sharing-words list).
+struct QueryScratch {
+    int nWords = 0;
+    float score = 0.f;
+    bool seen = false;
+    bool candidate = false;
+};
+using QueryScratchMap = std::unordered_map<KeyFrame*, QueryScratch>;
+}
 
 KeyFrameDatabase::KeyFrameDatabase (const ORBVocabulary &voc):
     mpVoc(&voc)
@@ -101,6 +115,7 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
 {
     set<KeyFrame*> spConnectedKeyFrames = pKF->GetConnectedKeyFrames();
     list<KeyFrame*> lKFsSharingWords;
+    QueryScratchMap qsLoop;
 
     // Search all keyframes that share a word with current keyframes
     // Discard keyframes connected to the query keyframe
@@ -116,16 +131,17 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
                 KeyFrame* pKFi=*lit;
                 if(pKFi->GetMap()==pKF->GetMap()) // For consider a loop candidate it a candidate it must be in the same map
                 {
-                    if(pKFi->mnLoopQuery!=pKF->mnId)
+                    QueryScratch& e = qsLoop[pKFi];
+                    if(!e.seen)
                     {
-                        pKFi->mnLoopWords=0;
+                        e.seen = true;
                         if(!spConnectedKeyFrames.count(pKFi))
                         {
-                            pKFi->mnLoopQuery=pKF->mnId;
+                            e.candidate = true;
                             lKFsSharingWords.push_back(pKFi);
                         }
                     }
-                    pKFi->mnLoopWords++;
+                    e.nWords++;
                 }
 
 
@@ -142,8 +158,8 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
     int maxCommonWords=0;
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
-        if((*lit)->mnLoopWords>maxCommonWords)
-            maxCommonWords=(*lit)->mnLoopWords;
+        if(qsLoop[*lit].nWords>maxCommonWords)
+            maxCommonWords=qsLoop[*lit].nWords;
     }
 
     int minCommonWords = maxCommonWords*0.8f;
@@ -155,13 +171,13 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
     {
         KeyFrame* pKFi = *lit;
 
-        if(pKFi->mnLoopWords>minCommonWords)
+        if(qsLoop[pKFi].nWords>minCommonWords)
         {
             nscores++;
 
             float si = mpVoc->score(pKF->mBowVec,pKFi->mBowVec);
 
-            pKFi->mLoopScore = si;
+            qsLoop[pKFi].score = si;
             if(si>=minScore)
                 lScoreAndMatch.push_back(make_pair(si,pKFi));
         }
@@ -185,13 +201,14 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
         for(vector<KeyFrame*>::iterator vit=vpNeighs.begin(), vend=vpNeighs.end(); vit!=vend; vit++)
         {
             KeyFrame* pKF2 = *vit;
-            if(pKF2->mnLoopQuery==pKF->mnId && pKF2->mnLoopWords>minCommonWords)
+            QueryScratchMap::iterator itQS = qsLoop.find(pKF2);
+            if(itQS!=qsLoop.end() && itQS->second.candidate && itQS->second.nWords>minCommonWords)
             {
-                accScore+=pKF2->mLoopScore;
-                if(pKF2->mLoopScore>bestScore)
+                accScore+=itQS->second.score;
+                if(itQS->second.score>bestScore)
                 {
                     pBestKF=pKF2;
-                    bestScore = pKF2->mLoopScore;
+                    bestScore = itQS->second.score;
                 }
             }
         }
@@ -229,6 +246,8 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
 {
     set<KeyFrame*> spConnectedKeyFrames = pKF->GetConnectedKeyFrames();
     list<KeyFrame*> lKFsSharingWordsLoop,lKFsSharingWordsMerge;
+    QueryScratchMap qsLoop;
+    QueryScratchMap qsMerge;
 
     // Search all keyframes that share a word with current keyframes
     // Discard keyframes connected to the query keyframe
@@ -244,29 +263,31 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
                 KeyFrame* pKFi=*lit;
                 if(pKFi->GetMap()==pKF->GetMap()) // For consider a loop candidate it a candidate it must be in the same map
                 {
-                    if(pKFi->mnLoopQuery!=pKF->mnId)
+                    QueryScratch& eLoop = qsLoop[pKFi];
+                    if(!eLoop.seen)
                     {
-                        pKFi->mnLoopWords=0;
+                        eLoop.seen = true;
                         if(!spConnectedKeyFrames.count(pKFi))
                         {
-                            pKFi->mnLoopQuery=pKF->mnId;
+                            eLoop.candidate = true;
                             lKFsSharingWordsLoop.push_back(pKFi);
                         }
                     }
-                    pKFi->mnLoopWords++;
+                    eLoop.nWords++;
                 }
                 else if(!pKFi->GetMap()->IsBad())
                 {
-                    if(pKFi->mnMergeQuery!=pKF->mnId)
+                    QueryScratch& eMerge = qsMerge[pKFi];
+                    if(!eMerge.seen)
                     {
-                        pKFi->mnMergeWords=0;
+                        eMerge.seen = true;
                         if(!spConnectedKeyFrames.count(pKFi))
                         {
-                            pKFi->mnMergeQuery=pKF->mnId;
+                            eMerge.candidate = true;
                             lKFsSharingWordsMerge.push_back(pKFi);
                         }
                     }
-                    pKFi->mnMergeWords++;
+                    eMerge.nWords++;
                 }
             }
         }
@@ -283,8 +304,8 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
         int maxCommonWords=0;
         for(list<KeyFrame*>::iterator lit=lKFsSharingWordsLoop.begin(), lend= lKFsSharingWordsLoop.end(); lit!=lend; lit++)
         {
-            if((*lit)->mnLoopWords>maxCommonWords)
-                maxCommonWords=(*lit)->mnLoopWords;
+            if(qsLoop[*lit].nWords>maxCommonWords)
+                maxCommonWords=qsLoop[*lit].nWords;
         }
 
         int minCommonWords = maxCommonWords*0.8f;
@@ -296,13 +317,13 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
         {
             KeyFrame* pKFi = *lit;
 
-            if(pKFi->mnLoopWords>minCommonWords)
+            if(qsLoop[pKFi].nWords>minCommonWords)
             {
                 nscores++;
 
                 float si = mpVoc->score(pKF->mBowVec,pKFi->mBowVec);
 
-                pKFi->mLoopScore = si;
+                qsLoop[pKFi].score = si;
                 if(si>=minScore)
                     lScoreAndMatch.push_back(make_pair(si,pKFi));
             }
@@ -325,13 +346,14 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
                 for(vector<KeyFrame*>::iterator vit=vpNeighs.begin(), vend=vpNeighs.end(); vit!=vend; vit++)
                 {
                     KeyFrame* pKF2 = *vit;
-                    if(pKF2->mnLoopQuery==pKF->mnId && pKF2->mnLoopWords>minCommonWords)
+                    QueryScratchMap::iterator itQS = qsLoop.find(pKF2);
+                    if(itQS!=qsLoop.end() && itQS->second.candidate && itQS->second.nWords>minCommonWords)
                     {
-                        accScore+=pKF2->mLoopScore;
-                        if(pKF2->mLoopScore>bestScore)
+                        accScore+=itQS->second.score;
+                        if(itQS->second.score>bestScore)
                         {
                             pBestKF=pKF2;
-                            bestScore = pKF2->mLoopScore;
+                            bestScore = itQS->second.score;
                         }
                     }
                 }
@@ -371,8 +393,8 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
         int maxCommonWords=0;
         for(list<KeyFrame*>::iterator lit=lKFsSharingWordsMerge.begin(), lend=lKFsSharingWordsMerge.end(); lit!=lend; lit++)
         {
-            if((*lit)->mnMergeWords>maxCommonWords)
-                maxCommonWords=(*lit)->mnMergeWords;
+            if(qsMerge[*lit].nWords>maxCommonWords)
+                maxCommonWords=qsMerge[*lit].nWords;
         }
 
         int minCommonWords = maxCommonWords*0.8f;
@@ -384,13 +406,13 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
         {
             KeyFrame* pKFi = *lit;
 
-            if(pKFi->mnMergeWords>minCommonWords)
+            if(qsMerge[pKFi].nWords>minCommonWords)
             {
                 nscores++;
 
                 float si = mpVoc->score(pKF->mBowVec,pKFi->mBowVec);
 
-                pKFi->mMergeScore = si;
+                qsMerge[pKFi].score = si;
                 if(si>=minScore)
                     lScoreAndMatch.push_back(make_pair(si,pKFi));
             }
@@ -413,13 +435,14 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
                 for(vector<KeyFrame*>::iterator vit=vpNeighs.begin(), vend=vpNeighs.end(); vit!=vend; vit++)
                 {
                     KeyFrame* pKF2 = *vit;
-                    if(pKF2->mnMergeQuery==pKF->mnId && pKF2->mnMergeWords>minCommonWords)
+                    QueryScratchMap::iterator itQS = qsMerge.find(pKF2);
+                    if(itQS!=qsMerge.end() && itQS->second.candidate && itQS->second.nWords>minCommonWords)
                     {
-                        accScore+=pKF2->mMergeScore;
-                        if(pKF2->mMergeScore>bestScore)
+                        accScore+=itQS->second.score;
+                        if(itQS->second.score>bestScore)
                         {
                             pBestKF=pKF2;
-                            bestScore = pKF2->mMergeScore;
+                            bestScore = itQS->second.score;
                         }
                     }
                 }
@@ -451,24 +474,15 @@ void KeyFrameDatabase::DetectCandidates(KeyFrame* pKF, float minScore,vector<Key
 
     }
 
-    for(DBoW2::BowVector::const_iterator vit=pKF->mBowVec.begin(), vend=pKF->mBowVec.end(); vit != vend; vit++)
-    {
-        list<KeyFrame*> &lKFs = mvInvertedFile[vit->first];
-
-        for(list<KeyFrame*>::iterator lit=lKFs.begin(), lend= lKFs.end(); lit!=lend; lit++)
-        {
-            KeyFrame* pKFi=*lit;
-            pKFi->mnLoopQuery=-1;
-            pKFi->mnMergeQuery=-1;
-        }
-    }
-
+    // P5-3: the old trailing pass that reset the loop/merge query-id stamps to
+    // -1 is no longer needed; the per-call scratch maps die with this scope.
 }
 
 void KeyFrameDatabase::DetectBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &vpLoopCand, vector<KeyFrame*> &vpMergeCand, int nMinWords)
 {
     list<KeyFrame*> lKFsSharingWords;
     set<KeyFrame*> spConnectedKF;
+    QueryScratchMap qsPlace;
 
     // Search all keyframes that share a word with current frame
     {
@@ -487,13 +501,14 @@ void KeyFrameDatabase::DetectBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &vp
                 {
                     continue;
                 }
-                if(pKFi->mnPlaceRecognitionQuery!=pKF->mnId)
+                QueryScratch& e = qsPlace[pKFi];
+                if(!e.seen)
                 {
-                    pKFi->mnPlaceRecognitionWords=0;
-                    pKFi->mnPlaceRecognitionQuery=pKF->mnId;
+                    e.seen = true;
+                    e.candidate = true;
                     lKFsSharingWords.push_back(pKFi);
                 }
-               pKFi->mnPlaceRecognitionWords++;
+                e.nWords++;
 
             }
         }
@@ -505,8 +520,8 @@ void KeyFrameDatabase::DetectBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &vp
     int maxCommonWords=0;
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
-        if((*lit)->mnPlaceRecognitionWords>maxCommonWords)
-            maxCommonWords=(*lit)->mnPlaceRecognitionWords;
+        if(qsPlace[*lit].nWords>maxCommonWords)
+            maxCommonWords=qsPlace[*lit].nWords;
     }
 
     int minCommonWords = maxCommonWords*0.8f;
@@ -525,11 +540,11 @@ void KeyFrameDatabase::DetectBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &vp
     {
         KeyFrame* pKFi = *lit;
 
-        if(pKFi->mnPlaceRecognitionWords>minCommonWords)
+        if(qsPlace[pKFi].nWords>minCommonWords)
         {
             nscores++;
             float si = mpVoc->score(pKF->mBowVec,pKFi->mBowVec);
-            pKFi->mPlaceRecognitionScore=si;
+            qsPlace[pKFi].score=si;
             lScoreAndMatch.push_back(make_pair(si,pKFi));
         }
     }
@@ -552,14 +567,15 @@ void KeyFrameDatabase::DetectBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &vp
         for(vector<KeyFrame*>::iterator vit=vpNeighs.begin(), vend=vpNeighs.end(); vit!=vend; vit++)
         {
             KeyFrame* pKF2 = *vit;
-            if(pKF2->mnPlaceRecognitionQuery!=pKF->mnId)
+            QueryScratchMap::iterator itQS = qsPlace.find(pKF2);
+            if(itQS==qsPlace.end() || !itQS->second.candidate)
                 continue;
 
-            accScore+=pKF2->mPlaceRecognitionScore;
-            if(pKF2->mPlaceRecognitionScore>bestScore)
+            accScore+=itQS->second.score;
+            if(itQS->second.score>bestScore)
             {
                 pBestKF=pKF2;
-                bestScore = pKF2->mPlaceRecognitionScore;
+                bestScore = itQS->second.score;
             }
 
         }
@@ -605,6 +621,7 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
 {
     list<KeyFrame*> lKFsSharingWords;
     set<KeyFrame*> spConnectedKF;
+    QueryScratchMap qsPlace;
 
     // Search all keyframes that share a word with current frame
     {
@@ -620,17 +637,18 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
             {
                 KeyFrame* pKFi=*lit;
 
-                if(pKFi->mnPlaceRecognitionQuery!=pKF->mnId)
+                QueryScratch& e = qsPlace[pKFi];
+                if(!e.seen)
                 {
-                    pKFi->mnPlaceRecognitionWords=0;
+                    e.seen = true;
                     if(!spConnectedKF.count(pKFi))
                     {
 
-                        pKFi->mnPlaceRecognitionQuery=pKF->mnId;
+                        e.candidate = true;
                         lKFsSharingWords.push_back(pKFi);
                     }
                 }
-                pKFi->mnPlaceRecognitionWords++;
+                e.nWords++;
             }
         }
     }
@@ -641,8 +659,8 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
     int maxCommonWords=0;
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
-        if((*lit)->mnPlaceRecognitionWords>maxCommonWords)
-            maxCommonWords=(*lit)->mnPlaceRecognitionWords;
+        if(qsPlace[*lit].nWords>maxCommonWords)
+            maxCommonWords=qsPlace[*lit].nWords;
     }
 
     int minCommonWords = maxCommonWords*0.8f;
@@ -656,11 +674,11 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
     {
         KeyFrame* pKFi = *lit;
 
-        if(pKFi->mnPlaceRecognitionWords>minCommonWords)
+        if(qsPlace[pKFi].nWords>minCommonWords)
         {
             nscores++;
             float si = mpVoc->score(pKF->mBowVec,pKFi->mBowVec);
-            pKFi->mPlaceRecognitionScore=si;
+            qsPlace[pKFi].score=si;
             lScoreAndMatch.push_back(make_pair(si,pKFi));
         }
     }
@@ -683,14 +701,15 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
         for(vector<KeyFrame*>::iterator vit=vpNeighs.begin(), vend=vpNeighs.end(); vit!=vend; vit++)
         {
             KeyFrame* pKF2 = *vit;
-            if(pKF2->mnPlaceRecognitionQuery!=pKF->mnId)
+            QueryScratchMap::iterator itQS = qsPlace.find(pKF2);
+            if(itQS==qsPlace.end() || !itQS->second.candidate)
                 continue;
 
-            accScore+=pKF2->mPlaceRecognitionScore;
-            if(pKF2->mPlaceRecognitionScore>bestScore)
+            accScore+=itQS->second.score;
+            if(itQS->second.score>bestScore)
             {
                 pBestKF=pKF2;
-                bestScore = pKF2->mPlaceRecognitionScore;
+                bestScore = itQS->second.score;
             }
 
         }
@@ -733,6 +752,7 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
 vector<KeyFrame*> KeyFrameDatabase::DetectRelocalizationCandidates(Frame *F, Map* pMap)
 {
     list<KeyFrame*> lKFsSharingWords;
+    QueryScratchMap qsReloc;
 
     // Search all keyframes that share a word with current frame
     {
@@ -745,13 +765,14 @@ vector<KeyFrame*> KeyFrameDatabase::DetectRelocalizationCandidates(Frame *F, Map
             for(list<KeyFrame*>::iterator lit=lKFs.begin(), lend= lKFs.end(); lit!=lend; lit++)
             {
                 KeyFrame* pKFi=*lit;
-                if(pKFi->mnRelocQuery!=F->mnId)
+                QueryScratch& e = qsReloc[pKFi];
+                if(!e.seen)
                 {
-                    pKFi->mnRelocWords=0;
-                    pKFi->mnRelocQuery=F->mnId;
+                    e.seen = true;
+                    e.candidate = true;
                     lKFsSharingWords.push_back(pKFi);
                 }
-                pKFi->mnRelocWords++;
+                e.nWords++;
             }
         }
     }
@@ -762,8 +783,8 @@ vector<KeyFrame*> KeyFrameDatabase::DetectRelocalizationCandidates(Frame *F, Map
     int maxCommonWords=0;
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
-        if((*lit)->mnRelocWords>maxCommonWords)
-            maxCommonWords=(*lit)->mnRelocWords;
+        if(qsReloc[*lit].nWords>maxCommonWords)
+            maxCommonWords=qsReloc[*lit].nWords;
     }
 
     int minCommonWords = maxCommonWords*0.8f;
@@ -777,11 +798,11 @@ vector<KeyFrame*> KeyFrameDatabase::DetectRelocalizationCandidates(Frame *F, Map
     {
         KeyFrame* pKFi = *lit;
 
-        if(pKFi->mnRelocWords>minCommonWords)
+        if(qsReloc[pKFi].nWords>minCommonWords)
         {
             nscores++;
             float si = mpVoc->score(F->mBowVec,pKFi->mBowVec);
-            pKFi->mRelocScore=si;
+            qsReloc[pKFi].score=si;
             lScoreAndMatch.push_back(make_pair(si,pKFi));
         }
     }
@@ -804,14 +825,15 @@ vector<KeyFrame*> KeyFrameDatabase::DetectRelocalizationCandidates(Frame *F, Map
         for(vector<KeyFrame*>::iterator vit=vpNeighs.begin(), vend=vpNeighs.end(); vit!=vend; vit++)
         {
             KeyFrame* pKF2 = *vit;
-            if(pKF2->mnRelocQuery!=F->mnId)
+            QueryScratchMap::iterator itQS = qsReloc.find(pKF2);
+            if(itQS==qsReloc.end() || !itQS->second.candidate)
                 continue;
 
-            accScore+=pKF2->mRelocScore;
-            if(pKF2->mRelocScore>bestScore)
+            accScore+=itQS->second.score;
+            if(itQS->second.score>bestScore)
             {
                 pBestKF=pKF2;
-                bestScore = pKF2->mRelocScore;
+                bestScore = itQS->second.score;
             }
 
         }

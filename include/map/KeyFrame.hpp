@@ -70,19 +70,6 @@ class KeyFrame
         // Variables of local mapping
         //ar & mnBALocalForKF;
         //ar & mnBAFixedForKF;
-        // Variables used by KeyFrameDatabase
-        //ar & mnLoopQuery;
-        //ar & mnLoopWords;
-        //ar & mLoopScore;
-        //ar & mnRelocQuery;
-        //ar & mnRelocWords;
-        //ar & mRelocScore;
-        //ar & mnMergeQuery;
-        //ar & mnMergeWords;
-        //ar & mMergeScore;
-        //ar & mnPlaceRecognitionQuery;
-        //ar & mnPlaceRecognitionWords;
-        //ar & mPlaceRecognitionScore;
         // Variables of loop closing
         //serializeMatrix(ar,mTcwGBA,version);
         //serializeMatrix(ar,mTcwBefGBA,version);
@@ -320,21 +307,9 @@ public:
 
     //Number of optimizations by BA(amount of iterations in BA)
 
-    // Variables used by the keyframe database
-    long unsigned int mnLoopQuery;
-    int mnLoopWords;
-    float mLoopScore;
-    long unsigned int mnRelocQuery;
-    int mnRelocWords;
-    float mRelocScore;
-    long unsigned int mnMergeQuery;
-    int mnMergeWords;
-    float mMergeScore;
-    long unsigned int mnPlaceRecognitionQuery;
-    int mnPlaceRecognitionWords;
-    float mPlaceRecognitionScore;
-
-
+    // P5-3: the per-query keyframe-database scribble fields (mn*Query/mn*Words/
+    // m*Score for Loop/Merge/PlaceRecognition/Reloc) were externalized into
+    // function-local scratch maps in KeyFrameDatabase.cpp.
 
     // Variables used by loop closing
     Sophus::SE3f mTcwGBA;
