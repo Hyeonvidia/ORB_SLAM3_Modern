@@ -83,6 +83,11 @@ public:
     Sophus::SE3f GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, const double &timestamp, string filename);
     Sophus::SE3f GrabImageMonocular(const cv::Mat &im, const double &timestamp, string filename);
 
+    // IMU CONTRACT (docs/IMU_CONTRACT.md §1): sole producer of mlQueueImuData.
+    // Called only from System::Track{Stereo,RGBD,Monocular} on the tracking
+    // thread, with the batch of samples t <= t_frame, just before GrabImage*.
+    // No validation: non-monotonic push timestamps silently corrupt
+    // preintegration downstream.
     void GrabImuData(const IMU::Point &imuMeasurement);
 
     void SetLocalMapper(LocalMapping* pLocalMapper);
@@ -298,14 +303,28 @@ protected:
 
     bool mbMapUpdated;
 
-    // Imu preintegration from last frame
+    // IMU CONTRACT (docs/IMU_CONTRACT.md §2-§3): preintegration accumulated
+    // since the last KeyFrame (upstream's "from last frame" comment was wrong).
+    // Owned by Tracking until a KeyFrame is built from the frame aliasing it
+    // (KeyFrame's ctor copies the raw pointer); then re-pointed WITHOUT delete —
+    // ownership transfer, not a leak. Deleted only in the init paths and
+    // CreateMapInAtlas; Reset()/ResetActiveMap() leave it stale (INHERITED).
     IMU::Preintegrated *mpImuPreintegratedFromLastKF;
 
-    // Queue of IMU measurements between frames
+    // IMU CONTRACT (docs/IMU_CONTRACT.md §1): FIFO of raw IMU samples. Sole
+    // producer GrabImuData; sole consumer PreintegrateIMU, which pops samples
+    // older than the current frame and leaves the first "future" sample as the
+    // next interval's left endpoint. Unbounded and unsorted: monotonic push
+    // timestamps are an UNCHECKED precondition. Cleared in exactly one place
+    // (Track(), timestamp-regression branch).
     std::list<IMU::Point> mlQueueImuData;
 
-    // Vector of IMU measurements from previous to current frame (to be filled by PreintegrateIMU)
+    // Scratch for PreintegrateIMU: tracking-thread-private, NOT guarded by
+    // mMutexImuQueue (only mlQueueImuData is). docs/IMU_CONTRACT.md §1.
     std::vector<IMU::Point> mvImuFromLastFrame;
+    // Guards mlQueueImuData only. Currently uncontended — every shipped driver
+    // pushes from the tracking thread; it permits an async producer in principle,
+    // but PreintegrateIMU reads size() unlocked (B2). docs/IMU_CONTRACT.md §1.
     std::mutex mMutexImuQueue;
 
     // Imu calibration parameters

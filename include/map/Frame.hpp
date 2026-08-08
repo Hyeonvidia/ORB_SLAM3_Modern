@@ -259,12 +259,19 @@ public:
     // Imu calibration
     IMU::Calib mImuCalib;
 
-    // Imu preintegration from last keyframe
+    // IMU CONTRACT (docs/IMU_CONTRACT.md §2): KF-to-frame preintegration. Never
+    // allocated by Frame — always an alias of Tracking::mpImuPreintegratedFromLastKF,
+    // published by PreintegrateIMU (NULL until then, and NULL forever on its early
+    // exits — consumers must not assume it is set). Frame never deletes it.
     IMU::Preintegrated* mpImuPreintegrated;
     KeyFrame* mpLastKeyFrame;
 
     // Pointer to previous frame
     Frame* mpPrevFrame;
+    // IMU CONTRACT (docs/IMU_CONTRACT.md §2-§3): frame-to-frame preintegration,
+    // new'd once per frame by PreintegrateIMU. No owner: ~Frame is commented out
+    // and the copy ctor aliases the pointer, so it is never deleted (leak B4,
+    // INHERITED). Consumed by PoseInertialOptimizationLastFrame / PredictStateIMU.
     IMU::Preintegrated* mpImuPreintegratedFrame;
 
     // Current and Next Frame id.

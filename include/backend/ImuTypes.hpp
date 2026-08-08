@@ -139,7 +139,13 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
-//Preintegration of Imu Measurements
+// Preintegration of IMU measurements.
+// OWNERSHIP (docs/IMU_CONTRACT.md §2-§3): instances are new'd by Tracking and
+// passed around as raw pointers with one owner at a time, except two documented
+// aliasing windows (stereo init; mono-init bail). Per-KeyFrame instances live
+// for the process lifetime; per-frame ones (Frame::mpImuPreintegratedFrame) are
+// never freed (INHERITED leak B4). Note IntegrateNewMeasurement takes NO lock
+// while SetNewBias/Get* lock mMutex — cross-thread race B12 (INHERITED).
 class Preintegrated
 {
     friend class boost::serialization::access;

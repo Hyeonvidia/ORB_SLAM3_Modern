@@ -355,6 +355,12 @@ public:
     KeyFrame* mPrevKF;
     KeyFrame* mNextKF;
 
+    // IMU CONTRACT (docs/IMU_CONTRACT.md §2): preintegration covering
+    // mPrevKF -> this. Ownership arrives from Tracking (this ctor copies the
+    // Frame's pointer; Tracking then re-points its member without delete).
+    // Never freed — KeyFrames are tombstoned, not deleted (docs/OWNERSHIP.md).
+    // Mutated in place by LocalMapping/Optimizer (Reintegrate/SetNewBias/
+    // MergePrevious). May be NULL if PreintegrateIMU early-exited (hazard B6).
     IMU::Preintegrated* mpImuPreintegrated;
     IMU::Calib mImuCalib;
 
