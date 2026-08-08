@@ -47,6 +47,11 @@ set(G2O_USE_CSPARSE OFF CACHE BOOL "" FORCE)
 set(G2O_USE_OPENGL OFF CACHE BOOL "" FORCE)
 set(BUILD_WITH_MARCH_NATIVE OFF CACHE BOOL "" FORCE)
 set(G2O_FAST_MATH OFF CACHE BOOL "" FORCE)
+# DO_SSE_AUTODETECT reads the BUILD HOST's /proc/cpuinfo to pick -msse* flags
+# at g2o's directory scope only — host-dependent and asymmetric with our core.
+# Inert on arm64 but pinned so an x86 build host cannot change the numerics
+# (docs/DIVERGENCES.md #17).
+set(DO_SSE_AUTODETECT OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/g2o)
 
 # ---- core library -----------------------------------------------------------
