@@ -2,7 +2,19 @@
 //
 //   equiv_runner <function> <fixture>
 //
-// Pairs: pose_optimization/mono_grid, inertial_optimization/imu_chain.
+// Pairs:
+//   pose_optimization          mono_grid         PoseOptimization
+//   inertial_optimization      imu_chain         InertialOptimization(Rwg,s)
+//   inertial_optimization_full imu_chain_bias    InertialOptimization(11 args)
+//   inertial_optimization_bias imu_chain_metric  InertialOptimization(bg,ba)
+//   pose_inertial_lastkf       mono_imu_link     PoseInertialOptimization-
+//                                                LastKeyFrame
+//
+// Fixture diagnostics (stderr, opt-in): EQUIV_INERTIAL_DEBUG=1 (scale/gravity
+// overload), EQUIV_FULL_DEBUG=1 and EQUIV_BIAS_DEBUG=1 (the two P6-4 bias
+// overloads: chi2 at the analytic optimum, a GT-initialized fixed-point probe
+// and a chained-call trace — the evidence behind the LM-stall gates recorded
+// in compare.py).
 //
 // The requested function is run TWICE, each time on an independently built
 // fixture, and both full records are printed to stdout delimited by
@@ -259,6 +271,279 @@ std::string RunInertialOptimizationOnce(const std::string& function,
                                                  fx, scale, Rwg);
 }
 
+// P6-4 prior weights.
+//
+// (a) the 11-argument IMU-init overload runs with the PRODUCTION first-init
+//     weights (LocalMapping.cpp:186 — InitializeIMU(1e2, 1e10)). priorA = 1e10
+//     pins the accelerometer bias to zero, which is exactly what regularizes
+//     the (scale, gravity tilt, u0, ba) valley documented in
+//     EquivFixtures.cpp; the kFullInit fixture therefore injects ba_true = 0
+//     and keeps a nonzero analytic GT on bg / scale / gravity direction.
+//     priorG = 1e2 against a gyro-bias information block of ~1e8 shrinks bg by
+//     ~1e-6 relative, i.e. ~3e-9 absolute — three orders below the GT gate.
+//
+// (b) the bias-only overload pins gravity and scale internally, so nothing is
+//     degenerate and BOTH biases have a genuine nonzero analytic optimum — but
+//     only if the zero-mean prior is weak: production's priorA = 1e6 is the
+//     same order as this fixture's accelerometer information (~5e5) and would
+//     shrink ba by ~2/3, destroying the analytic GT. 1e-3 keeps the shrinkage
+//     ~1e-9 while staying NON-ZERO so the
+//         if (priorG != 0.f) solver->setUserLambdaInit(1e3)
+//     branch (Optimizer.cpp:3246 always sets it here, 3063 in the full
+//     overload) stays on the production path. Recorded in the record header.
+constexpr double kEquivFullPriorG = 1e2;
+constexpr double kEquivFullPriorA = 1e10;
+constexpr double kEquivBiasPriorG = 1e-3;
+constexpr double kEquivBiasPriorA = 1e-3;
+
+// Total EdgeInertialGS chi2 of the chain at an arbitrary probe state, built
+// from directly instantiated vertices/edges (no g2o solver involved), so it is
+// version-agnostic. Used by the EQUIV_FULL_DEBUG diagnostics to tell
+// "optimizer stopped short" from "GT is not the minimum".
+double InertialGsChi2(equiv::ImuChainFixture& fx, double s,
+                      const Eigen::Matrix3d& RwgIn,
+                      const Eigen::Vector3d& bg, const Eigen::Vector3d& ba,
+                      const std::vector<Eigen::Vector3d>& vels)
+{
+    double total = 0.0;
+    for (int k = 1; k < equiv::ImuChainFixture::kNumKFs; k++) {
+        auto* VP1 = new ORB_SLAM3::VertexPose(fx.kf(k - 1));
+        auto* VV1 = new ORB_SLAM3::VertexVelocity(fx.kf(k - 1));
+        auto* VG = new ORB_SLAM3::VertexGyroBias(fx.kf(0));
+        auto* VA = new ORB_SLAM3::VertexAccBias(fx.kf(0));
+        auto* VP2 = new ORB_SLAM3::VertexPose(fx.kf(k));
+        auto* VV2 = new ORB_SLAM3::VertexVelocity(fx.kf(k));
+        Eigen::Matrix3d Rwg = RwgIn;
+        auto* VGD = new ORB_SLAM3::VertexGDir(Rwg);
+        auto* VS = new ORB_SLAM3::VertexScale(s);
+        VV1->setEstimate(vels[k - 1]);
+        VV2->setEstimate(vels[k]);
+        VG->setEstimate(bg);
+        VA->setEstimate(ba);
+        auto* e = new ORB_SLAM3::EdgeInertialGS(fx.preints[k].get());
+        e->setVertex(0, VP1); e->setVertex(1, VV1); e->setVertex(2, VG);
+        e->setVertex(3, VA);  e->setVertex(4, VP2); e->setVertex(5, VV2);
+        e->setVertex(6, VGD); e->setVertex(7, VS);
+        e->computeError();
+        total += e->chi2();
+        delete e;
+        delete VP1; delete VV1; delete VG; delete VA;
+        delete VP2; delete VV2; delete VGD; delete VS;
+    }
+    return total;
+}
+
+std::vector<Eigen::Vector3d> StoredVelocities(const equiv::ImuChainFixture& fx)
+{
+    std::vector<Eigen::Vector3d> v;
+    for (int k = 0; k < equiv::ImuChainFixture::kNumKFs; k++)
+        v.push_back(fx.kf(k)->GetVelocity().cast<double>());
+    return v;
+}
+
+// EQUIV_FULL_DEBUG=1: is the 11-argument overload stopping short of the
+// analytic optimum, or is the analytic optimum not the minimum?
+void DebugInertialFull(double priorG, double priorA)
+{
+    equiv::ImuChainFixture fx =
+        equiv::MakeImuChainFixture(equiv::ImuChainVariant::kFullInit);
+
+    const std::vector<Eigen::Vector3d> velGT = StoredVelocities(fx);
+    const double chi2GT = InertialGsChi2(fx, fx.sTrue, fx.RwgTrue, fx.bgTrue,
+                                         fx.baTrue, velGT);
+    std::fprintf(stderr, "DEBUG(full) chi2 at analytic GT = %.6e\n", chi2GT);
+
+    // GT-init fixed-point probe: does the analytic optimum stay put?
+    {
+        equiv::ImuChainFixture fg =
+            equiv::MakeImuChainFixture(equiv::ImuChainVariant::kFullInit);
+        const ORB_SLAM3::IMU::Bias bT(
+            static_cast<float>(fg.baTrue.x()), static_cast<float>(fg.baTrue.y()),
+            static_cast<float>(fg.baTrue.z()), static_cast<float>(fg.bgTrue.x()),
+            static_cast<float>(fg.bgTrue.y()), static_cast<float>(fg.bgTrue.z()));
+        for (int k = 0; k < equiv::ImuChainFixture::kNumKFs; k++)
+            fg.kf(k)->SetNewBias(bT);
+        Eigen::Matrix3d Rwg = fg.RwgTrue;
+        double scale = fg.sTrue;
+        Eigen::Vector3d bg = fg.bgTrue, ba = fg.baTrue;
+        Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(9, 9);
+        ORB_SLAM3::Optimizer::InertialOptimization(
+            fg.map.get(), Rwg, scale, bg, ba, true, cov, false, false,
+            static_cast<float>(priorG), static_cast<float>(priorA));
+        const double ang = std::acos(std::min(
+            1.0, (Rwg * Eigen::Vector3d(0, 0, -1)).dot(fg.gDirTrue)));
+        std::fprintf(stderr,
+                     "DEBUG(full) GT-init: s=%.9f (drift %.3e) gdir drift "
+                     "%.3e rad |dbg|=%.3e |dba|=%.3e\n",
+                     scale, std::abs(scale - fg.sTrue), ang,
+                     (bg - fg.bgTrue).norm(), (ba - fg.baTrue).norm());
+    }
+
+    Eigen::Matrix3d Rwg = Eigen::Matrix3d::Identity();
+    double scale = 1.0;
+    Eigen::Vector3d bg = Eigen::Vector3d::Zero();
+    Eigen::Vector3d ba = Eigen::Vector3d::Zero();
+    Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(9, 9);
+    for (int c = 1; c <= 8; c++) {
+        ORB_SLAM3::Optimizer::InertialOptimization(
+            fx.map.get(), Rwg, scale, bg, ba, true, cov, false, false,
+            static_cast<float>(priorG), static_cast<float>(priorA));
+        const double ang = std::acos(std::min(
+            1.0, (Rwg * Eigen::Vector3d(0, 0, -1)).dot(fx.gDirTrue)));
+        const double chi2 = InertialGsChi2(fx, scale, Rwg, bg, ba,
+                                           StoredVelocities(fx));
+        std::fprintf(stderr,
+                     "DEBUG(full) call %d: s=%.9f (err %.3e) gdir err %.3e rad "
+                     "|dbg|=%.3e |dba|=%.3e chi2=%.6e\n",
+                     c, scale, std::abs(scale - fx.sTrue), ang,
+                     (bg - fx.bgTrue).norm(), (ba - fx.baTrue).norm(), chi2);
+    }
+}
+
+// P6-4 (a) — InertialOptimization(Map*, Rwg, scale, bg, ba, bMono,
+// covInertial, bFixedVel, bGauss, priorG, priorA).
+std::string RunInertialFullOnce(const std::string& function,
+                                const std::string& fixture)
+{
+    if (std::getenv("EQUIV_FULL_DEBUG"))
+        DebugInertialFull(kEquivFullPriorG, kEquivFullPriorA);
+
+    equiv::ImuChainFixture fx =
+        equiv::MakeImuChainFixture(equiv::ImuChainVariant::kFullInit);
+
+    Eigen::Matrix3d Rwg = Eigen::Matrix3d::Identity();
+    double scale = 1.0;
+    Eigen::Vector3d bg = Eigen::Vector3d::Zero();
+    Eigen::Vector3d ba = Eigen::Vector3d::Zero();
+    // Never read or written by the overload (Optimizer.cpp:3046-3228) but part
+    // of the signature; sized as LocalMapping does.
+    Eigen::MatrixXd covInertial = Eigen::MatrixXd::Zero(9, 9);
+
+    const std::string inputDump =
+        equiv::SerializeInertialOptimizationInput(fx, Rwg, scale);
+    const std::string inputHash = equiv::Sha256Hex(inputDump);
+
+    ORB_SLAM3::Optimizer::InertialOptimization(
+        fx.map.get(), Rwg, scale, bg, ba, /*bMono=*/true, covInertial,
+        /*bFixedVel=*/false, /*bGauss=*/false,
+        static_cast<float>(kEquivFullPriorG),
+        static_cast<float>(kEquivFullPriorA));
+
+    return equiv::MakeInertialFullRecord(function, fixture, inputHash, fx,
+                                         kEquivFullPriorG, kEquivFullPriorA,
+                                         scale, Rwg, bg, ba);
+}
+
+// EQUIV_BIAS_DEBUG=1: same question for the bias-only overload — is the
+// residual bias error the fixture's float32 floor or a solver stop?
+void DebugInertialBias(double priorG, double priorA)
+{
+    equiv::ImuChainFixture fx =
+        equiv::MakeImuChainFixture(equiv::ImuChainVariant::kBiasOnly);
+    const ORB_SLAM3::IMU::Bias bT(
+        static_cast<float>(fx.baTrue.x()), static_cast<float>(fx.baTrue.y()),
+        static_cast<float>(fx.baTrue.z()), static_cast<float>(fx.bgTrue.x()),
+        static_cast<float>(fx.bgTrue.y()), static_cast<float>(fx.bgTrue.z()));
+
+    const double chi2GT = InertialGsChi2(fx, fx.sTrue, fx.RwgTrue, fx.bgTrue,
+                                         fx.baTrue, StoredVelocities(fx));
+    std::fprintf(stderr, "DEBUG(bias) chi2 at analytic GT = %.6e\n", chi2GT);
+
+    {   // GT-init fixed-point probe
+        equiv::ImuChainFixture fg =
+            equiv::MakeImuChainFixture(equiv::ImuChainVariant::kBiasOnly);
+        for (int k = 0; k < equiv::ImuChainFixture::kNumKFs; k++)
+            fg.kf(k)->SetNewBias(bT);
+        Eigen::Vector3d bg = fg.bgTrue, ba = fg.baTrue;
+        ORB_SLAM3::Optimizer::InertialOptimization(
+            fg.map.get(), bg, ba, static_cast<float>(priorG),
+            static_cast<float>(priorA));
+        std::fprintf(stderr,
+                     "DEBUG(bias) GT-init: |dbg|=%.3e |dba|=%.3e chi2=%.6e\n",
+                     (bg - fg.bgTrue).cwiseAbs().maxCoeff(),
+                     (ba - fg.baTrue).cwiseAbs().maxCoeff(),
+                     InertialGsChi2(fg, fg.sTrue, fg.RwgTrue, bg, ba,
+                                    StoredVelocities(fg)));
+    }
+
+    Eigen::Vector3d bg = Eigen::Vector3d::Zero();
+    Eigen::Vector3d ba = Eigen::Vector3d::Zero();
+    for (int c = 1; c <= 5; c++) {
+        ORB_SLAM3::Optimizer::InertialOptimization(
+            fx.map.get(), bg, ba, static_cast<float>(priorG),
+            static_cast<float>(priorA));
+        std::fprintf(stderr,
+                     "DEBUG(bias) call %d: |dbg|=%.3e |dba|=%.3e chi2=%.6e\n",
+                     c, (bg - fx.bgTrue).cwiseAbs().maxCoeff(),
+                     (ba - fx.baTrue).cwiseAbs().maxCoeff(),
+                     InertialGsChi2(fx, fx.sTrue, fx.RwgTrue, bg, ba,
+                                    StoredVelocities(fx)));
+    }
+}
+
+// P6-4 (b) — InertialOptimization(Map*, bg, ba, priorG, priorA).
+std::string RunInertialBiasOnce(const std::string& function,
+                                const std::string& fixture)
+{
+    if (std::getenv("EQUIV_BIAS_DEBUG"))
+        DebugInertialBias(kEquivBiasPriorG, kEquivBiasPriorA);
+
+    equiv::ImuChainFixture fx =
+        equiv::MakeImuChainFixture(equiv::ImuChainVariant::kBiasOnly);
+
+    Eigen::Vector3d bg = Eigen::Vector3d::Zero();
+    Eigen::Vector3d ba = Eigen::Vector3d::Zero();
+
+    // This overload pins gravity/scale internally; the dump records the values
+    // it hard-codes so the input fingerprint stays complete.
+    const Eigen::Matrix3d Rwg0 = Eigen::Matrix3d::Identity();
+    const std::string inputDump =
+        equiv::SerializeInertialOptimizationInput(fx, Rwg0, 1.0);
+    const std::string inputHash = equiv::Sha256Hex(inputDump);
+
+    ORB_SLAM3::Optimizer::InertialOptimization(
+        fx.map.get(), bg, ba, static_cast<float>(kEquivBiasPriorG),
+        static_cast<float>(kEquivBiasPriorA));
+
+    return equiv::MakeInertialBiasRecord(function, fixture, inputHash, fx,
+                                         kEquivBiasPriorG, kEquivBiasPriorA,
+                                         bg, ba);
+}
+
+// P6-4 (TASK 2) — PoseInertialOptimizationLastKeyFrame.
+std::string RunPoseInertialLastKfOnce(const std::string& function,
+                                      const std::string& fixture)
+{
+    equiv::PoseInertialFixture fx = equiv::MakePoseInertialFixture();
+
+    const std::string inputDump = equiv::SerializePoseInertialInput(fx);
+    const std::string inputHash = equiv::Sha256Hex(inputDump);
+
+    const int inliers =
+        ORB_SLAM3::Optimizer::PoseInertialOptimizationLastKeyFrame(
+            &fx.frame, /*bRecInit=*/false);
+
+    if (inliers != fx.expectedInliers) {
+        std::fprintf(stderr,
+                     "WARNING: inlier count %d != designed %d "
+                     "(fixture margin violated?)\n",
+                     inliers, fx.expectedInliers);
+    }
+    if (!fx.frame.mpcpi) {
+        std::fprintf(stderr, "FATAL: mpcpi not produced\n");
+        std::abort();
+    }
+
+    const std::string rec = equiv::MakePoseInertialRecord(function, fixture,
+                                                          inputHash, fx,
+                                                          inliers);
+    // The optimizer allocates mpcpi and the Frame never owns it (see
+    // EquivFixtures.hpp); free it here now that the Hessian is serialized.
+    delete fx.frame.mpcpi;
+    fx.frame.mpcpi = nullptr;
+    return rec;
+}
+
 }  // namespace
 
 int main(int argc, char** argv)
@@ -266,8 +551,11 @@ int main(int argc, char** argv)
     if (argc != 3) {
         std::fprintf(stderr,
                      "usage: %s <function> <fixture>\n"
-                     "  pairs: pose_optimization mono_grid\n"
-                     "         inertial_optimization imu_chain\n",
+                     "  pairs: pose_optimization           mono_grid\n"
+                     "         inertial_optimization       imu_chain\n"
+                     "         inertial_optimization_full  imu_chain_bias\n"
+                     "         inertial_optimization_bias  imu_chain_metric\n"
+                     "         pose_inertial_lastkf        mono_imu_link\n",
                      argv[0]);
         return 2;
     }
@@ -281,6 +569,18 @@ int main(int argc, char** argv)
     } else if (function == "inertial_optimization" && fixture == "imu_chain") {
         rec1 = RunInertialOptimizationOnce(function, fixture);
         rec2 = RunInertialOptimizationOnce(function, fixture);
+    } else if (function == "inertial_optimization_full" &&
+               fixture == "imu_chain_bias") {
+        rec1 = RunInertialFullOnce(function, fixture);
+        rec2 = RunInertialFullOnce(function, fixture);
+    } else if (function == "inertial_optimization_bias" &&
+               fixture == "imu_chain_metric") {
+        rec1 = RunInertialBiasOnce(function, fixture);
+        rec2 = RunInertialBiasOnce(function, fixture);
+    } else if (function == "pose_inertial_lastkf" &&
+               fixture == "mono_imu_link") {
+        rec1 = RunPoseInertialLastKfOnce(function, fixture);
+        rec2 = RunPoseInertialLastKfOnce(function, fixture);
     } else {
         std::fprintf(stderr, "unknown function/fixture: %s %s\n",
                      function.c_str(), fixture.c_str());

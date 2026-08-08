@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
 # P6 backend-equivalence harness driver (docs/P6_DESIGN.md §B).
 #
-# P6-3 scope: BOTH variants x BOTH function/fixture pairs.
+# P6-4 scope: BOTH variants x ALL five function/fixture pairs.
 #   1. configure + build tests/backend_equiv twice in the dev container:
 #        EQUIV_BACKEND=vendored -> /build/equiv_vendored (frozen golden
 #                                  reference_backend + Thirdparty/g2o)
 #        EQUIV_BACKEND=modern   -> /build/equiv_modern (live src/backend +
 #                                  third_party/g2o @ 20241228_git)
-#   2. run the function matrix in each:
-#        pose_optimization      mono_grid
-#        inertial_optimization  imu_chain
-#      (each invocation prints TWO records from independently built fixtures)
+#   2. run the function matrix in each (PAIRS below); every invocation prints
+#      TWO records built from independently constructed fixtures
 #   3. self-determinism gate per variant x function: the two records must be
 #      byte-identical (SHA256 printed as evidence)
 #   4. compare.py --self-test on each record (comparator sanity)
 #   5. per-function fixture contract:
-#        pose_optimization:     inlier count == designed 36 of 40
-#        inertial_optimization: compare.py --gt-check — analytic GT recovery
-#                               (scale rel < 1e-7, gravity dir < 1e-7 rad)
+#        pose_optimization:          inlier count == designed 36 of 40
+#        every other pair:           compare.py --gt-check — analytic GT
+#                                    recovery (per-record gates, see compare.py)
 #   6. CROSS-VARIANT GATE per function: compare.py vendored vs modern
 #      (tolerance table in compare.py — design §B.2 layer 1)
 #
@@ -31,9 +29,16 @@ mkdir -p "$OUT_DIR"
 
 cd "$REPO_ROOT"
 
-# function matrix (fixtures are paired 1:1 in the [$V run] block below:
-# pose_optimization/mono_grid, inertial_optimization/imu_chain)
-FUNCTIONS=(pose_optimization inertial_optimization)
+# function:fixture matrix (1:1 pairing; the runner rejects any other combo)
+PAIRS=(
+  "pose_optimization:mono_grid"
+  "inertial_optimization:imu_chain"
+  "inertial_optimization_full:imu_chain_bias"
+  "inertial_optimization_bias:imu_chain_metric"
+  "pose_inertial_lastkf:mono_imu_link"
+)
+FUNCTIONS=()
+for P in "${PAIRS[@]}"; do FUNCTIONS+=("${P%%:*}"); done
 
 sha256() {  # portable: macOS shasum / Linux sha256sum
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d" " -f1
@@ -59,19 +64,20 @@ run_variant() {  # $1 = vendored | modern
   ' </dev/null
 
   echo ">> [$V run] function matrix"
-  docker compose run --rm dev bash -c '
-    set -euo pipefail
-    /build/equiv_'"$V"'/equiv_runner pose_optimization mono_grid \
-        > /workspace/tests/backend_equiv/out/records_'"$V"'_pose_optimization.txt
-    /build/equiv_'"$V"'/equiv_runner inertial_optimization imu_chain \
-        > /workspace/tests/backend_equiv/out/records_'"$V"'_inertial_optimization.txt
-  ' </dev/null
+  local CMDS=""
+  local P FN FX
+  for P in "${PAIRS[@]}"; do
+    FN="${P%%:*}"; FX="${P##*:}"
+    CMDS+="/build/equiv_${V}/equiv_runner ${FN} ${FX} > /workspace/tests/backend_equiv/out/records_${V}_${FN}.txt"$'\n'
+  done
+  docker compose run --rm dev bash -c "set -euo pipefail
+$CMDS" </dev/null
 
-  local FN
   for FN in "${FUNCTIONS[@]}"; do
     local RECORDS="$OUT_DIR/records_${V}_${FN}.txt"
     local REC1="$OUT_DIR/record_${V}_${FN}_run1.txt"
     local REC2="$OUT_DIR/record_${V}_${FN}_run2.txt"
+    rm -f "$REC1" "$REC2"
 
     # Split the two BEGIN_RECORD/END_RECORD blocks into separate files.
     awk -v r1="$REC1" -v r2="$REC2" '
@@ -107,7 +113,7 @@ run_variant() {  # $1 = vendored | modern
         fi
         echo "   OK: inliers = $INLIERS"
         ;;
-      inertial_optimization)
+      *)
         echo ">> [$V $FN] analytic GT recovery gate (compare.py --gt-check)"
         python3 "$SCRIPT_DIR/compare.py" --gt-check "$REC1"
         ;;

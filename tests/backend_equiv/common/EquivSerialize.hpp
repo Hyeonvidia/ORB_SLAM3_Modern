@@ -82,6 +82,58 @@ std::string MakeInertialOptimizationRecord(const std::string& function,
                                            double scale,
                                            const Eigen::Matrix3d& Rwg);
 
+// ---------------------------------------------------------------------------
+// P6-4 (a): InertialOptimization(Map*, Rwg, scale, bg, ba, bMono, covInertial,
+// bFixedVel, bGauss, priorG, priorA) — the full IMU-init overload.
+// RESULT adds bg/ba (double, %.17g) to the scale/Rwg rows; the per-KF
+// velocities are now OPTIMIZED outputs (VertexVelocity is free), stored back
+// as float by the optimizer.
+// Header carries GT_scale / GT_gdir / GT_bg / GT_ba plus the prior weights
+// actually used, since the priors bias the analytic optimum (see run_equiv.sh
+// / compare.py notes).
+std::string MakeInertialFullRecord(const std::string& function,
+                                   const std::string& fixture,
+                                   const std::string& inputHash,
+                                   const ImuChainFixture& fx,
+                                   double priorG, double priorA,
+                                   double scale, const Eigen::Matrix3d& Rwg,
+                                   const Eigen::Vector3d& bg,
+                                   const Eigen::Vector3d& ba);
+
+// P6-4 (b): InertialOptimization(Map*, bg, ba, priorG, priorA) — the bias-only
+// refinement overload (gravity pinned to identity, scale pinned to 1.0).
+std::string MakeInertialBiasRecord(const std::string& function,
+                                   const std::string& fixture,
+                                   const std::string& inputHash,
+                                   const ImuChainFixture& fx,
+                                   double priorG, double priorA,
+                                   const Eigen::Vector3d& bg,
+                                   const Eigen::Vector3d& ba);
+
+// ---------------------------------------------------------------------------
+// P6-4 (TASK 2): PoseInertialOptimizationLastKeyFrame.
+
+// Canonical dump of everything the function reads: Frame geometry and initial
+// IMU state, per-index observation (world point, undistorted keypoint, octave,
+// mvuRight, mTrackDepth), the inverse level-sigma table, the fixed KeyFrame
+// state, and the full preintegration (including the 15x15 covariance, because
+// blocks (9,9) and (12,12) drive the EdgeGyroRW / EdgeAccRW information).
+std::string SerializePoseInertialInput(const PoseInertialFixture& fx);
+
+// RESULT section: returned inlier count, optimized Frame pose / velocity /
+// bias (all read back through the float storage path the optimizer writes),
+// per-index outlier flags, and the 15x15 ConstraintPoseImu Hessian one row per
+// line — the GetHessian marginalization contract (PROJECT_PLAN risk #4).
+std::string SerializePoseInertialResult(int inliers,
+                                        const ORB_SLAM3::Frame& F);
+
+// Full record; GT_pose_* / GT_vel header lines carry the analytic optimum.
+std::string MakePoseInertialRecord(const std::string& function,
+                                   const std::string& fixture,
+                                   const std::string& inputHash,
+                                   const PoseInertialFixture& fx,
+                                   int inliers);
+
 }  // namespace equiv
 
 #endif  // EQUIV_SERIALIZE_HPP

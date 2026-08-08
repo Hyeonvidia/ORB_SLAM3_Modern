@@ -14,6 +14,8 @@
 #include "camera/GeometricCamera.hpp"
 #include "backend/ImuTypes.hpp"
 
+#include <sophus/se3.hpp>
+
 #include <memory>
 #include <new>
 #include <vector>
@@ -96,6 +98,41 @@ private:
     int count_;
 };
 
+// P6-4: which distortion the imu_chain fixture bakes into the stored state,
+// i.e. which InertialOptimization overload the fixture is built for.
+//
+//   kScaleGravity — P6-3 pair, InertialOptimization(Map*, Rwg&, scale&).
+//                   States 1/s_true-scaled (s_true = 1.1) in a ~10 deg
+//                   gravity-tilted world frame; TRUE bias is zero.
+//   kFullInit     — P6-4 (a), the 11-argument IMU-init overload. Same
+//                   scale/gravity distortion PLUS a known bias injected into
+//                   the raw measurements (see below).
+//   kBiasOnly     — P6-4 (b), InertialOptimization(Map*, bg, ba, priorG,
+//                   priorA). That overload PINS VertexGDir at identity and
+//                   VertexScale at 1.0 (Optimizer.cpp:3295-3302), so the
+//                   fixture must store the METRIC trajectory (s_true = 1.0)
+//                   in an UPRIGHT world frame (g = (0,0,-G)); the only thing
+//                   left to recover is the injected bias.
+//
+// Bias injection (kFullInit / kBiasOnly), design §B 1.2 trick 2 extended:
+//   * raw measurements carry the bias:  a_meas = R_wb^T (a_w - g) + ba_true,
+//                                       w_meas = w_body + bg_true
+//   * the Preintegrated object is constructed with linearization bias
+//     b = (ba_true, bg_true), so IntegrateNewMeasurement subtracts exactly
+//     the injected bias and dR/dV/dP describe the TRUE (bias-free) motion
+//   * KF states are back-derived from those same deltas, so the edge residual
+//     at bias = b_true is a single float quantization — NOT a first-order
+//     bias-correction truncation. b_true is therefore the exact minimizer of
+//     the inertial term, giving an analytic GT for bg/ba.
+//   * KF stored bias remains ZERO, which is what VertexGyroBias/VertexAccBias
+//     read as their initial estimate — the optimizer starts at 0 and must
+//     travel to b_true.
+enum class ImuChainVariant {
+    kScaleGravity,
+    kFullInit,
+    kBiasOnly,
+};
+
 // ImuKfChainFixture (design §B 1.2, class C) — input for
 // Optimizer::InertialOptimization(Map*, Rwg&, scale&) (scale/gravity variant).
 //
@@ -150,9 +187,24 @@ struct ImuChainFixture {
     std::vector<std::unique_ptr<ORB_SLAM3::IMU::Preintegrated>> preints;
     std::unique_ptr<KfChainBlock> kfBlock;
 
+    ImuChainVariant variant = ImuChainVariant::kScaleGravity;
+
     // Ground truth the optimizer must recover.
     double sTrue = 0.0;
     Eigen::Vector3d gDirTrue = Eigen::Vector3d::Zero();  // unit, map frame
+    Eigen::Vector3d bgTrue = Eigen::Vector3d::Zero();    // rad/s
+    Eigen::Vector3d baTrue = Eigen::Vector3d::Zero();    // m/s^2
+
+    // Irreducible EdgeInertialGS residual AT the analytic optimum, measured by
+    // the fixture itself in plain double Eigen. It is not zero because
+    // KeyFrame::SetPose / SetVelocity store the state as float32: the last
+    // rounding of each derived state survives into the residual. The GT gates
+    // in compare.py are DERIVED from these numbers (a residual dr in the
+    // ev/er block is absorbed by a bias error dr/|J| with |JVa| = |JRg| = dT),
+    // which is why they are emitted into the record header.
+    double residErMax = 0.0;   // rad
+    double residEvMax = 0.0;   // m/s
+    double residEpMax = 0.0;   // m
     // Debug affordances (EQUIV_INERTIAL_DEBUG path in EquivMain): the full
     // perturbation rotation and gravity vector behind gDirTrue.
     Eigen::Matrix3d RwgTrue = Eigen::Matrix3d::Identity();
@@ -170,7 +222,78 @@ struct ImuChainFixture {
 // Builds the deterministic imu_chain fixture described above. Every call
 // constructs a fully independent fixture (fresh Map/KeyFrames/Preintegrated/
 // camera) so two invocations exercise the self-determinism gate end to end.
-ImuChainFixture MakeImuChainFixture();
+// The default argument keeps the P6-3 pair byte-identical.
+ImuChainFixture MakeImuChainFixture(
+    ImuChainVariant variant = ImuChainVariant::kScaleGravity);
+
+// PoseInertialFixture (design §B 1.1 + §B class B) — input for
+// Optimizer::PoseInertialOptimizationLastKeyFrame(Frame*, bool).
+//
+// mono_imu_link layout:
+//   * ONE KeyFrame (all four of its vertices are fixed in the optimizer) at
+//     t = 0 and ONE Frame at t = 0.1 s, linked by a 200 Hz preintegration
+//     (20 samples) of the SAME constant-acceleration / constant-body-rate
+//     model the imu_chain fixture uses. GT bias is zero; the frame's bias
+//     vertices are tied to the KF's fixed zero bias by EdgeGyroRW/EdgeAccRW
+//     whose information is C(9:11,9:11)^-1 / C(12:14,12:14)^-1.
+//   * the Frame's GT state is back-derived from the discrete recursion
+//     evaluated on the READ-BACK (float-quantized) KeyFrame state, exactly as
+//     in MakeImuChainFixture, with s = 1 and g = (0,0,-G) — EdgeInertial
+//     hard-codes that gravity (G2oTypes.cpp:498) — so the inertial residual
+//     at GT is a single float quantization.
+//   * 40 MapPoints on the same 8x5 staggered-depth grid as mono_grid,
+//     projected exactly through the Frame's GT camera pose, of which
+//     kPoseInertialOutliers are displaced by (+25, -20) px.
+//     Margin rule (design §B 1.1): mTrackDepth is the true 3.0-3.6 m depth,
+//     so every observation takes the bClose branch and the active thresholds
+//     are chi2close = 1.5*{12, 7.5, 5.991, 5.991} = {18, 11.25, 8.99, 8.99}.
+//     Designed inlier chi2 ~ 0, designed outlier chi2 >= 1025/1.2^14 ~ 79.8:
+//     no edge lands within a decade of any of the four round thresholds, so
+//     the 4-round inlier reclassification is a deterministic discrete
+//     contract in both harness variants.
+//   * 37 designed inliers >= 30, so the "recover not too bad points" salvage
+//     branch (Optimizer.cpp:4800) is deterministically NOT taken and the
+//     return value is nInitialCorrespondences - nBad = 40 - 3 = 37.
+//   * initial Frame state = GT perturbed by ~1 deg / 3 cm / 5 cm/s, i.e. a
+//     tracking-realistic IMU prediction error.
+//   * mImuCalib is assigned BEFORE SetPose on the KeyFrame (KeyFrame::SetPose
+//     only computes mOwb when mImuCalib.mbIsSet — design §B fixture trap) and
+//     before SetImuPoseVelocity on the Frame (which reads mImuCalib.mTcb to
+//     build mTcw).
+//
+// NOTE: PoseInertialOptimizationLastKeyFrame assigns a freshly allocated
+// ConstraintPoseImu to frame.mpcpi and never frees the previous one. The
+// fixture leaves mpcpi null; the CALLER owns the object the optimizer stores
+// there (EquivMain deletes it after serializing the Hessian).
+struct PoseInertialFixture {
+    ORB_SLAM3::Frame frame;
+
+    std::unique_ptr<ORB_SLAM3::GeometricCamera> camera;
+    std::vector<std::unique_ptr<ORB_SLAM3::MapPoint>> mapPoints;
+    std::unique_ptr<KfChainBlock> kfBlock;   // exactly one KeyFrame
+    std::unique_ptr<ORB_SLAM3::IMU::Preintegrated> preint;
+
+    int expectedInliers = 0;
+    std::vector<int> outlierIndices;
+
+    // Ground truth the optimizer must recover (analytic, see above).
+    Sophus::SE3d TcwGT;                                  // camera pose
+    Eigen::Vector3d velGT = Eigen::Vector3d::Zero();     // world velocity
+
+    ORB_SLAM3::KeyFrame* kf() const { return kfBlock->at(0); }
+
+    PoseInertialFixture() = default;
+    PoseInertialFixture(const PoseInertialFixture&) = delete;
+    PoseInertialFixture& operator=(const PoseInertialFixture&) = delete;
+    PoseInertialFixture(PoseInertialFixture&&) = default;
+    PoseInertialFixture& operator=(PoseInertialFixture&&) = default;
+};
+
+// Number of deliberate visual outliers in mono_imu_link (of 40 points).
+constexpr int kPoseInertialOutliers = 3;
+
+// Builds the deterministic mono_imu_link fixture described above.
+PoseInertialFixture MakePoseInertialFixture();
 
 }  // namespace equiv
 
