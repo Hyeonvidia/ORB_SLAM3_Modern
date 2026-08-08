@@ -20,7 +20,11 @@
 #include "backend/Optimizer.hpp"
 
 
+#include <cmath>
 #include <complex>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 
 #include <Eigen/StdVector>
 #include <Eigen/Dense>
@@ -64,6 +68,108 @@
 
 namespace ORB_SLAM3
 {
+
+// -----------------------------------------------------------------------------
+// Failure observability for the g2o backend (docs/DIVERGENCES.md items 13 & 15).
+//
+// OBSERVABILITY ONLY: nothing below changes an estimate, an iteration count, a
+// threshold or the control flow. It only reads what optimize() reported and
+// prints to std::cerr (System forces Verbose::VERBOSITY_QUIET, so
+// Verbose::PrintMess would be swallowed; stderr also keeps the
+// tests/backend_equiv record stream on stdout clean).
+//
+// RETURN-VALUE SEMANTICS of SparseOptimizer::optimize() at the pinned tag
+// third_party/g2o @ 20241228_git (core/sparse_optimizer.cpp:393-455):
+//
+//   < 0  (only ever -1)  HARD FAILURE, zero iterations ran, estimates are
+//        bit-identical to the input. Two causes:
+//          * `_ivMap.size() == 0` — no active vertices (initializeOptimization()
+//            not called, or it selected an empty active set);
+//          * `_algorithm->init(online)` returned false.
+//        Both log via G2O_WARN/G2O_ERROR, which G2O_USE_LOGGING=OFF compiles to
+//        a no-op — hence item 15: without this helper the caller writes the
+//        UNCHANGED estimates back into the map and reports success.
+//
+//   == 0  Two disjoint causes, distinguished below:
+//          (a) the loop body never executed — `iterations <= 0`, or
+//              `terminate()` was already true on entry, i.e. the caller's
+//              force-stop flag was set before the call. This is a LEGITIMATE
+//              abort (LocalMapping raises that flag whenever a new KF arrives)
+//              and must not warn;
+//          (b) the last executed iteration returned SolverResult::Fail
+//              (`optimization_algorithm.h:48`, Fail = -1) — CCS structure build
+//              failure in LM/GN, or a failed linear solve in GaussNewton. Real
+//              failure -> warn.
+//        We separate them by asking the optimizer whether its force-stop flag is
+//        currently raised; when it is, we stay silent (conservative: a genuine
+//        Fail that coincides with a stop request is not reported, which is the
+//        right trade for a per-KF path).
+//
+//   > 0  The number of iterations that actually ran. LESS THAN REQUESTED IS
+//        NORMAL and must NOT warn: it is either the restored ORB-SLAM LM
+//        early-stop (src/backend/OrbLevenberg.cpp -> SolverResult::Terminate,
+//        item 10) or a mid-run force-stop. Never a failure indication.
+//
+// LIMITATION worth stating, because it is exactly item 13: an Eigen
+// SimplicialLLT refusal inside LM does NOT surface in the return value at all.
+// `_solver.solve()` returning false is treated by LM as a rejected trial step
+// (tempChi = DBL_MAX, lambda inflated); after `maxTrialsAfterFailure` trials LM
+// returns Terminate, so optimize() returns a POSITIVE count while the estimate
+// never moved. The return code cannot see it — only a chi2 comparison can,
+// which is why the two OptimizeEssentialGraph overloads (the setUserLambdaInit
+// (1e-16) BlockSolver_7_3 pose graphs, run once per loop closure) additionally
+// bracket the call with ReportIfPoseGraphStalled().
+// -----------------------------------------------------------------------------
+namespace
+{
+
+// Calls optimize() and reports a failure-indicating return on std::cerr.
+// Returns exactly what optimize() returned, so a call site that uses the value
+// keeps working unchanged.
+int RunOptimization(g2o::SparseOptimizer& optimizer, int its, const char* where, int pass = -1)
+{
+    const int nRan = optimizer.optimize(its);
+
+    const bool bStopRequested = (optimizer.forceStopFlag() != nullptr) && (*optimizer.forceStopFlag());
+    const bool bFailed = (nRan < 0) || (nRan == 0 && its > 0 && !bStopRequested);
+
+    if(bFailed)
+    {
+        // Composed off-stream and written with a single <<: LocalMapping,
+        // LoopClosing and Tracking optimize concurrently, and a torn line would
+        // defeat the grep-able prefix. Also keeps std::cerr's format state clean.
+        std::ostringstream msg;
+        msg << "[backend] OPTIMIZE FAILED: " << where;
+        if(pass >= 0)
+            msg << " pass " << pass;
+        msg << " returned " << nRan << " (estimates left unchanged)\n";
+        std::cerr << msg.str() << std::flush;
+    }
+
+    return nRan;
+}
+
+// Pose-graph stall detector, for the loop-closure essential graphs only (the
+// extra computeActiveErrors() the caller pays for is O(#edges) once per loop
+// closure — never call this from a per-frame path).
+void ReportIfPoseGraphStalled(const char* where, int nRan, double chi2Before, double chi2After)
+{
+    const bool bFailed = (nRan <= 0);
+    const bool bUnmoved = std::abs(chi2After - chi2Before) <= 1e-12 * std::abs(chi2Before);
+
+    if(bFailed || bUnmoved)
+    {
+        std::ostringstream msg;
+        msg << std::setprecision(17)
+            << "[backend] POSE GRAPH did not move: " << where
+            << " chi2 " << chi2Before << " -> " << chi2After
+            << " (optimize returned " << nRan << ")\n";
+        std::cerr << msg.str() << std::flush;
+    }
+}
+
+} // anonymous namespace
+
 bool sortByVal(const pair<MapPoint*, int> &a, const pair<MapPoint*, int> &b)
 {
     return (a.second < b.second);
@@ -297,7 +403,7 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
     // Optimize!
     optimizer.setVerbose(false);
     optimizer.initializeOptimization();
-    optimizer.optimize(nIterations);
+    RunOptimization(optimizer, nIterations, "BundleAdjustment");
     Verbose::PrintMess("BA: End of the optimization", Verbose::VERBOSITY_NORMAL);
 
     // Recover optimized data
@@ -744,7 +850,7 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
 
 
     optimizer.initializeOptimization();
-    optimizer.optimize(its);
+    RunOptimization(optimizer, its, "FullInertialBA");
 
 
     // Recover optimized data
@@ -1030,7 +1136,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
         vSE3->setEstimate(g2o::SE3Quat(Tcw.unit_quaternion().cast<double>(),Tcw.translation().cast<double>()));
 
         optimizer.initializeOptimization(0);
-        optimizer.optimize(its[it]);
+        RunOptimization(optimizer, its[it], "PoseOptimization", static_cast<int>(it));
 
         nBad=0;
         for(size_t i=0, iend=vpEdgesMono.size(); i<iend; i++)
@@ -1429,7 +1535,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
             return;
 
     optimizer.initializeOptimization();
-    optimizer.optimize(10);
+    RunOptimization(optimizer, 10, "LocalBundleAdjustment");
 
     vector<pair<KeyFrame*,MapPoint*> > vToErase;
     vToErase.reserve(vpEdgesMono.size()+vpEdgesBody.size()+vpEdgesStereo.size());
@@ -1751,8 +1857,12 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
 
     optimizer.initializeOptimization();
     optimizer.computeActiveErrors();
-    optimizer.optimize(20);
+    // Item 13 watch: this pose graph runs with setUserLambdaInit(1e-16), so an
+    // LLT refusal would show up as "20 iterations ran, nothing moved".
+    const double chi2Before = optimizer.activeRobustChi2();
+    const int nRan = RunOptimization(optimizer, 20, "OptimizeEssentialGraph(loop)");
     optimizer.computeActiveErrors();
+    ReportIfPoseGraphStalled("OptimizeEssentialGraph(loop)", nRan, chi2Before, optimizer.activeRobustChi2());
     unique_lock<mutex> lock(pMap->mMutexMapUpdate);
 
     // SE3 Pose Recovering. Sim3:[sR t;0 1] -> SE3:[R t/s;0 1]
@@ -2078,7 +2188,13 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
 
     // Optimize!
     optimizer.initializeOptimization();
-    optimizer.optimize(20);
+    // Item 13 watch: same setUserLambdaInit(1e-16) pose graph as the loop
+    // overload. computeActiveErrors() costs O(#edges) once per merge - fine here.
+    optimizer.computeActiveErrors();
+    const double chi2Before = optimizer.activeRobustChi2();
+    const int nRan = RunOptimization(optimizer, 20, "OptimizeEssentialGraph(merge)");
+    optimizer.computeActiveErrors();
+    ReportIfPoseGraphStalled("OptimizeEssentialGraph(merge)", nRan, chi2Before, optimizer.activeRobustChi2());
 
     unique_lock<mutex> lock(pMap->mMutexMapUpdate);
 
@@ -2331,7 +2447,7 @@ int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 
     // Optimize!
     optimizer.initializeOptimization();
-    optimizer.optimize(5);
+    RunOptimization(optimizer, 5, "OptimizeSim3", 0);
 
     // Check inliers
     int nBad=0;
@@ -2376,7 +2492,7 @@ int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 
     // Optimize again only with inliers
     optimizer.initializeOptimization();
-    optimizer.optimize(nMoreIterations);
+    RunOptimization(optimizer, nMoreIterations, "OptimizeSim3", 1);
 
     int nIn = 0;
     mAcumHessian = Eigen::MatrixXd::Zero(7, 7);
@@ -2866,7 +2982,7 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, bool *pbStopFlag, Map *pMap, int&
     optimizer.initializeOptimization();
     optimizer.computeActiveErrors();
     float err = optimizer.activeRobustChi2();
-    optimizer.optimize(opt_it); // Originally to 2
+    RunOptimization(optimizer, opt_it, "LocalInertialBA"); // Originally to 2
     float err_end = optimizer.activeRobustChi2();
     if(pbStopFlag)
         optimizer.setForceStopFlag(pbStopFlag);
@@ -3206,7 +3322,7 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
 
     optimizer.setVerbose(false);
     optimizer.initializeOptimization();
-    optimizer.optimize(its);
+    RunOptimization(optimizer, its, "InertialOptimization(full)");
 
     scale = VS->estimate();
 
@@ -3375,7 +3491,7 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Vector3d &bg, Eigen::Vect
     // Compute error for different scales
     optimizer.setVerbose(false);
     optimizer.initializeOptimization();
-    optimizer.optimize(its);
+    RunOptimization(optimizer, its, "InertialOptimization(bias)");
 
 
     // Recover optimized data
@@ -3513,7 +3629,7 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
     optimizer.initializeOptimization();
     optimizer.computeActiveErrors();
     float err = optimizer.activeRobustChi2();
-    optimizer.optimize(its);
+    RunOptimization(optimizer, its, "InertialOptimization(scale)");
     optimizer.computeActiveErrors();
     float err_end = optimizer.activeRobustChi2();
     // Recover optimized data
@@ -3745,7 +3861,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
             return;
 
     optimizer.initializeOptimization();
-    optimizer.optimize(5);
+    RunOptimization(optimizer, 5, "LocalBundleAdjustment(welding)", 0);
 
     bool bDoMore= true;
 
@@ -3793,7 +3909,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
         Verbose::PrintMess("[BA]: First optimization(Huber), there are " + to_string(badMonoMP) + " monocular and " + to_string(badStereoMP) + " stereo bad edges", Verbose::VERBOSITY_DEBUG);
 
     optimizer.initializeOptimization(0);
-    optimizer.optimize(10);
+    RunOptimization(optimizer, 10, "LocalBundleAdjustment(welding)", 1);
     }
 
     vector<pair<KeyFrame*,MapPoint*> > vToErase;
@@ -4400,7 +4516,7 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool *pbS
             return;
 
     optimizer.initializeOptimization();
-    optimizer.optimize(8);
+    RunOptimization(optimizer, 8, "MergeInertialBA");
 
     vector<pair<KeyFrame*,MapPoint*> > vToErase;
     vToErase.reserve(vpEdgesMono.size()+vpEdgesStereo.size());
@@ -4735,7 +4851,7 @@ int Optimizer::PoseInertialOptimizationLastKeyFrame(Frame *pFrame, bool bRecInit
     for(size_t it=0; it<4; it++)
     {
         optimizer.initializeOptimization(0);
-        optimizer.optimize(its[it]);
+        RunOptimization(optimizer, its[it], "PoseInertialOptimizationLastKeyFrame", static_cast<int>(it));
 
         nBad = 0;
         nBadMono = 0;
@@ -5134,7 +5250,7 @@ int Optimizer::PoseInertialOptimizationLastFrame(Frame *pFrame, bool bRecInit)
     for(size_t it=0; it<4; it++)
     {
         optimizer.initializeOptimization(0);
-        optimizer.optimize(its[it]);
+        RunOptimization(optimizer, its[it], "PoseInertialOptimizationLastFrame", static_cast<int>(it));
 
         nBad=0;
         nBadMono = 0;
@@ -5567,7 +5683,7 @@ void Optimizer::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFram
 
     optimizer.initializeOptimization();
     optimizer.computeActiveErrors();
-    optimizer.optimize(20);
+    RunOptimization(optimizer, 20, "OptimizeEssentialGraph4DoF");
 
     unique_lock<mutex> lock(pMap->mMutexMapUpdate);
 
