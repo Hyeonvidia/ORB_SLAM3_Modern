@@ -5,6 +5,15 @@
 > 보정 1건: §1의 '업스트림 투영 엣지로 커스텀 대체 가능' 결론은 핀홀 전용에만
 > 해당한다. ORB_SLAM3::Edge* 커스텀 엣지는 GeometricCamera(KB8 어안) 경유라
 > 대체 불가 — 커스텀 유지가 마이그레이션 계약이다.
+
+> 보정 3건(2026-08-08 감사): §A(5)의 `BUILD_WITH_MARCH_NATIVE` 서술 중
+> "arm/darwin 분기 있음"은 **틀렸다** — 가드는 `CMAKE_SYSTEM_PROCESSOR MATCHES
+> "arm"`이라 aarch64를 잡지 못한다. 루트의 명시적 OFF 고정이 유일한 방어선이다.
+> 또한 §A(5)는 `G2O_USE_LOGGING=OFF`를 결정론 노브로만 기술했으나, 실제로는
+> g2o의 오류/경고 58개를 no-op으로 만든다(docs/DIVERGENCES.md #15).
+> 마지막으로 이 문서의 "업스트림이 커스텀 타입과 등가" 검증은 API 표면에 한한
+> 것이며, 벤더드 g2o가 Raúl Mur-Artal 포크라는 사실에서 오는 **알고리즘 수준
+> 차이 7건**은 P6-4 감사에서 별도로 발견됐다(DIVERGENCES #10~#18).
 >
 > 보정 2건 (P6-1 Phase A 구현 중 발견): §C의 'ILoopOptimizer.hpp가
 > closing/LoopClosing.hpp를 include'하는 설계는 포함 사이클로 불성립 —

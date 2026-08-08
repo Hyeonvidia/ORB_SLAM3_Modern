@@ -53,3 +53,79 @@
    단안-관성 초기화가 InertialOptimization으로 영영 복구되지 않는 메커니즘.
    bug-for-bug 원칙에 따라 양 백엔드에 동일 보존(등가성이 곧 증거), 수정은
    FixLevel 후보 1순위. 재현: EQUIV_INERTIAL_DEBUG=1 + s_true=2.0 픽스처.
+
+## P6 백엔드 이전에서 드러난 g2o 포크 차이 (2026-08-08 감사)
+
+벤더드 `Thirdparty/g2o`는 순정 g2o가 아니라 **Raúl Mur-Artal의 ORB-SLAM 포크**다
+(`optimization_algorithm_levenberg.cpp:27` "Modified Raul Mur Artal (2014)").
+업스트림 20241228_git로 이전하면서 아래 세 가지가 조용히 바뀌었고, 등가성
+테스트가 커버한 5개 함수는 전부 이 차이를 타지 않아(GN 사용 또는 조기 수렴)
+감지되지 않았다. 나머지 12개 LM 함수가 영향권이다.
+
+10. **[복원] LM 조기종료 기준 소실** (F1, 13/16 사이트) — 포크는 상대 χ² 개선이
+    0.1% 미만인 반복이 3회 연속되면 `Terminate`한다(`_nBad>=3`). 업스트림에는
+    `_nBad`가 존재하지 않아, 이전 직후에는 모든 LM이 요청 반복수를 **전부**
+    소진했다. 결과는 (a) 추가 스텝만큼 추정치 이동 (b) LocalBA 벽시계 시간 증가
+    → LocalMapping 스레드의 KF 삽입률 변화라는 트래킹 수준 동작 변화.
+    ORB-SLAM 고유의 의도적 설계이므로 `ORB_SLAM3::OrbLevenberg` 서브클래스로
+    **복원**(서브모듈 무수정 원칙 유지).
+11. **[복원] LinearSolverEigen blockOrdering 기본값 반전** (F2, 12/16 사이트) —
+    포크 `false`(스칼라 AMD) → 업스트림 `true`(블록 AMD, LinearSolverCCS 기저).
+    코드가 `setBlockOrdering`을 부른 적이 없어 소거 순서가 통째로 바뀌었다.
+    수학적으로는 양쪽 다 유효하나 소거 순서는 부동소수 합산 순서를 바꾼다.
+    각 생성 지점에서 `setBlockOrdering(false)` 명시로 **복원**.
+12. **[보존/개선] Sim3::exp 소각(小角) 분기의 수학 오류를 업스트림이 수정** (D1) —
+    포크(`Thirdparty/g2o/g2o/types/sim3.h:199 외`)는 (i) `θ<eps` 분기에서
+    `R = I + Ω + Ω²`로 2차항 계수 ½가 누락됐고 (ii) `B` 분자의 `-1`이 빠져
+    σ가 작을 때 B가 `~1/σ³`로 발산한다(정상값 1/6). 업스트림은 둘 다 수정했다.
+    **복원하지 않는다** — 수학 버그 복원은 bug-for-bug 정책의 대상이 아니다
+    (정책은 "동작 보존"이지 "오류 재현"이 아니며, 이 분기는 Sim3 최적화 수렴
+    근방에서 실제로 밟힌다). 루프 클로징/본질 그래프 결과가 골든과 미세하게
+    달라질 수 있으므로 풀 게이트(KITTI 00 루프 포함)로 영향을 계측한다.
+
+### 방법론 함의
+등가성 테스트는 **테스트한 함수에 대해서만** 등가를 증명한다. 5/17 커버리지에서
+"바이트 동일"이 나왔다고 이전 전체가 안전하다고 말할 수 없다는 것을 이 세 건이
+보여준다 — 커버되지 않은 함수는 **차이 그 자체를 소스 대조로** 찾아야 한다.
+
+### 추가 발견 (같은 감사, 등가성 미커버 함수 대상)
+
+13. **[주의/계측] SimplicialLDLT → SimplicialLLT** (F3, Eigen 솔버 12사이트,
+    MEDIUM-HIGH) — 포크의 `LinearSolverEigen`은 LDLT(준정정 허용), 업스트림은
+    LLT(엄격 양정정 요구). 두 `OptimizeEssentialGraph`는 `setUserLambdaInit(1e-16)`
+    으로 사실상 감쇠 없이 `BlockSolver_7_3` 포즈그래프를 푼다. 게이지가 덜
+    구속된 초기 루프에서 **LDLT는 풀리고 LLT는 실패** → `solve()` false →
+    스텝 기각·λ 팽창 → 루프 보정이 크게 축소되거나 `optimize(20)`이 사실상
+    아무것도 안 하고 끝난다. 크래시도 로그도 없다(항목 15 참조).
+    이것만은 "업스트림이 더 옳다"가 아니라 **강건성 후퇴**다.
+14. **[보존] Sim3::log·SE3Quat::exp의 소각 분기도 업스트림이 수정** (D2, D3) —
+    D2: `Sim3::log`의 `B`에도 동일한 `-1` 누락(EdgeSim3의 오차함수 자체;
+    단안 본질그래프 수렴 상태에서 밟힘). D3: `SE3Quat::exp`의 포크판은
+    `V = R = I + Ω + Ω²`이고 소스에 `//TODO: CHECK WHETHER THIS IS CORRECT!!!`
+    주석까지 달려 있다. 업스트림은 `V = I + Ω/2 + Ω²/6`(정답) — 1차항 계수가
+    100% 다르다. `VertexSE3Expmap::oplusImpl` 경유라 **모든 BA가 수렴 근방에서
+    영향**을 받는다. D1과 같은 이유로 복원하지 않되, 이것이 골든 대비 궤적 차이의
+    주된 원천일 수 있으므로 풀 게이트로 계측한다.
+    (정량: D1 단안 분기 실측 예시에서 적용 스텝이 900배까지 차이.)
+15. **[조치 필요] 진단 침묵** (C1) — `G2O_USE_LOGGING=OFF`로 g2o의
+    `G2O_ERROR` 34개·`G2O_WARN` 24개가 전부 no-op이 됐다(NaN 검출, CCS 구축
+    실패, 알고리즘 init 실패 포함). 그런데 우리 코드의 **~24개 `optimize()`
+    호출이 전부 반환값을 버린다**. 즉 최적화가 실패해도(-1 반환) 함수는 변경되지
+    않은 추정치를 그대로 맵에 써 넣고 조용히 성공한 척한다. 항목 13과 결합하면
+    "루프 클로징이 조용히 무력화"가 관측 불가능해진다. → 호출부 반환값 점검 +
+    경고 출력 추가(동작 변경 없는 관측성 추가)로 대응.
+16. **[문서 오류 교정] `BUILD_WITH_MARCH_NATIVE`의 arm 가드는 aarch64를 막지
+    못한다** (C3) — 가드는 `CMAKE_SYSTEM_PROCESSOR MATCHES "arm"`인데 Jetson/
+    arm64 리눅스의 값은 `aarch64`로 부분문자열 `arm`을 포함하지 않는다. 즉
+    P6_DESIGN §A(5)의 "arm 분기 있음" 서술은 틀렸고, 루트 CMakeLists의 명시적
+    OFF 고정이 **유일한 방어선**이다(장식이 아니라 하중 부재).
+17. **[조치 필요] `DO_SSE_AUTODETECT` 미고정** (C4) — 기본 ON이며 빌드 호스트의
+    `/proc/cpuinfo`를 읽어 컴파일 플래그를 고른다. arm64에서는 무해하나
+    x86 호스트에서 빌드하면 g2o 디렉터리 스코프에만 `-msse*`가 붙어 코어와
+    비대칭이 된다 → 고정 필요.
+18. **[게이트 결함] 플래그 패리티 증거가 정작 그 플래그를 못 본다** (C2) —
+    `container_build.sh`/`run_equiv.sh`는 최상위 `CMakeCache.txt`를 grep하는데,
+    g2o는 **디렉터리 스코프**에서 플래그를 덧붙이므로 캐시에 흔적이 없다.
+    실측 예: 캐시 `-O3 -DNDEBUG` vs 실제 g2o TU 규칙 `-Wall -O3 -DNDEBUG
+    -std=gnu++17 -fPIC -Wall -O3`. → `build.ninja`/`compile_commands.json`을
+    보도록 교정.
