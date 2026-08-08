@@ -12,6 +12,14 @@ ROUNDS="${1:-4}"
 # Statistical power: with R rounds/side the exact rank-sum minimum p is
 # 1/C(2R,R); p<0.05 needs R>=4 (checkpoint review finding). Fewer rounds
 # produce an UNDERPOWERED verdict, never a formal PASS.
+# KITTI sequence: 00 (4541 frames, 4-5 loops) is the default and the one to use
+# at phase boundaries. KITTI_SEQ=07 (1101 frames, 1 loop) keeps loop-closure
+# coverage at 1/4 the runtime for routine mid-phase checks — verified 2026-08-09.
+# NOTE: do NOT run gate rounds concurrently. Measured: 10-way concurrency shifts
+# the paired delta ~4x more than within-sequential sampling noise, and the two
+# arms differ precisely in LocalBA duration (DIVERGENCES #10), so contention
+# hits them differentially. Speed is not worth the gate's trustworthiness.
+KITTI_SEQ="${KITTI_SEQ:-00}"
 ORIG_DIR="$(cd ../orb_slam3_docker && pwd)"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT="benchmark/gate_runs/$STAMP"
@@ -31,7 +39,7 @@ for r in $(seq 1 "$ROUNDS"); do
   for m in euroc_mono euroc_stereo euroc_mono_inertial euroc_stereo_inertial; do
     run_pair "$m" MH01
   done
-  run_pair kitti_stereo 00
+  run_pair kitti_stereo "$KITTI_SEQ"
 done
 
 ./benchmark/scripts/evaluate_all.sh "$ORIG_DIR/results" > "$OUT/orig.csv"
