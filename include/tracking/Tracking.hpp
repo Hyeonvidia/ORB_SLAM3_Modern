@@ -23,7 +23,12 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
 
-#include "viz/Viewer.hpp"
+// P7-1b: this header no longer includes core/System.hpp (Tracking now holds
+// an IResetRequester*, not a System*) nor viz/Viewer.hpp (Viewer is used only
+// through a pointer; the forward declaration below suffices, and Tracking.cpp
+// includes the full header). Together with the existing forward declarations
+// this breaks the System.hpp -> Tracking.hpp -> {System.hpp, Viewer.hpp ->
+// System.hpp} include cycles documented in P6-1/P7_RECON §B.5.3.
 #include "viz/FrameDrawer.hpp"
 #include "map/Atlas.hpp"
 #include "mapping/LocalMapping.hpp"
@@ -33,7 +38,6 @@
 #include "recognition/KeyFrameDatabase.hpp"
 #include "features/ORBextractor.hpp"
 #include "viz/MapDrawer.hpp"
-#include "core/System.hpp"
 #include "backend/ImuTypes.hpp"
 #include "core/Settings.hpp"
 #include "geometry/TwoViewInitializer.hpp"
@@ -53,16 +57,20 @@ class FrameDrawer;
 class Atlas;
 class LocalMapping;
 class LoopClosing;
-class System;
 class Settings;
 class ITrackingOptimizer;
+class IResetRequester;
 
 class Tracking
-{  
+{
 
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    Tracking(System* pSys, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Atlas* pAtlas,
+    // P7-1b: the former `System* pSys` back-reference is replaced by the
+    // narrow IResetRequester* (constructor injection, same pattern as
+    // ITrackingOptimizer/BAEpochs). System passes itself; Tracking can only
+    // request a deferred active-map reset through it.
+    Tracking(IResetRequester* pResetRequester, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Atlas* pAtlas,
              KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings,
              ITrackingOptimizer* pOptimizer, const string &_nameSeq=std::string());
 
@@ -103,9 +111,11 @@ public:
     int GetNumberDataset();
     int GetMatchesInliers();
 
-    //DEBUG
-    void SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, string strFolder="");
-    void SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, Map* pMap);
+    // P7-1b: the two `SaveSubTrajectory` debug overloads were deleted. They
+    // had zero callers here AND upstream (docs/P7_RECON.md §B.3), and their
+    // only effect was a Tracking -> System -> Tracking round trip (System
+    // reading Tracking's own mlRelativeFramePoses/mlpReferences back out).
+    // Dead-code removal, no behavior change.
 
     float GetImageScale();
 
@@ -335,9 +345,14 @@ protected:
     std::vector<KeyFrame*> mvpLocalKeyFrames;
     std::vector<MapPoint*> mvpLocalMapPoints;
     
-    // System
-    System* mpSystem;
-    
+    // P7-1b: narrow reset-request interface, implemented by System (which
+    // injects itself in System.cpp). Replaces the former `System* mpSystem`
+    // back-reference — the only System method Tracking ever called was
+    // ResetActiveMap() (docs/P7_RECON.md §B.4). Declared in the exact slot
+    // mpSystem occupied so the ctor member-init order is unchanged.
+    IResetRequester* mpResetRequester;
+
+
     //Drawers
     Viewer* mpViewer;
     FrameDrawer* mpFrameDrawer;

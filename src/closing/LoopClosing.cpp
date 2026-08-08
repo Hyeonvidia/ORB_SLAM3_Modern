@@ -19,6 +19,7 @@
 
 #include "closing/LoopClosing.hpp"
 
+#include "core/System.hpp"   // P7-1b: System::eSensor enumerators; no longer transitive via Tracking.hpp
 #include "closing/MergeScratch.hpp"
 #include "backend/GBAResult.hpp"
 #include "geometry/Sim3Solver.hpp"

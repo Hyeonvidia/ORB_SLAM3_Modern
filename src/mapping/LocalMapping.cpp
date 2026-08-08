@@ -25,6 +25,7 @@
 #include "backend/GBAResult.hpp"
 #include "io/Converter.hpp"
 #include "geometry/GeometricTools.hpp"
+#include "core/Verbose.hpp"  // P7-1b: was transitive via Tracking.hpp -> System.hpp
 
 #include<mutex>
 #include<chrono>

@@ -21,11 +21,14 @@
 
 #include "features/ORBmatcher.hpp"
 #include "viz/FrameDrawer.hpp"
+#include "viz/Viewer.hpp"           // P7-1b: no longer reaches us via Tracking.hpp
 #include "io/Converter.hpp"
 #include "backend/G2oTypes.hpp"
 #include "backend/ITrackingOptimizer.hpp"
 #include "camera/Pinhole.hpp"
 #include "camera/KannalaBrandt8.hpp"
+#include "core/IResetRequester.hpp" // P7-1b: narrow System surface (reset latch)
+#include "core/System.hpp"          // P7-1b: for the System::eSensor enumerators only
 #include "geometry/MLPnPsolver.hpp"
 #include "geometry/GeometricTools.hpp"
 
@@ -105,10 +108,10 @@ void Tracking::TraceStateTransition(eTrackingState from, eTrackingState to, cons
 }
 
 
-Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, ITrackingOptimizer* pOptimizer, const string &_nameSeq):
+Tracking::Tracking(IResetRequester* pResetRequester, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, ITrackingOptimizer* pOptimizer, const string &_nameSeq):
     mState_(NO_IMAGES_YET), mLastProcessedState_(NO_IMAGES_YET), mSensor(sensor), mTrackedFr(0), mbStep(false),
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpOptimizer(pOptimizer), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
-    mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
+    mbReadyToInitializate(false), mpResetRequester(pResetRequester), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
 {
@@ -1058,7 +1061,7 @@ void Tracking::Track()
     if(mpLocalMapper->mbBadImu)
     {
         cout << "TRACK: Reset map because local mapper set the bad imu flag " << endl;
-        mpSystem->ResetActiveMap();
+        mpResetRequester->RequestResetActiveMap();
         return;
     }
 
@@ -1090,7 +1093,7 @@ void Tracking::Track()
                     cout << "Timestamp jump detected. State set to LOST. Reseting IMU integration..." << endl;
                     if(!pCurrentMap->GetIniertialBA2())
                     {
-                        mpSystem->ResetActiveMap();
+                        mpResetRequester->RequestResetActiveMap();
                     }
                     else
                     {
@@ -1100,7 +1103,7 @@ void Tracking::Track()
                 else
                 {
                     cout << "Timestamp jump detected, before IMU initialization. Reseting..." << endl;
-                    mpSystem->ResetActiveMap();
+                    mpResetRequester->RequestResetActiveMap();
                 }
                 return;
             }
@@ -1271,7 +1274,7 @@ void Tracking::Track()
 
                     if (pCurrentMap->KeyFramesInMap()<10)
                     {
-                        mpSystem->ResetActiveMap();
+                        mpResetRequester->RequestResetActiveMap();
                         Verbose::PrintMess("Reseting current map...", Verbose::VERBOSITY_NORMAL);
                     }else
                         CreateMapInAtlas();
@@ -1402,7 +1405,7 @@ void Tracking::Track()
                 if(!pCurrentMap->isImuInitialized() || !pCurrentMap->GetIniertialBA2())
                 {
                     cout << "IMU is not or recently initialized. Reseting active map..." << endl;
-                    mpSystem->ResetActiveMap();
+                    mpResetRequester->RequestResetActiveMap();
                 }
 
                 SetState(RECENTLY_LOST, "Track: TrackLocalMap failed (inertial)");
@@ -1525,14 +1528,14 @@ void Tracking::Track()
         {
             if(pCurrentMap->KeyFramesInMap()<=10)
             {
-                mpSystem->ResetActiveMap();
+                mpResetRequester->RequestResetActiveMap();
                 return;
             }
             if (mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD)
                 if (!pCurrentMap->isImuInitialized())
                 {
                     Verbose::PrintMess("Track lost before IMU initialisation, reseting...", Verbose::VERBOSITY_QUIET);
-                    mpSystem->ResetActiveMap();
+                    mpResetRequester->RequestResetActiveMap();
                     return;
                 }
 
@@ -1842,7 +1845,7 @@ void Tracking::CreateInitialMapMonocular()
     if(medianDepth<0 || pKFcur->TrackedMapPoints(1)<50) // TODO Check, originally 100 tracks
     {
         Verbose::PrintMess("Wrong initialization, reseting...", Verbose::VERBOSITY_QUIET);
-        mpSystem->ResetActiveMap();
+        mpResetRequester->RequestResetActiveMap();
         return;
     }
 
@@ -3280,18 +3283,9 @@ int Tracking::GetMatchesInliers()
     return mnMatchesInliers;
 }
 
-void Tracking::SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, string strFolder)
-{
-    mpSystem->SaveTrajectoryEuRoC(strFolder + strNameFile_frames);
-    //mpSystem->SaveKeyFrameTrajectoryEuRoC(strFolder + strNameFile_kf);
-}
-
-void Tracking::SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, Map* pMap)
-{
-    mpSystem->SaveTrajectoryEuRoC(strNameFile_frames, pMap);
-    if(!strNameFile_kf.empty())
-        mpSystem->SaveKeyFrameTrajectoryEuRoC(strNameFile_kf, pMap);
-}
+// P7-1b: the two SaveSubTrajectory debug overloads were deleted here — zero
+// callers in this repo and upstream (docs/P7_RECON.md §B.3); they were the
+// only non-reset use of the former System back-reference.
 
 float Tracking::GetImageScale()
 {

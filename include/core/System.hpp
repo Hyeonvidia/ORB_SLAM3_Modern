@@ -40,6 +40,7 @@
 #include "backend/BAEpochs.hpp"
 #include "backend/G2oBackend.hpp"
 #include "backend/ImuTypes.hpp"
+#include "core/IResetRequester.hpp"
 #include "core/Settings.hpp"
 #include "core/Verbose.hpp"
 
@@ -57,7 +58,13 @@ class LocalMapping;
 class LoopClosing;
 class Settings;
 
-class System
+// P7-1b: System implements IResetRequester so Tracking can request a deferred
+// active-map reset without holding a back-pointer to the full System facade
+// (26 reachable public methods, of which Tracking used exactly this one —
+// docs/P7_RECON.md §B.4). The flag/mutex machinery (mMutexReset,
+// mbResetActiveMap, consumed at the top of the next TrackStereo/TrackRGBD/
+// TrackMonocular) is unchanged; the interface is a pure narrowing.
+class System : public IResetRequester
 {
 public:
     // Input sensor
@@ -110,6 +117,12 @@ public:
     // Reset the system (clear Atlas or the active map)
     void Reset();
     void ResetActiveMap();
+
+    // IResetRequester (P7-1b): Tracking's narrow entry point. Forwards to
+    // ResetActiveMap() — same lock (mMutexReset), same flag (mbResetActiveMap),
+    // same one-frame-deferred consumption; the indirection exists only so
+    // Tracking does not need the System type.
+    void RequestResetActiveMap() override { ResetActiveMap(); }
 
     // All threads will be requested to finish.
     // It waits until all threads have finished.

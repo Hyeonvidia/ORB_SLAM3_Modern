@@ -19,6 +19,7 @@
 
 #include "backend/Optimizer.hpp"
 
+#include "core/Verbose.hpp"  // P7-1b: was transitive via Tracking.hpp -> System.hpp
 
 #include <cmath>
 #include <complex>

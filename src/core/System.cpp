@@ -175,7 +175,9 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Initialize the Tracking thread
     //(it will live in the main thread of execution, the one that called this constructor)
     cout << "Seq. Name: " << strSequence << endl;
-    mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
+    // P7-1b: Tracking receives only the narrow IResetRequester surface of
+    // System (constructor injection, same pattern as ITrackingOptimizer).
+    mpTracker = new Tracking(static_cast<IResetRequester*>(this), mpVocabulary, mpFrameDrawer, mpMapDrawer,
                              mpAtlas, mpKeyFrameDatabase, strSettingsFile, mSensor, settings_,
                              static_cast<ITrackingOptimizer*>(&mBackend), strSequence);
 
