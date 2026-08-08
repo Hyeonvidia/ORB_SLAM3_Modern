@@ -1,0 +1,3 @@
+- NONE -> NO_IMAGES_YET Tracking::Tracking (ctor)
+0 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+0 NOT_INITIALIZED -> OK StereoInitialization: initial map created

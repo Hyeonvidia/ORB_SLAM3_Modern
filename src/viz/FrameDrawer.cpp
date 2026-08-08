@@ -403,12 +403,12 @@ void FrameDrawer::Update(Tracking *pTracker)
     mvpOutlierMPs.clear();
     mvpOutlierMPs.reserve(N);
 
-    if(pTracker->mLastProcessedState==Tracking::NOT_INITIALIZED)
+    if(pTracker->GetLastProcessedState()==Tracking::NOT_INITIALIZED)
     {
         mvIniKeys=pTracker->mInitialFrame.mvKeys;
         mvIniMatches=pTracker->mvIniMatches;
     }
-    else if(pTracker->mLastProcessedState==Tracking::OK)
+    else if(pTracker->GetLastProcessedState()==Tracking::OK)
     {
         for(int i=0;i<N;i++)
         {
@@ -433,7 +433,7 @@ void FrameDrawer::Update(Tracking *pTracker)
         }
 
     }
-    mState=static_cast<int>(pTracker->mLastProcessedState);
+    mState=static_cast<int>(pTracker->GetLastProcessedState());
 }
 
 } //namespace ORB_SLAM

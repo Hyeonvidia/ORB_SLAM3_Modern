@@ -201,7 +201,7 @@ void LocalMapping::Run()
 
                 if ((mTinit<50.0f) && mbInertial)
                 {
-                    if(mpCurrentKeyFrame->GetMap()->isImuInitialized() && mpTracker->mState==Tracking::OK) // Enter here everytime local-mapping is called
+                    if(mpCurrentKeyFrame->GetMap()->isImuInitialized() && mpTracker->GetState()==Tracking::OK) // Enter here everytime local-mapping is called
                     {
                         if(!mpCurrentKeyFrame->GetMap()->GetIniertialBA1()){
                             if (mTinit>5.0f)
@@ -463,7 +463,7 @@ void LocalMapping::CreateNewMapPoints()
 
         // Search matches that fullfil epipolar constraint
         vector<pair<size_t,size_t> > vMatchedIndices;
-        bool bCoarse = mbInertial && mpTracker->mState==Tracking::RECENTLY_LOST && mpCurrentKeyFrame->GetMap()->GetIniertialBA2();
+        bool bCoarse = mbInertial && mpTracker->GetState()==Tracking::RECENTLY_LOST && mpCurrentKeyFrame->GetMap()->GetIniertialBA2();
 
         matcher.SearchForTriangulation(mpCurrentKeyFrame,pKF2,vMatchedIndices,false,bCoarse);
 
@@ -1437,7 +1437,12 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     }
     mlNewKeyFrames.clear();
 
-    mpTracker->mState=Tracking::OK;
+    // P7-1a: was `mpTracker->mState=Tracking::OK;`. Same write, same thread
+    // (local mapping), same absence of synchronization -- now routed through a
+    // named entry point instead of a public data member. This is the one
+    // legitimate cross-thread writer of the tracking state; see the warning
+    // block at the top of docs/P7_RECON.md and finding F11 there.
+    mpTracker->NotifyImuInitialized();
     bInitializing = false;
 
     mpCurrentKeyFrame->GetMap()->IncreaseChangeIndex();

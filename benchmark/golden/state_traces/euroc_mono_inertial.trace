@@ -1,0 +1,63 @@
+- NONE -> NO_IMAGES_YET Tracking::Tracking (ctor)
+0 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+2 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+7 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+7 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+8 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+10 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+31 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+31 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+32 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+37 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+46 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+46 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+47 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+49 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+59 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+59 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+60 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+61 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+64 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+64 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+65 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+67 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+83 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+83 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+84 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+85 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+94 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+94 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+95 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+96 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+136 OK -> OK LocalMapping::InitializeIMU (cross-thread)
+174 OK -> NO_IMAGES_YET Tracking::ResetActiveMap
+175 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+177 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+180 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+180 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+181 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+182 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+188 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+188 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+189 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+190 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+204 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+204 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+205 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+213 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+217 OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+217 RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+218 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+220 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+260 OK -> OK LocalMapping::InitializeIMU (cross-thread)
+333 OK -> OK LocalMapping::InitializeIMU (cross-thread)
+401 OK -> NO_IMAGES_YET Tracking::ResetActiveMap
+402 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+406 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+446 OK -> OK LocalMapping::InitializeIMU (cross-thread)
+934 OK -> NO_IMAGES_YET Tracking::ResetActiveMap
+935 NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+941 NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+981 OK -> OK LocalMapping::InitializeIMU (cross-thread)
+1057 OK -> OK LocalMapping::InitializeIMU (cross-thread)
+1258 OK -> OK LocalMapping::InitializeIMU (cross-thread)

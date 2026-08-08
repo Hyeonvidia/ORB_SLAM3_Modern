@@ -42,6 +42,8 @@
 
 #include <mutex>
 #include <unordered_set>
+#include <fstream>
+#include <ostream>
 
 namespace ORB_SLAM3
 {
@@ -127,8 +129,64 @@ public:
         OK_KLT=5
     };
 
-    eTrackingState mState;
-    eTrackingState mLastProcessedState;
+private:
+
+    // The state machine itself. Declared HERE, at the exact position the old
+    // public `mState` / `mLastProcessedState` members occupied, so that the
+    // constructor's member-initialisation ORDER is bit-for-bit unchanged.
+    eTrackingState mState_;
+    eTrackingState mLastProcessedState_;
+
+public:
+
+    // ------------------------------------------------------------------
+    // P7-1a: the tracking state machine.
+    //
+    // `mState` and `mLastProcessedState` used to be public data members
+    // written and read from three different threads. They are now private
+    // (trailing underscore) and reached through the accessors below. The
+    // exhaustive site census and transition table this refactor preserves
+    // live in docs/P7_RECON.md §A -- 15 writes and 25 comparisons in
+    // Tracking.cpp, 4 reads in System.cpp, 2 reads plus ONE cross-thread
+    // write in LocalMapping.cpp, 3 reads in FrameDrawer.cpp.
+    //
+    // This is a pure encapsulation change: same transitions, same order,
+    // same values. No locking is introduced -- see GetState().
+    // ------------------------------------------------------------------
+
+    // Plain, deliberately UNSYNCHRONIZED read of the tracking state.
+    //
+    // Every pre-P7 read of `mState` was unsynchronized, including the
+    // cross-thread ones (docs/P7_RECON.md F11). Adding a lock here would
+    // change the visibility/timing semantics the current golden baselines
+    // were measured against, so it is intentionally omitted. Making the
+    // state machine properly thread-safe is P10's job, not P7's.
+    eTrackingState GetState() const { return mState_; }
+
+    // The tracking state as it was at the top of the current Track() call,
+    // snapshotted once per frame (Tracking.cpp, right after the
+    // NO_IMAGES_YET -> NOT_INITIALIZED promotion). It is NOT a second state
+    // machine; its sole consumer is FrameDrawer::Update. See P7_RECON §3.
+    eTrackingState GetLastProcessedState() const { return mLastProcessedState_; }
+
+    // Cross-thread state write, preserved verbatim from upstream.
+    //
+    // LocalMapping::InitializeIMU() ends by forcing the tracker back to OK
+    // (upstream `mpTracker->mState = Tracking::OK;`). That assignment is
+    // issued from the LOCAL MAPPING thread, not the tracking thread, and is
+    // unsynchronized with respect to the tracking thread's own reads --
+    // by design, inherited from upstream. It is called while LocalMapping
+    // holds pCurrentMap->mMutexMapUpdate, which happens to cover the middle
+    // of Track() but NOT its prologue. See the warning block at the top of
+    // docs/P7_RECON.md and finding F11 there.
+    //
+    // This method exists so the one legitimate external writer has a named,
+    // greppable entry point instead of a raw public data member; it must
+    // keep exactly these semantics until P10 revisits threading.
+    void NotifyImuInitialized();
+
+    // Human-readable enumerator name, used by the transition trace.
+    static const char* StateName(eTrackingState s);
 
     // Input sensor
     int mSensor;
@@ -371,6 +429,54 @@ protected:
     bool mbNotStop;
     std::mutex mMutexStop;
 #endif
+
+private:
+
+    // ------------------------------------------------------------------
+    // P7-1a: the single mutator for the tracking state, plus opt-in
+    // transition instrumentation.
+    //
+    // SetState() is the ONLY place mState_ is written after construction.
+    // It is intentionally trivial: assign, then (only when tracing is on)
+    // record. No lock, no validation, no side effects -- anything else
+    // would be a behavior change, and P7-1a is a no-behavior-change edit.
+    //
+    // `reason` is a literal describing the call site; it lands verbatim in
+    // the trace line. `bLogEvenIfUnchanged` forces a no-op self-assignment
+    // (from == to) to be traced anyway. Exactly one caller sets it:
+    // NotifyImuInitialized(), because the LocalMapping -> Tracking handoff
+    // usually fires while the tracker is already OK, and dropping it would
+    // make the cross-thread write invisible in the trace even though it
+    // definitely happened. Every other site's self-assignment (the OK->OK
+    // at the top of the normal tracking path, which fires on essentially
+    // every frame) is pure noise and is dropped -- verified against
+    // docs/P7_RECON.md §A: no site depends on re-assigning the same value,
+    // since the assignment has no observable effect when from == to.
+    //
+    // Cost when tracing is off: one enum load and one bool test.
+    // ------------------------------------------------------------------
+    void SetState(eTrackingState s, const char* reason, bool bLogEvenIfUnchanged = false)
+    {
+        const eTrackingState prev = mState_;
+        mState_ = s;
+        if(mbTraceState && (prev != s || bLogEvenIfUnchanged))
+            TraceStateTransition(prev, s, reason);
+    }
+
+    void TraceStateTransition(eTrackingState from, eTrackingState to, const char* reason);
+
+    // Returns the trace sink; the caller must hold mMutexTraceState.
+    std::ostream& TraceStateSink();
+
+    // Enabled by the environment variable ORB_TRACE_STATE (default OFF).
+    bool mbTraceState{false};
+    // Destination, from ORB_TRACE_STATE_FILE; falls back to stderr.
+    std::ofstream mTraceStateFile;
+    // Guards the SINK ONLY (the trace is written from both the tracking and
+    // the local-mapping thread). It is never taken when tracing is off, so
+    // the production path keeps exactly the unsynchronized semantics that
+    // docs/P7_RECON.md F11 describes.
+    std::mutex mMutexTraceState;
 
 public:
     cv::Mat mImRight;
