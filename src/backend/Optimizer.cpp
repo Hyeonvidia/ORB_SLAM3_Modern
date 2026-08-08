@@ -39,12 +39,28 @@
 #include <memory>
 #include <utility>
 #include "backend/G2oTypes.hpp"
+#include "backend/OrbLevenberg.hpp"
 #include "io/Converter.hpp"
 
 #include<mutex>
 
 #include "backend/OptimizableTypes.hpp"
 
+// -----------------------------------------------------------------------------
+// g2o-fork parity (docs/DIVERGENCES.md items 10 & 11). The vendored
+// Thirdparty/g2o was Raúl Mur-Artal's ORB-SLAM fork, and the P6-2 migration to
+// upstream 20241228_git silently dropped two of its deliberate design decisions:
+//   F1  LM early-stop ("Stop criterium (Raul)") -> restored by constructing
+//       ORB_SLAM3::OrbLevenberg instead of g2o::OptimizationAlgorithmLevenberg
+//       at every LM site below (14 sites; the 3 GaussNewton sites are untouched,
+//       the fork never modified GN).
+//   F2  LinearSolverEigen block ordering: fork default false (scalar AMD),
+//       upstream default true (block AMD, via LinearSolverCCS) -> restored by an
+//       explicit setBlockOrdering(false) at every LinearSolverEigen site
+//       (12 sites). LinearSolverDense derives straight from LinearSolver<M> and
+//       has no ordering knob at all, so the 4 dense sites are untouched.
+// The pinned submodule is never patched; both restorations live in OUR code.
+// -----------------------------------------------------------------------------
 
 namespace ORB_SLAM3
 {
@@ -70,13 +86,13 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
     Map* pMap = vpKFs[0]->GetMap();
 
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
 
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolver_6_3> solver_ptr = std::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     optimizer.setAlgorithm(solver);
     optimizer.setVerbose(false);
 
@@ -400,13 +416,13 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
 
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolverX::LinearSolverType> linearSolver;
 
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     solver->setUserLambdaInit(1e-5);
     optimizer.setAlgorithm(solver);
     optimizer.setVerbose(false);
@@ -825,7 +841,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
 
     std::unique_ptr<g2o::BlockSolver_6_3> solver_ptr = std::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     optimizer.setAlgorithm(solver);
 
     int nInitialCorrespondences=0;
@@ -1192,13 +1208,13 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
 
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolver_6_3> solver_ptr = std::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     if (pMap->IsInertial())
         solver->setUserLambdaInit(100.0);
 
@@ -1512,10 +1528,11 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
-    std::unique_ptr<g2o::BlockSolver_7_3::LinearSolverType> linearSolver =
+    auto linearSolver =
            std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
     std::unique_ptr<g2o::BlockSolver_7_3> solver_ptr = std::make_unique<g2o::BlockSolver_7_3>(std::move(linearSolver));
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
     solver->setUserLambdaInit(1e-16);
     optimizer.setAlgorithm(solver);
@@ -1800,10 +1817,11 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
 
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
-    std::unique_ptr<g2o::BlockSolver_7_3::LinearSolverType> linearSolver =
+    auto linearSolver =
            std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
     std::unique_ptr<g2o::BlockSolver_7_3> solver_ptr = std::make_unique<g2o::BlockSolver_7_3>(std::move(linearSolver));
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
     solver->setUserLambdaInit(1e-16);
     optimizer.setAlgorithm(solver);
@@ -2130,7 +2148,7 @@ int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     optimizer.setAlgorithm(solver);
 
     // Camera poses
@@ -2513,20 +2531,20 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, bool *pbStopFlag, Map *pMap, int&
 
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolverX::LinearSolverType> linearSolver;
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
     if(bLarge)
     {
-        g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+        OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
         solver->setUserLambdaInit(1e-2); // to avoid iterating for finding optimal lambda
         optimizer.setAlgorithm(solver);
     }
     else
     {
-        g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+        OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
         solver->setUserLambdaInit(1e0);
         optimizer.setAlgorithm(solver);
     }
@@ -3056,13 +3074,13 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
 
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolverX::LinearSolverType> linearSolver;
 
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
     if (priorG!=0.f)
         solver->setUserLambdaInit(1e3);
@@ -3240,13 +3258,13 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Vector3d &bg, Eigen::Vect
 
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolverX::LinearSolverType> linearSolver;
 
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     solver->setUserLambdaInit(1e3);
 
     optimizer.setAlgorithm(solver);
@@ -3402,9 +3420,9 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
 
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolverX::LinearSolverType> linearSolver;
 
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
@@ -3510,13 +3528,13 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     vector<MapPoint*> vpMPs;
 
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolver_6_3::LinearSolverType> linearSolver;
 
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolver_6_3> solver_ptr = std::make_unique<g2o::BlockSolver_6_3>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     optimizer.setAlgorithm(solver);
 
     optimizer.setVerbose(false);
@@ -4096,12 +4114,12 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool *pbS
     }
 
     g2o::SparseOptimizer optimizer;
-    std::unique_ptr<g2o::BlockSolverX::LinearSolverType> linearSolver;
-    linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    auto linearSolver = std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
     solver->setUserLambdaInit(1e3);
 
@@ -5307,11 +5325,12 @@ void Optimizer::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFram
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
-    std::unique_ptr<g2o::BlockSolverX::LinearSolverType> linearSolver =
+    auto linearSolver =
             std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::move(solver_ptr));
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
     optimizer.setAlgorithm(solver);
 

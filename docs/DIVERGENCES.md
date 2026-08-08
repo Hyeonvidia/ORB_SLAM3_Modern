@@ -68,12 +68,21 @@
     소진했다. 결과는 (a) 추가 스텝만큼 추정치 이동 (b) LocalBA 벽시계 시간 증가
     → LocalMapping 스레드의 KF 삽입률 변화라는 트래킹 수준 동작 변화.
     ORB-SLAM 고유의 의도적 설계이므로 `ORB_SLAM3::OrbLevenberg` 서브클래스로
-    **복원**(서브모듈 무수정 원칙 유지).
+    **복원 완료**(14/14 사이트, 서브모듈 무수정). 래퍼 구현이 포크의 in-place
+    구현과 의미 동일함을 증명해 두었다(`src/backend/OrbLevenberg.cpp` 주석):
+    push/pop이 추정치를 정확히 복원하고 chi2는 추정치의 순수 함수이므로
+    solve() 이후 재계산한 chi2가 포크가 추적하던 값과 비트 동일하다.
+    리셋 지점은 생성자와 `iteration==0`(init()이 아님 — 원본 재확인).
 11. **[복원] LinearSolverEigen blockOrdering 기본값 반전** (F2, 12/16 사이트) —
     포크 `false`(스칼라 AMD) → 업스트림 `true`(블록 AMD, LinearSolverCCS 기저).
     코드가 `setBlockOrdering`을 부른 적이 없어 소거 순서가 통째로 바뀌었다.
     수학적으로는 양쪽 다 유효하나 소거 순서는 부동소수 합산 순서를 바꾼다.
-    각 생성 지점에서 `setBlockOrdering(false)` 명시로 **복원**.
+    각 생성 지점에서 `setBlockOrdering(false)` 명시로 **복원 완료**(12/12,
+    Dense 솔버 4곳은 소거 순서 개념이 없어 해당 없음).
+    **직접 증거**: GaussNewton을 쓰는 `inertial_optimization_bias` 등가쌍의
+    vendored↔upstream 편차가 복원 전 |dbg|=1.22e-11에서 복원 후 4.34e-19로
+    7자릿수 개선됐다. GN에는 #10이 적용되지 않으므로 이 개선분은 오로지
+    소거 순서 복원 효과 — 벤더드 순서가 실제로 회복됐다는 실증이다.
 12. **[보존/개선] Sim3::exp 소각(小角) 분기의 수학 오류를 업스트림이 수정** (D1) —
     포크(`Thirdparty/g2o/g2o/types/sim3.h:199 외`)는 (i) `θ<eps` 분기에서
     `R = I + Ω + Ω²`로 2차항 계수 ½가 누락됐고 (ii) `B` 분자의 `-1`이 빠져

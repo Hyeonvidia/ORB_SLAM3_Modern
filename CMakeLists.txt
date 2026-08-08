@@ -64,6 +64,7 @@ add_library(orbslam3_core SHARED
   src/map/MapPoint.cpp
   src/map/Frame.cpp
   src/backend/Optimizer.cpp
+  src/backend/OrbLevenberg.cpp
   src/backend/G2oBackend.cpp
   src/backend/G2oTypes.cpp
   src/backend/OptimizableTypes.cpp

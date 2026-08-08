@@ -69,6 +69,9 @@ elseif(EQUIV_BACKEND STREQUAL "modern")
 
   set(EQUIV_BACKEND_SOURCES
     ${REPO_ROOT}/src/backend/Optimizer.cpp
+    # g2o-fork parity restoration (docs/DIVERGENCES.md 10): modern-only, the
+    # vendored variant already gets the criterion from its own Thirdparty/g2o.
+    ${REPO_ROOT}/src/backend/OrbLevenberg.cpp
     ${REPO_ROOT}/src/backend/G2oTypes.cpp
     ${REPO_ROOT}/src/backend/OptimizableTypes.cpp
   )
