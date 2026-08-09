@@ -226,7 +226,14 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
     {
         KeyFrame* pKFi = it->second;
         if(pKFi->isBad())
+        {
+            // DIVERGENCES #23: upstream `continue`d here without advancing
+            // i/it, spinning forever if a bad KF reached this list. Skip the
+            // candidate instead of hanging.
+            i++;
+            it++;
             continue;
+        }
 
         if(!spAlreadyAddedKF.count(pKFi))
         {

@@ -868,6 +868,7 @@ void LoopClosing::CorrectLoop()
         {
             mpThreadGBA->detach();
             delete mpThreadGBA;
+            mpThreadGBA = NULL;  // DIVERGENCES #22: keep the pointer honest for the spawn-site reap
         }
         cout << "  Done!!" << endl;
     }
@@ -1066,6 +1067,16 @@ void LoopClosing::CorrectLoop()
         mbFinishedGBA = false;
         mbStopGBA = false;
 
+        // DIVERGENCES #22: a normally-completed GBA left a joinable thread
+        // object here that upstream simply overwrote (only the abort path
+        // deleted it). Reap it first; join returns immediately because any
+        // running GBA was aborted (and nulled) above.
+        if(mpThreadGBA)
+        {
+            if(mpThreadGBA->joinable())
+                mpThreadGBA->join();
+            delete mpThreadGBA;
+        }
         mpThreadGBA = new thread(&LoopClosing::RunGlobalBundleAdjustment, this, pLoopMap, mpCurrentKF->mnId);
     }
 
@@ -1099,6 +1110,7 @@ void LoopClosing::MergeLocal()
         {
             mpThreadGBA->detach();
             delete mpThreadGBA;
+            mpThreadGBA = NULL;  // DIVERGENCES #22: keep the pointer honest for the spawn-site reap
         }
         bRelaunchBA = true;
     }
@@ -1598,6 +1610,13 @@ void LoopClosing::MergeLocal()
         mbRunningGBA = true;
         mbFinishedGBA = false;
         mbStopGBA = false;
+        // DIVERGENCES #22: reap a completed predecessor before overwriting.
+        if(mpThreadGBA)
+        {
+            if(mpThreadGBA->joinable())
+                mpThreadGBA->join();
+            delete mpThreadGBA;
+        }
         mpThreadGBA = new thread(&LoopClosing::RunGlobalBundleAdjustment,this, pMergeMap, mpCurrentKF->mnId);
     }
 
@@ -1632,6 +1651,7 @@ void LoopClosing::MergeLocal2()
         {
             mpThreadGBA->detach();
             delete mpThreadGBA;
+            mpThreadGBA = NULL;  // DIVERGENCES #22: keep the pointer honest for the spawn-site reap
         }
     }
 
