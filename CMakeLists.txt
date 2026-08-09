@@ -84,6 +84,7 @@ add_library(orbslam3_core SHARED
   src/mapping/ImuInitializer.cpp
   src/recognition/KeyFrameDatabase.cpp
   src/closing/LoopClosing.cpp
+  src/closing/PlaceRecognition.cpp
   src/io/Converter.cpp
   src/viz/Viewer.cpp
   src/viz/FrameDrawer.cpp
