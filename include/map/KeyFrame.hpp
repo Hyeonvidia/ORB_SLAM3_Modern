@@ -370,9 +370,6 @@ public:
 
     int mnDataset;
 
-    std::vector <KeyFrame*> mvpLoopCandKFs;
-    std::vector <KeyFrame*> mvpMergeCandKFs;
-
     //bool mbHasHessian;
     //cv::Mat mHessianPose;
 

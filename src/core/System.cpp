@@ -197,7 +197,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Loop Closing thread and launch
     // mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR
-    mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR, activeLC, &mBAEpochs,
+    mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mSensor!=MONOCULAR, activeLC, &mBAEpochs,
                                    static_cast<ILoopOptimizer*>(&mBackend)); // mSensor!=MONOCULAR);
     mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
 
@@ -220,7 +220,6 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile,settings_);
         mptViewer = new thread(&Viewer::Run, mpViewer);
         mpTracker->SetViewer(mpViewer);
-        mpLoopCloser->mpViewer = mpViewer;
         mpViewer->both = mpFrameDrawer->both;
     }
 

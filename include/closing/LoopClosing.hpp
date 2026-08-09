@@ -24,11 +24,9 @@
 #include "mapping/LocalMapping.hpp"
 #include "map/Atlas.hpp"
 #include "features/ORBVocabulary.hpp"
-#include "tracking/Tracking.hpp"
 
 #include "recognition/KeyFrameDatabase.hpp"
 
-#include <boost/algorithm/string.hpp>
 #include <thread>
 #include <mutex>
 #include "g2o/types/sim3/types_seven_dof_expmap.h"
@@ -48,13 +46,12 @@ class LoopClosing
 {
 public:
 
-    typedef pair<set<KeyFrame*>,int> ConsistentGroup;    
     typedef map<KeyFrame*,g2o::Sim3,std::less<KeyFrame*>,
         Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > > KeyFrameAndPose;
 
 public:
 
-    LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs, ILoopOptimizer* pOptimizer);
+    LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs, ILoopOptimizer* pOptimizer);
 
     void SetTracker(Tracking* pTracker);
 
@@ -75,16 +72,10 @@ public:
         unique_lock<std::mutex> lock(mMutexGBA);
         return mbRunningGBA;
     }
-    bool isFinishedGBA(){
-        unique_lock<std::mutex> lock(mMutexGBA);
-        return mbFinishedGBA;
-    }   
 
     void RequestFinish();
 
     bool isFinished();
-
-    Viewer* mpViewer;
 
 #ifdef REGISTER_TIMES
 
@@ -103,7 +94,6 @@ public:
     vector<double> vdLoopFusion_ms;
     vector<double> vdLoopOptEss_ms;
     vector<double> vdLoopTotal_ms;
-    vector<int> vnLoopKFs;
     int nLoop;
 
     vector<double> vdGBA_ms;
@@ -144,8 +134,6 @@ protected:
     void MergeLocal();
     void MergeLocal2();
 
-    void CheckObservations(set<KeyFrame*> &spKFsMap1, set<KeyFrame*> &spKFsMap2);
-
     void ResetIfRequested();
     bool mbResetRequested;
     bool mbResetActiveMapRequested;
@@ -162,7 +150,6 @@ protected:
     Tracking* mpTracker;
 
     KeyFrameDatabase* mpKeyFrameDB;
-    ORBVocabulary* mpORBVocabulary;
 
     // Persistent local-BA epoch marks, owned by System (P5-C).
     BAEpochs* mpBAEpochs;
@@ -179,20 +166,11 @@ protected:
 
     std::mutex mMutexLoopQueue;
 
-    // Loop detector parameters
-    float mnCovisibilityConsistencyTh;
-
     // Loop detector variables
     KeyFrame* mpCurrentKF;
     KeyFrame* mpLastCurrentKF;
-    KeyFrame* mpMatchedKF;
-    std::vector<ConsistentGroup> mvConsistentGroups;
-    std::vector<KeyFrame*> mvpEnoughConsistentCandidates;
     std::vector<KeyFrame*> mvpCurrentConnectedKFs;
-    std::vector<MapPoint*> mvpCurrentMatchedPoints;
     std::vector<MapPoint*> mvpLoopMapPoints;
-    cv::Mat mScw;
-    g2o::Sim3 mg2oScw;
 
     //-------
     Map* mpLastMap;
@@ -211,7 +189,6 @@ protected:
     int mnMergeNumNotFound;
     KeyFrame* mpMergeLastCurrentKF;
     g2o::Sim3 mg2oMergeSlw;
-    g2o::Sim3 mg2oMergeSmw;
     g2o::Sim3 mg2oMergeScw;
     KeyFrame* mpMergeMatchedKF;
     std::vector<MapPoint*> mvpMergeMPs;
@@ -220,8 +197,6 @@ protected:
 
     g2o::Sim3 mSold_new;
     //-------
-
-    long unsigned int mLastLoopKFid;
 
     // Variables related to Global Bundle Adjustment
     bool mbRunningGBA;
@@ -237,23 +212,8 @@ protected:
     int mnFullBAIdx;
 
 
-
-    vector<double> vdPR_CurrentTime;
-    vector<double> vdPR_MatchedTime;
-    vector<int> vnPR_TypeRecogn;
-
-    //DEBUG
-    string mstrFolderSubTraj;
-    int mnNumCorrection;
-    int mnCorrectionGBA;
-
-
     // To (de)activate LC
     bool mbActiveLC = true;
-
-#ifdef REGISTER_LOOP
-    string mstrFolderLoop;
-#endif
 };
 
 } //namespace ORB_SLAM

@@ -520,10 +520,6 @@ void Tracking::PrintTimeStats()
 
     f << "Numb exec: " << mpLoopClosing->nLoop << std::endl;
     std::cout << "Num exec: " << mpLoopClosing->nLoop << std::endl;
-    average = calcAverage(mpLoopClosing->vnLoopKFs);
-    deviation = calcDeviation(mpLoopClosing->vnLoopKFs, average);
-    f << "Number of KFs: " << average << "$\\pm$" << deviation << std::endl;
-    std::cout << "Number of KFs: " << average << "$\\pm$" << deviation << std::endl;
 
     f << std::endl << "Map Merging (mean$\\pm$std)" << std::endl;
     std::cout << std::endl << "Map Merging (mean$\\pm$std)" << std::endl;
