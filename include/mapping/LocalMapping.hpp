@@ -33,7 +33,6 @@
 namespace ORB_SLAM3
 {
 
-class System;
 class Tracking;
 class LoopClosing;
 class Atlas;
@@ -44,7 +43,7 @@ class LocalMapping
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    LocalMapping(System* pSys, Atlas* pAtlas, const float bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer, const string &_strSeqName=std::string());
+    LocalMapping(Atlas* pAtlas, const float bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer);
 
     void SetLoopCloser(LoopClosing* pLoopCloser);
 
@@ -80,34 +79,14 @@ public:
 
     bool IsInitializing();
     double GetCurrKFTime();
-    KeyFrame* GetCurrKF();
 
-    std::mutex mMutexImuInit;
-
-    Eigen::MatrixXd mcovInertial;
     Eigen::Matrix3d mRwg;
     Eigen::Vector3d mbg;
     Eigen::Vector3d mba;
     double mScale;
-    double mInitTime;
-    double mCostTime;
-
-    unsigned int mInitSect;
-    unsigned int mIdxInit;
-    unsigned int mnKFs;
     double mFirstTs;
-    int mnMatchesInliers;
 
-    // For debugging (erase in normal mode)
-    int mInitFr;
-    int mIdxIteration;
-    string strSequence;
-
-    bool mbNotBA1;
-    bool mbNotBA2;
     bool mbBadImu;
-
-    bool mbWriteStats;
 
     // not consider far points (clouds)
     bool mbFarPoints;
@@ -140,8 +119,6 @@ protected:
     void MapPointCulling();
     void SearchInNeighbors();
     void KeyFrameCulling();
-
-    System *mpSystem;
 
     bool mbMonocular;
     bool mbInertial;
@@ -193,16 +170,7 @@ protected:
 
     bool bInitializing;
 
-    Eigen::MatrixXd infoInertial;
-    int mNumLM;
-    int mNumKFCulling;
-
     float mTinit;
-
-    int countRefinement;
-
-    //DEBUG
-    ofstream f_lm;
 
     };
 

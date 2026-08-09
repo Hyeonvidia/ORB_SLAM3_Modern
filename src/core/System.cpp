@@ -182,11 +182,10 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
                              static_cast<ITrackingOptimizer*>(&mBackend), strSequence);
 
     //Initialize the Local Mapping thread and launch
-    mpLocalMapper = new LocalMapping(this, mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR,
+    mpLocalMapper = new LocalMapping(mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR,
                                      mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO || mSensor==IMU_RGBD, &mBAEpochs,
-                                     static_cast<IMappingOptimizer*>(&mBackend), strSequence);
+                                     static_cast<IMappingOptimizer*>(&mBackend));
     mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
-    mpLocalMapper->mInitFr = initFr;
     mpLocalMapper->mThFarPoints = settings_->thFarPoints();
     if(mpLocalMapper->mThFarPoints!=0)
     {
@@ -1247,62 +1246,6 @@ void System::SaveTrajectoryKITTI(const string &filename)
              Rwc(1,0) << " " << Rwc(1,1)  << " " << Rwc(1,2) << " "  << twc(1) << " " <<
              Rwc(2,0) << " " << Rwc(2,1)  << " " << Rwc(2,2) << " "  << twc(2) << endl;
     }
-    f.close();
-}
-
-
-void System::SaveDebugData(const int &initIdx)
-{
-    // 0. Save initialization trajectory
-    SaveTrajectoryEuRoC("init_FrameTrajectoy_" +to_string(mpLocalMapper->mInitSect)+ "_" + to_string(initIdx)+".txt");
-
-    // 1. Save scale
-    ofstream f;
-    f.open("init_Scale_" + to_string(mpLocalMapper->mInitSect) + ".txt", ios_base::app);
-    f << fixed;
-    f << mpLocalMapper->mScale << endl;
-    f.close();
-
-    // 2. Save gravity direction
-    f.open("init_GDir_" +to_string(mpLocalMapper->mInitSect)+ ".txt", ios_base::app);
-    f << fixed;
-    f << mpLocalMapper->mRwg(0,0) << "," << mpLocalMapper->mRwg(0,1) << "," << mpLocalMapper->mRwg(0,2) << endl;
-    f << mpLocalMapper->mRwg(1,0) << "," << mpLocalMapper->mRwg(1,1) << "," << mpLocalMapper->mRwg(1,2) << endl;
-    f << mpLocalMapper->mRwg(2,0) << "," << mpLocalMapper->mRwg(2,1) << "," << mpLocalMapper->mRwg(2,2) << endl;
-    f.close();
-
-    // 3. Save computational cost
-    f.open("init_CompCost_" +to_string(mpLocalMapper->mInitSect)+ ".txt", ios_base::app);
-    f << fixed;
-    f << mpLocalMapper->mCostTime << endl;
-    f.close();
-
-    // 4. Save biases
-    f.open("init_Biases_" +to_string(mpLocalMapper->mInitSect)+ ".txt", ios_base::app);
-    f << fixed;
-    f << mpLocalMapper->mbg(0) << "," << mpLocalMapper->mbg(1) << "," << mpLocalMapper->mbg(2) << endl;
-    f << mpLocalMapper->mba(0) << "," << mpLocalMapper->mba(1) << "," << mpLocalMapper->mba(2) << endl;
-    f.close();
-
-    // 5. Save covariance matrix
-    f.open("init_CovMatrix_" +to_string(mpLocalMapper->mInitSect)+ "_" +to_string(initIdx)+".txt", ios_base::app);
-    f << fixed;
-    for(int i=0; i<mpLocalMapper->mcovInertial.rows(); i++)
-    {
-        for(int j=0; j<mpLocalMapper->mcovInertial.cols(); j++)
-        {
-            if(j!=0)
-                f << ",";
-            f << setprecision(15) << mpLocalMapper->mcovInertial(i,j);
-        }
-        f << endl;
-    }
-    f.close();
-
-    // 6. Save initialization time
-    f.open("init_Time_" +to_string(mpLocalMapper->mInitSect)+ ".txt", ios_base::app);
-    f << fixed;
-    f << mpLocalMapper->mInitTime << endl;
     f.close();
 }
 

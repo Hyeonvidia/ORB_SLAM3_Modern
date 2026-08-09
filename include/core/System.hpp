@@ -148,9 +148,6 @@ public:
     void SaveTrajectoryEuRoC(const string &filename, Map* pMap);
     void SaveKeyFrameTrajectoryEuRoC(const string &filename, Map* pMap);
 
-    // Save data used for initialization debug
-    void SaveDebugData(const int &iniIdx);
-
     // Save camera trajectory in the KITTI dataset format.
     // Only for stereo and RGB-D. This method does not work for monocular.
     // Call first Shutdown()
