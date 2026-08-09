@@ -39,6 +39,38 @@ class Atlas;
 struct BAEpochs;
 class IMappingOptimizer;
 
+// =============================================================================
+// Queue/backpressure contract (P8-2, from the docs/P8_RECON.md survey).
+//
+// mlNewKeyFrames is an unbounded producer/consumer queue with no condition
+// variable; Run() polls at 3ms. Producer is always the Tracking thread via
+// InsertKeyFrame (which also preempts any running BA through mbAbortBA).
+// KeyFrames in the queue are NOT yet in the map -- Atlas::AddKeyFrame happens
+// inside ProcessNewKeyFrame, and only KFs consumed by Run()'s main path are
+// ever handed to LoopClosing.
+//
+// Protocol invariants (behavioral contract, not aspiration):
+//  1. Backpressure is advisory. mbAcceptKeyFrames is a duty-cycle hint
+//     (false for the whole iteration body); Tracking inserts regardless when
+//     its c3/c4 conditions hold, via InterruptBA + queue-depth<3 (stereo).
+//  2. Queue drain beats stop. Run() will not park while the queue is
+//     non-empty, so a RequestStop -> isStopped() wait implicitly waits for
+//     full drain unless the caller drains it itself with EmptyQueue().
+//  3. STOPPED is exited only externally (Release() or shutdown).
+//     SetNotStop(true) failing (already stopped) tells Tracking to drop the
+//     keyframe it was about to insert.
+//  4. mbBadImu quirk: Stop() sets mbStopped even when mbBadImu skips the park
+//     loop -- external isStopped() waiters proceed while Run() keeps looping;
+//     recovery is the reset Run() self-requested.
+//  5. The park loop does not service ResetIfRequested; a Tracking reset
+//     request spins until some LoopClosing/System path calls Release().
+//  6. Resets are producer-synchronous: RequestReset* spins the calling
+//     thread until consumed, so ResetIfRequested's lock-free queue clear is
+//     protected by the protocol, not the mutex.
+//
+// Known inherited races (R1-R5) and the three drain-disposal asymmetries are
+// cataloged in docs/OWNERSHIP.md; fixes are deferred to P10 (threading).
+// =============================================================================
 class LocalMapping
 {
 public:

@@ -1,7 +1,9 @@
-# 데이터 계층 소유권·수명 계약 (P5-3, 2026-08-07)
+# 데이터 계층 소유권·수명 계약 (P5-3, 2026-08-07 / P8-2 증보 2026-08-09)
 
-정찰 전수조사 기반(3-agent, journal: wf_b582e188-52e). 이 문서는 **현행 계약의
-기술**이며, 스마트 포인터 이행은 P6+ 등가성 인프라 이후의 백로그다.
+정찰 전수조사 기반(3-agent, journal: wf_b582e188-52e; P8 정찰 wf_1fdd629d-52f).
+이 문서는 **현행 계약의 기술**이며, 스마트 포인터 이행은 P6+ 등가성 인프라
+이후의 백로그다. LocalMapping 큐/배압 프로토콜의 규범적 기술은
+`include/mapping/LocalMapping.hpp` 상단 주석(P8-2), 전체 정찰은 docs/P8_RECON.md.
 
 ## 할당·해제 지도
 
@@ -15,9 +17,55 @@
 특수 경로 delete 4곳(맵 편입 전 큐 KF 정리 등)은 LocalMapping/Tracking에 있으며,
 그중 **2곳은 업스트림 그대로의 댕글링 위험**으로 문서화한다:
 - `LocalMapping::Release()`: 큐 KF를 SetBadFlag 없이 delete — Tracking의
-  mpLastKeyFrame이 가리키면 댕글링 (업스트림 계승, FixLevel 후보)
+  mpLastKeyFrame이 가리키면 댕글링 (업스트림 계승, FixLevel 후보; T측 협조가
+  필요해 P10 스레딩 현대화로 이월)
 - `LocalMapping::ScaleRefinement()/InitializeIMU()`: SetBadFlag가 초기 KF /
   mbNotErase에서 조기 return해도 delete는 실행 — mspKeyFrames 댕글링 가능
+  (**P8-3에서 UAF→누수로 강등**: SetBadFlag 후 isBad() 확인 시에만 delete,
+  DIVERGENCES #19)
+
+### 큐 드레인 3종 처분 비대칭 (P8-2 기록)
+
+`mlNewKeyFrames`를 처리 없이 비우는 세 경로는 처분이 서로 다르며, 통일하려면
+"큐 잔류 KF는 아직 맵에 없음(AddKeyFrame은 ProcessNewKeyFrame에서)" 불변식을
+같이 봐야 한다:
+
+| 경로 | 처분 | 비고 |
+|---|---|---|
+| Release() | delete만 | 위 댕글링 위험 |
+| InitializeIMU/ScaleRefinement 말미 | SetBadFlag→delete | P8-3 가드 |
+| ResetIfRequested | clear만 (의도적 누수) | 리셋 중 T는 스핀 대기라 안전 |
+
+또한 **LC 큐 비대칭**: Run() 주 경로가 소비한 KF만 LoopClosing 큐에 전달된다.
+EmptyQueue/InitializeIMU/ScaleRefinement가 소비한 KF는 맵에는 들어가지만
+루프/병합 탐지는 영원히 안 돈다 — P9에서 이 비대칭을 그대로 보존할 것.
+
+## LocalMapping 상속 레이스 대장 (P8-2, 수정은 P10)
+
+전부 업스트림 계승. 게이트에서 무증상이며, 수정은 P10 스레딩 현대화에서
+condition_variable/atomic 전환과 함께 일괄 처리한다 (상세 file:line은
+docs/P8_RECON.md §4):
+
+- **R1** `Release()`가 mMutexNewKFs 없이 큐 순회+delete. 초기화 생산자 2곳
+  (StereoInitialization/CreateInitialMapMonocular)은 SetNotStop 미사용이라
+  push_back과 경합 가능 (std::list 동시 변형 UB).
+- **R2** `LoopClosing::CorrectLoop`이 RequestStop 후 **파킹 대기 전에**
+  EmptyQueue 호출 — LM/LC 두 스레드가 ProcessNewKeyFrame 동시 실행 가능.
+  (MergeLocal/MergeLocal2는 대기 후 드레인으로 순서 올바름.)
+- **R3** IMU 드레인 2곳이 mMutexNewKFs 없이 순회+delete. SetImuInitialized
+  이후 bInitializing 중에도 T의 삽입 게이트가 통과해 동시 삽입 가능.
+- **R4** `mbAbortBA`가 평범 bool — InterruptBA는 무락 쓰기, 옵티마이저 내부
+  루프는 포인터 폴링. atomic<bool> 전환은 옵티마이저 시그니처(bool*)와 함께
+  P10에서.
+- **R5** 무동기 교차 읽기 모음: mbBadImu(T), bInitializing(T),
+  mbResetRequested(LM 조기 가드 2곳), mFirstTs(T 쓰기 vs LM 읽기),
+  mpCurrentKeyFrame(System::GetTimeFromIMUInit).
+
+프로토콜 특이점 2건(버그 아님, 동작 계약): ① mbBadImu=true면 Stop()이
+mbStopped를 세팅하고도 파킹 루프를 건너뛴다 — 외부 대기자는 isStopped()를 보고
+진행하지만 LM은 계속 돈다(복구는 자가요청 리셋). ② 파킹 루프는
+ResetIfRequested를 서비스하지 않는다 — T의 RequestReset은 LC/S의 Release까지
+스핀(지연 위험, 데드락 아님).
 
 ## Tombstone은 버그가 아니라 동시성 계약이다
 
