@@ -19,6 +19,7 @@
 
 #include "mapping/LocalMapping.hpp"
 #include "closing/LoopClosing.hpp"
+#include "tracking/Tracking.hpp"  // P8-3: was transitive via LocalMapping.hpp
 #include "features/ORBmatcher.hpp"
 #include "backend/IMappingOptimizer.hpp"
 #include "backend/BAEpochs.hpp"
@@ -33,10 +34,10 @@
 namespace ORB_SLAM3
 {
 
-LocalMapping::LocalMapping(Atlas *pAtlas, const float bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer):
-    mbMonocular(bMonocular), mbInertial(bInertial), mbResetRequested(false), mbResetRequestedActiveMap(false), mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas), mpBAEpochs(pBAEpochs), mpOptimizer(pOptimizer), bInitializing(false),
-    mbAbortBA(false), mbStopped(false), mbStopRequested(false), mbNotStop(false), mbAcceptKeyFrames(true),
-    mScale(1.0)
+LocalMapping::LocalMapping(Atlas *pAtlas, bool bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer):
+    mScale(1.0), mbMonocular(bMonocular), mbInertial(bInertial), mbResetRequested(false), mbResetRequestedActiveMap(false),
+    mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas), mpBAEpochs(pBAEpochs), mpOptimizer(pOptimizer),
+    mbAbortBA(false), mbStopped(false), mbStopRequested(false), mbNotStop(false), mbAcceptKeyFrames(true), bInitializing(false)
 {
     mbBadImu = false;
 
@@ -204,11 +205,7 @@ void LocalMapping::Run()
                             {
                                 cout << "start VIBA 1" << endl;
                                 mpCurrentKeyFrame->GetMap()->SetIniertialBA1();
-                                if (mbMonocular)
-                                    InitializeIMU(1.f, 1e5, true);
-                                else
-                                    InitializeIMU(1.f, 1e5, true);
-
+                                InitializeIMU(1.f, 1e5, true);
                                 cout << "end VIBA 1" << endl;
                             }
                         }
@@ -216,11 +213,7 @@ void LocalMapping::Run()
                             if (mTinit>15.0f){
                                 cout << "start VIBA 2" << endl;
                                 mpCurrentKeyFrame->GetMap()->SetIniertialBA2();
-                                if (mbMonocular)
-                                    InitializeIMU(0.f, 0.f, true);
-                                else
-                                    InitializeIMU(0.f, 0.f, true);
-
+                                InitializeIMU(0.f, 0.f, true);
                                 cout << "end VIBA 2" << endl;
                             }
                         }
@@ -1393,8 +1386,12 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
     for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
     {
+        // DIVERGENCES #19: SetBadFlag early-returns for the map-origin KF and
+        // under mbNotErase, leaving the KF registered -- deleting it then
+        // would dangle mspKeyFrames. Leak the (pathological) survivor instead.
         (*lit)->SetBadFlag();
-        delete *lit;
+        if((*lit)->isBad())
+            delete *lit;
     }
     mlNewKeyFrames.clear();
 
@@ -1459,8 +1456,12 @@ void LocalMapping::ScaleRefinement()
 
     for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
     {
+        // DIVERGENCES #19: SetBadFlag early-returns for the map-origin KF and
+        // under mbNotErase, leaving the KF registered -- deleting it then
+        // would dangle mspKeyFrames. Leak the (pathological) survivor instead.
         (*lit)->SetBadFlag();
-        delete *lit;
+        if((*lit)->isBad())
+            delete *lit;
     }
     mlNewKeyFrames.clear();
 

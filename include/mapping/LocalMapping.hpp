@@ -20,12 +20,11 @@
 #ifndef LOCALMAPPING_H
 #define LOCALMAPPING_H
 
+// P8-3: this header uses only KeyFrame/Atlas(->Map) as complete types;
+// Tracking/LoopClosing are forward-declared below, cutting the two mutual
+// include cycles LocalMapping.hpp <-> Tracking.hpp / LoopClosing.hpp.
 #include "map/KeyFrame.hpp"
 #include "map/Atlas.hpp"
-#include "closing/LoopClosing.hpp"
-#include "tracking/Tracking.hpp"
-#include "recognition/KeyFrameDatabase.hpp"
-#include "core/Settings.hpp"
 
 #include <mutex>
 
@@ -75,7 +74,7 @@ class LocalMapping
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    LocalMapping(Atlas* pAtlas, const float bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer);
+    LocalMapping(Atlas* pAtlas, bool bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer);
 
     void SetLoopCloser(LoopClosing* pLoopCloser);
 
@@ -197,7 +196,7 @@ protected:
     bool mbAcceptKeyFrames;
     std::mutex mMutexAccept;
 
-    void InitializeIMU(float priorG = 1e2, float priorA = 1e6, bool bFirst = false);
+    void InitializeIMU(float priorG = 1e2, float priorA = 1e6, bool bFIBA = false);
     void ScaleRefinement();
 
     bool bInitializing;

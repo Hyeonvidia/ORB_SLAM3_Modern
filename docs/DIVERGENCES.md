@@ -17,6 +17,15 @@
 4. **KFDB 이웃 누적에서 임계 미달 후보의 점수 기여 = 0** — 업스트림은 스탬프만
    통과하면 **이전 질의의 stale 점수**를 읽을 수 있었다(질의 이력 의존 =
    재현 불가능한 동작). 결정적 0 기여로 정본화.
+19. **[P8-3] IMU 초기화 큐 퍼지의 delete를 isBad() 조건부로 강등** —
+    `InitializeIMU`/`ScaleRefinement` 말미의 큐 퍼지는 SetBadFlag 후 무조건
+    delete였으나, SetBadFlag는 맵 원점 KF(`mnId==GetInitKFid`)와 mbNotErase에서
+    **조기 return하여 KF를 맵에 등록된 채로 남긴다** — 그 상태의 delete는
+    mspKeyFrames/연결 그래프 댕글링(UAF 대기 상태, #7·OWNERSHIP.md). 이제
+    `isBad()`가 참이 된 경우에만 delete한다. 조기 return 조건은 큐 잔류
+    KF(미처리 = 맵 미편입, LC 미경유)에서 사실상 도달 불가하므로 정상 실행
+    동작은 동일하며, 도달하는 병리적 경우엔 UAF 대신 누수(+맵 잔존)를 택한다.
+    mbNotErase 지연 삭제는 이후 LoopClosing::SetErase의 재-SetBadFlag로 완결.
 
 ## 계승 결함 (bug-for-bug 보존, FixLevel 후보)
 
