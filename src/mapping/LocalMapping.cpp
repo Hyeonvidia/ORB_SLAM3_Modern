@@ -35,9 +35,10 @@ namespace ORB_SLAM3
 {
 
 LocalMapping::LocalMapping(Atlas *pAtlas, bool bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer):
-    mScale(1.0), mbMonocular(bMonocular), mbInertial(bInertial), mbResetRequested(false), mbResetRequestedActiveMap(false),
+    mbMonocular(bMonocular), mbInertial(bInertial), mbResetRequested(false), mbResetRequestedActiveMap(false),
     mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas), mpBAEpochs(pBAEpochs), mpOptimizer(pOptimizer),
-    mbAbortBA(false), mbStopped(false), mbStopRequested(false), mbNotStop(false), mbAcceptKeyFrames(true), bInitializing(false)
+    mbAbortBA(false), mbStopped(false), mbStopRequested(false), mbNotStop(false), mbAcceptKeyFrames(true), bInitializing(false),
+    mImuInit(*this)
 {
     mbBadImu = false;
 
@@ -180,9 +181,9 @@ void LocalMapping::Run()
                 if(!mpCurrentKeyFrame->GetMap()->isImuInitialized() && mbInertial)
                 {
                     if (mbMonocular)
-                        InitializeIMU(1e2, 1e10, true);
+                        mImuInit.InitializeIMU(1e2, 1e10, true);
                     else
-                        InitializeIMU(1e2, 1e5, true);
+                        mImuInit.InitializeIMU(1e2, 1e5, true);
                 }
 
 
@@ -205,7 +206,7 @@ void LocalMapping::Run()
                             {
                                 cout << "start VIBA 1" << endl;
                                 mpCurrentKeyFrame->GetMap()->SetIniertialBA1();
-                                InitializeIMU(1.f, 1e5, true);
+                                mImuInit.InitializeIMU(1.f, 1e5, true);
                                 cout << "end VIBA 1" << endl;
                             }
                         }
@@ -213,7 +214,7 @@ void LocalMapping::Run()
                             if (mTinit>15.0f){
                                 cout << "start VIBA 2" << endl;
                                 mpCurrentKeyFrame->GetMap()->SetIniertialBA2();
-                                InitializeIMU(0.f, 0.f, true);
+                                mImuInit.InitializeIMU(0.f, 0.f, true);
                                 cout << "end VIBA 2" << endl;
                             }
                         }
@@ -227,7 +228,7 @@ void LocalMapping::Run()
                                 (mTinit>65.0f && mTinit<65.5f)||
                                 (mTinit>75.0f && mTinit<75.5f))){
                             if (mbMonocular)
-                                ScaleRefinement();
+                                mImuInit.ScaleRefinement();
                         }
                     }
                 }
@@ -1140,250 +1141,8 @@ bool LocalMapping::isFinished()
     return mbFinished;
 }
 
-void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
+void LocalMapping::PurgeNewKeyFramesAfterInertialInit()
 {
-    if (mbResetRequested)
-        return;
-
-    float minTime;
-    int nMinKF;
-    if (mbMonocular)
-    {
-        minTime = 2.0;
-        nMinKF = 10;
-    }
-    else
-    {
-        minTime = 1.0;
-        nMinKF = 10;
-    }
-
-
-    if(mpAtlas->KeyFramesInMap()<nMinKF)
-        return;
-
-    // Retrieve all keyframe in temporal order
-    list<KeyFrame*> lpKF;
-    KeyFrame* pKF = mpCurrentKeyFrame;
-    while(pKF->mPrevKF)
-    {
-        lpKF.push_front(pKF);
-        pKF = pKF->mPrevKF;
-    }
-    lpKF.push_front(pKF);
-    vector<KeyFrame*> vpKF(lpKF.begin(),lpKF.end());
-
-    if(vpKF.size()<nMinKF)
-        return;
-
-    mFirstTs=vpKF.front()->mTimeStamp;
-    if(mpCurrentKeyFrame->mTimeStamp-mFirstTs<minTime)
-        return;
-
-    bInitializing = true;
-
-    while(CheckNewKeyFrames())
-    {
-        ProcessNewKeyFrame();
-        vpKF.push_back(mpCurrentKeyFrame);
-        lpKF.push_back(mpCurrentKeyFrame);
-    }
-
-    const int N = vpKF.size();
-
-    // Compute and KF velocities mRwg estimation
-    if (!mpCurrentKeyFrame->GetMap()->isImuInitialized())
-    {
-        Eigen::Matrix3f Rwg;
-        Eigen::Vector3f dirG;
-        dirG.setZero();
-        for(vector<KeyFrame*>::iterator itKF = vpKF.begin(); itKF!=vpKF.end(); itKF++)
-        {
-            if (!(*itKF)->mpImuPreintegrated)
-                continue;
-            if (!(*itKF)->mPrevKF)
-                continue;
-
-            dirG -= (*itKF)->mPrevKF->GetImuRotation() * (*itKF)->mpImuPreintegrated->GetUpdatedDeltaVelocity();
-            Eigen::Vector3f _vel = ((*itKF)->GetImuPosition() - (*itKF)->mPrevKF->GetImuPosition())/(*itKF)->mpImuPreintegrated->dT;
-            (*itKF)->SetVelocity(_vel);
-            (*itKF)->mPrevKF->SetVelocity(_vel);
-        }
-
-        dirG = dirG/dirG.norm();
-        Eigen::Vector3f gI(0.0f, 0.0f, -1.0f);
-        Eigen::Vector3f v = gI.cross(dirG);
-        const float nv = v.norm();
-        const float cosg = gI.dot(dirG);
-        const float ang = acos(cosg);
-        Eigen::Vector3f vzg = v*ang/nv;
-        Rwg = Sophus::SO3f::exp(vzg).matrix();
-        mRwg = Rwg.cast<double>();
-        mTinit = mpCurrentKeyFrame->mTimeStamp-mFirstTs;
-    }
-    else
-    {
-        mRwg = Eigen::Matrix3d::Identity();
-        mbg = mpCurrentKeyFrame->GetGyroBias().cast<double>();
-        mba = mpCurrentKeyFrame->GetAccBias().cast<double>();
-    }
-
-    mScale=1.0;
-
-    // Dead out-param of the interface signature (never touched by the
-    // backend); was a persistent member until P8-1.
-    Eigen::MatrixXd infoInertial = Eigen::MatrixXd::Zero(9,9);
-    mpOptimizer->InertialOptimization(mpAtlas->GetCurrentMap(), mRwg, mScale, mbg, mba, mbMonocular, infoInertial, false, false, priorG, priorA);
-
-    if (mScale<1e-1)
-    {
-        cout << "scale too small" << endl;
-        bInitializing=false;
-        return;
-    }
-
-    // Before this line we are not changing the map
-    {
-        unique_lock<mutex> lock(mpAtlas->GetCurrentMap()->mMutexMapUpdate);
-        if ((fabs(mScale - 1.f) > 0.00001) || !mbMonocular) {
-            Sophus::SE3f Twg(mRwg.cast<float>().transpose(), Eigen::Vector3f::Zero());
-            mpAtlas->GetCurrentMap()->ApplyScaledRotation(Twg, mScale, true);
-            mpTracker->UpdateFrameIMU(mScale, vpKF[0]->GetImuBias(), mpCurrentKeyFrame);
-        }
-
-        // Check if initialization OK
-        if (!mpAtlas->isImuInitialized())
-            for (int i = 0; i < N; i++) {
-                KeyFrame *pKF2 = vpKF[i];
-                pKF2->bImu = true;
-            }
-    }
-
-    mpTracker->UpdateFrameIMU(1.0,vpKF[0]->GetImuBias(),mpCurrentKeyFrame);
-    if (!mpAtlas->isImuInitialized())
-    {
-        mpAtlas->SetImuInitialized();
-        mpTracker->t0IMU = mpTracker->mCurrentFrame.mTimeStamp;
-        mpCurrentKeyFrame->bImu = true;
-    }
-
-    // Result buffers of this GBA invocation (P5-D, was the KeyFrame/MapPoint
-    // *GBA scribble fields stamped with mnBAGlobalForKF==mpCurrentKeyFrame->mnId)
-    GBAResult gbaResult;
-
-    if (bFIBA)
-    {
-        if (priorA!=0.f)
-            mpOptimizer->FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, mpCurrentKeyFrame->mnId, NULL, true, priorG, priorA, NULL, NULL, &gbaResult, *mpBAEpochs);
-        else
-            mpOptimizer->FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, mpCurrentKeyFrame->mnId, NULL, false, 1e2, 1e6, NULL, NULL, &gbaResult, *mpBAEpochs);
-    }
-
-    Verbose::PrintMess("Global Bundle Adjustment finished\nUpdating map ...", Verbose::VERBOSITY_NORMAL);
-
-    // Get Map Mutex
-    unique_lock<mutex> lock(mpAtlas->GetCurrentMap()->mMutexMapUpdate);
-
-    // Process keyframes in the queue
-    while(CheckNewKeyFrames())
-    {
-        ProcessNewKeyFrame();
-        vpKF.push_back(mpCurrentKeyFrame);
-        lpKF.push_back(mpCurrentKeyFrame);
-    }
-
-    // Correct keyframes starting at map first keyframe
-    list<KeyFrame*> lpKFtoCheck(mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.begin(),mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.end());
-
-    // Pre-correction pose of every keyframe updated in this pass
-    // (was KeyFrame::mTcwBefGBA), read below to re-anchor map points
-    std::map<KeyFrame*, Sophus::SE3f> tcwBefGBA;
-
-    while(!lpKFtoCheck.empty())
-    {
-        KeyFrame* pKF = lpKFtoCheck.front();
-        const set<KeyFrame*> sChilds = pKF->GetChilds();
-        Sophus::SE3f Twc = pKF->GetPoseInverse();
-        KeyFrameGBAResult& rKF = gbaResult.kfs[pKF];
-        for(set<KeyFrame*>::const_iterator sit=sChilds.begin();sit!=sChilds.end();sit++)
-        {
-            KeyFrame* pChild = *sit;
-            if(!pChild || pChild->isBad())
-                continue;
-
-            if(!gbaResult.kfs.count(pChild))
-            {
-                Sophus::SE3f Tchildc = pChild->GetPose() * Twc;
-                KeyFrameGBAResult& rChild = gbaResult.kfs[pChild];
-                rChild.Tcw = Tchildc * rKF.Tcw;
-
-                Sophus::SO3f Rcor = rChild.Tcw.so3().inverse() * pChild->GetPose().so3();
-                if(pChild->isVelocitySet()){
-                    rChild.Vwb = Rcor * pChild->GetVelocity();
-                    rChild.hasVwb = true;
-                }
-                else {
-                    Verbose::PrintMess("Child velocity empty!! ", Verbose::VERBOSITY_NORMAL);
-                }
-
-                rChild.Bias = pChild->GetImuBias();
-                rChild.hasBias = true;
-
-            }
-            lpKFtoCheck.push_back(pChild);
-        }
-
-        tcwBefGBA[pKF] = pKF->GetPose();
-        pKF->SetPose(rKF.Tcw);
-
-        if(pKF->bImu)
-        {
-            if(rKF.hasVwb)
-                pKF->SetVelocity(rKF.Vwb);
-            if(rKF.hasBias)
-                pKF->SetNewBias(rKF.Bias);
-        } else {
-            cout << "KF " << pKF->mnId << " not set to inertial!! \n";
-        }
-
-        lpKFtoCheck.pop_front();
-    }
-
-    // Correct MapPoints
-    const vector<MapPoint*> vpMPs = mpAtlas->GetCurrentMap()->GetAllMapPoints();
-
-    for(size_t i=0; i<vpMPs.size(); i++)
-    {
-        MapPoint* pMP = vpMPs[i];
-
-        if(pMP->isBad())
-            continue;
-
-        std::map<MapPoint*, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
-        if(itMP != gbaResult.mps.end())
-        {
-            // If optimized by Global BA, just update
-            pMP->SetWorldPos(itMP->second);
-        }
-        else
-        {
-            // Update according to the correction of its reference keyframe
-            KeyFrame* pRefKF = pMP->GetReferenceKeyFrame();
-
-            std::map<KeyFrame*, Sophus::SE3f>::const_iterator itBef = tcwBefGBA.find(pRefKF);
-            if(itBef == tcwBefGBA.end())
-                continue;
-
-            // Map to non-corrected camera
-            Eigen::Vector3f Xc = itBef->second * pMP->GetWorldPos();
-
-            // Backproject using corrected camera
-            pMP->SetWorldPos(pRefKF->GetPoseInverse() * Xc);
-        }
-    }
-
-    Verbose::PrintMess("Map updated!", Verbose::VERBOSITY_NORMAL);
-
     for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
     {
         // DIVERGENCES #19: SetBadFlag early-returns for the map-origin KF and
@@ -1394,81 +1153,6 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
             delete *lit;
     }
     mlNewKeyFrames.clear();
-
-    // P7-1a: was `mpTracker->mState=Tracking::OK;`. Same write, same thread
-    // (local mapping), same absence of synchronization -- now routed through a
-    // named entry point instead of a public data member. This is the one
-    // legitimate cross-thread writer of the tracking state; see the warning
-    // block at the top of docs/P7_RECON.md and finding F11 there.
-    mpTracker->NotifyImuInitialized();
-    bInitializing = false;
-
-    mpCurrentKeyFrame->GetMap()->IncreaseChangeIndex();
-
-    return;
-}
-
-void LocalMapping::ScaleRefinement()
-{
-    // Minimum number of keyframes to compute a solution
-    // Minimum time (seconds) between first and last keyframe to compute a solution. Make the difference between monocular and stereo
-    if (mbResetRequested)
-        return;
-
-    // Retrieve all keyframes in temporal order
-    list<KeyFrame*> lpKF;
-    KeyFrame* pKF = mpCurrentKeyFrame;
-    while(pKF->mPrevKF)
-    {
-        lpKF.push_front(pKF);
-        pKF = pKF->mPrevKF;
-    }
-    lpKF.push_front(pKF);
-    vector<KeyFrame*> vpKF(lpKF.begin(),lpKF.end());
-
-    while(CheckNewKeyFrames())
-    {
-        ProcessNewKeyFrame();
-        vpKF.push_back(mpCurrentKeyFrame);
-        lpKF.push_back(mpCurrentKeyFrame);
-    }
-
-    mRwg = Eigen::Matrix3d::Identity();
-    mScale=1.0;
-
-    mpOptimizer->InertialOptimization(mpAtlas->GetCurrentMap(), mRwg, mScale);
-
-    if (mScale<1e-1) // 1e-1
-    {
-        cout << "scale too small" << endl;
-        bInitializing=false;
-        return;
-    }
-
-    // Before this line we are not changing the map
-    unique_lock<mutex> lock(mpAtlas->GetCurrentMap()->mMutexMapUpdate);
-    if ((fabs(mScale-1.f)>0.002)||!mbMonocular)
-    {
-        Sophus::SE3f Tgw(mRwg.cast<float>().transpose(),Eigen::Vector3f::Zero());
-        mpAtlas->GetCurrentMap()->ApplyScaledRotation(Tgw,mScale,true);
-        mpTracker->UpdateFrameIMU(mScale,mpCurrentKeyFrame->GetImuBias(),mpCurrentKeyFrame);
-    }
-
-    for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
-    {
-        // DIVERGENCES #19: SetBadFlag early-returns for the map-origin KF and
-        // under mbNotErase, leaving the KF registered -- deleting it then
-        // would dangle mspKeyFrames. Leak the (pathological) survivor instead.
-        (*lit)->SetBadFlag();
-        if((*lit)->isBad())
-            delete *lit;
-    }
-    mlNewKeyFrames.clear();
-
-    // To perform pose-inertial opt w.r.t. last keyframe
-    mpCurrentKeyFrame->GetMap()->IncreaseChangeIndex();
-
-    return;
 }
 
 

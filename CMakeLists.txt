@@ -81,6 +81,7 @@ add_library(orbslam3_core SHARED
   src/geometry/GeometricTools.cpp
   src/tracking/Tracking.cpp
   src/mapping/LocalMapping.cpp
+  src/mapping/ImuInitializer.cpp
   src/recognition/KeyFrameDatabase.cpp
   src/closing/LoopClosing.cpp
   src/io/Converter.cpp

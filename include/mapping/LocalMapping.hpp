@@ -25,6 +25,7 @@
 // include cycles LocalMapping.hpp <-> Tracking.hpp / LoopClosing.hpp.
 #include "map/KeyFrame.hpp"
 #include "map/Atlas.hpp"
+#include "mapping/ImuInitializer.hpp"
 
 #include <mutex>
 
@@ -111,10 +112,6 @@ public:
     bool IsInitializing();
     double GetCurrKFTime();
 
-    Eigen::Matrix3d mRwg;
-    Eigen::Vector3d mbg;
-    Eigen::Vector3d mba;
-    double mScale;
     double mFirstTs;
 
     bool mbBadImu;
@@ -196,12 +193,20 @@ protected:
     bool mbAcceptKeyFrames;
     std::mutex mMutexAccept;
 
-    void InitializeIMU(float priorG = 1e2, float priorA = 1e6, bool bFIBA = false);
-    void ScaleRefinement();
+    // P8-4: the guarded end-of-init queue purge (DIVERGENCES #19) lives
+    // here so every mlNewKeyFrames mutation stays inside LocalMapping;
+    // called by ImuInitializer at the end of both entry points.
+    void PurgeNewKeyFramesAfterInertialInit();
 
     bool bInitializing;
 
     float mTinit;
+
+    // P8-4: IMU initialization machinery (InitializeIMU / ScaleRefinement)
+    // extracted to a collaborator; it reaches host state through the friend
+    // grant. Run() staging gates and mTinit bookkeeping stay here.
+    friend class ImuInitializer;
+    ImuInitializer mImuInit;
 
     };
 
