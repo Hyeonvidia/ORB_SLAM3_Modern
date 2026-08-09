@@ -113,14 +113,80 @@ protected:
     bool CheckNewKeyFrames();
 
 
+    // ------------------------------------------------------------------
+    // P9-4: one detection channel of the place-recognition machine
+    // (docs/P9_RECON.md §1). States are implied exactly as upstream:
+    // IDLE (numCoincidences==0, !detected), ACCUM (1-2), DETECTED
+    // (detected). Pointers/Sim3 are NOT cleared on wipes (upstream
+    // semantics -- validity is implied by numCoincidences/detected, see
+    // P9_RECON D5/L2).
+    //
+    // Wipe shapes (each has its own trace event; do NOT unify):
+    //   wipe-consume               Run() after a merge / after a loop
+    //                              (good or BAD) -- full clear incl.
+    //                              detected.
+    //   wipe-merge-priority-discard  Run(), loop hypothesis discarded
+    //                              unconsumed because merge won -- full
+    //                              clear incl. detected.
+    //   wipe-scale-abort           Run(), inertial merge scale gate
+    //                              failed -- full clear incl. detected;
+    //                              the `continue` then SKIPS the loop
+    //                              branch and the mpLastCurrentKF update.
+    //   wipe-decay                 NewDetectCommonRegions(), 2nd reffine
+    //                              failure -- clears counters/vectors but
+    //                              NOT detected.
+    //
+    // Load-bearing asymmetries preserved verbatim (docs/DIVERGENCES.md
+    // #21, docs/P9_RECON.md D1-D5): loop reffine-fail does NOT clear
+    // detected (merge's does); merge reffine-success does NOT reset
+    // numNotFound (loop's does); BoW seeding does NOT reset numNotFound;
+    // ResetIfRequested does NOT clear the machine at all (D5 -- it only
+    // traces both channels).
+    // ------------------------------------------------------------------
+    struct DetectionChannel {
+        int  numCoincidences = 0;
+        int  numNotFound = 0;
+        bool detected = false;
+        KeyFrame* lastCurrentKF = nullptr;   // upstream left these uninitialized;
+        KeyFrame* matchedKF = nullptr;       // nullptr init is strictly safer and unobservable
+        g2o::Sim3 slw;
+        std::vector<MapPoint*> mps;
+        std::vector<MapPoint*> matchedMps;
+    };
+
     //Methods to implement the new place recognition algorithm
     bool NewDetectCommonRegions();
     bool DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
                                         std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
-    bool DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, KeyFrame* &pMatchedKF, KeyFrame* &pLastCurrentKF, g2o::Sim3 &g2oScw,
-                                     int &nNumCoincidences, std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
+    bool DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, const char* chName, DetectionChannel &ch);
     bool DetectCommonRegionsFromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
                                             std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
+
+    // P9-4: the ONLY mutators of DetectionChannel state after construction
+    // (1:1 with the upstream mutation sites; each emits one stderr trace
+    // line, P7 SetState-with-reason precedent). They live on LoopClosing
+    // (not the struct) because they need mpCurrentKF for the anchor
+    // hand-off and the trace.
+    void TraceChannel(const char* ch, const char* event, const DetectionChannel& c, const char* extra = "");
+    // Reffine success ("reffine-advance"): cnt++, anchor SetErase hand-off
+    // to mpCurrentKF, hypothesis update, detected = cnt>=3. bResetNotFound
+    // is true only for the loop channel (merge success does NOT reset it).
+    void ChannelAdvance(const char* ch, DetectionChannel& c, const g2o::Sim3& gScw,
+                        const std::vector<MapPoint*>& vpMatchedMPs, bool bResetNotFound);
+    // Reffine failure ("reffine-fail"): notFound++, then the decay wipe at
+    // >=2 ("wipe-decay", does NOT clear detected). bClearDetected is true
+    // only for the merge channel (loop failure does NOT clear the flag).
+    void ChannelDecayStep(const char* ch, DetectionChannel& c, bool bClearDetected);
+    // Full wipe (consume / merge-priority-discard / scale-abort): SetErase
+    // both KFs, clear counters+flag+vectors. `reason` is the trace event.
+    void ChannelWipe(const char* ch, DetectionChannel& c, const char* reason);
+    // BoW commit block ("bow-seed"): seeds/overwrites the hypothesis. Does
+    // NOT SetErase the previous anchor/matched KF (latch leak L1, upstream)
+    // and does NOT reset numNotFound. Returns the new detected flag.
+    bool ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFrame* pBestMatchedKF,
+                        int nBestNumCoincidences, const g2o::Sim3& g2oBestScw,
+                        const std::vector<MapPoint*>& vpBestMapPoints,
+                        const std::vector<MapPoint*>& vpBestMatchedMapPoints);
     int FindMatchesByProjection(KeyFrame* pCurrentKF, KeyFrame* pMatchedKFw, g2o::Sim3 &g2oScw,
                                 set<MapPoint*> &spMatchedMPinOrigin, vector<MapPoint*> &vpMapPoints,
                                 vector<MapPoint*> &vpMatchedMapPoints);
@@ -175,24 +241,14 @@ protected:
     //-------
     Map* mpLastMap;
 
-    bool mbLoopDetected;
-    int mnLoopNumCoincidences;
-    int mnLoopNumNotFound;
-    KeyFrame* mpLoopLastCurrentKF;
-    g2o::Sim3 mg2oLoopSlw;
+    // P9-4: the two detection channels of the place-recognition machine
+    // (struct + mutator docs above, near DetectCommonRegionsFromBoW).
+    DetectionChannel mLoopCh, mMergeCh;
+
+    // Consume-side members, NOT machine state (written once per consume
+    // from the channel, read by CorrectLoop/MergeLocal/MergeLocal2).
     g2o::Sim3 mg2oLoopScw;
-    KeyFrame* mpLoopMatchedKF;
-    std::vector<MapPoint*> mvpLoopMPs;
-    std::vector<MapPoint*> mvpLoopMatchedMPs;
-    bool mbMergeDetected;
-    int mnMergeNumCoincidences;
-    int mnMergeNumNotFound;
-    KeyFrame* mpMergeLastCurrentKF;
-    g2o::Sim3 mg2oMergeSlw;
     g2o::Sim3 mg2oMergeScw;
-    KeyFrame* mpMergeMatchedKF;
-    std::vector<MapPoint*> mvpMergeMPs;
-    std::vector<MapPoint*> mvpMergeMatchedMPs;
     std::vector<KeyFrame*> mvpMergeConnectedKFs;
 
     g2o::Sim3 mSold_new;
