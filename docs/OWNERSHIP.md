@@ -67,6 +67,51 @@ mbStopped를 세팅하고도 파킹 루프를 건너뛴다 — 외부 대기자�
 ResetIfRequested를 서비스하지 않는다 — T의 RequestReset은 LC/S의 Release까지
 스핀(지연 위험, 데드락 아님).
 
+## LoopClosing 상속 레이스 대장 (P9-2, 수정은 P10)
+
+LC 스레드판 R-목록. 상세 file:line은 docs/P9_RECON.md §4 및 정찰 원문:
+
+- **R-a** `Run()` 진입부 `mbFinished=false`가 mMutexFinish 없이 기록됨.
+- **R-b** **루프 큐가 뮤텍스 2개에 이중 보호**: ResetIfRequested는 mMutexReset만
+  들고 큐를 변형하고, 생산자 InsertKeyFrame은 mMutexLoopQueue를 든다 — 같은
+  리스트를 다른 락이 지킨다(리셋 스핀 프로토콜이 실질 방어).
+- **R-c** GBA **스폰** 시 플래그 4종(mbRunningGBA/mbFinishedGBA/mbStopGBA/
+  mpThreadGBA)을 무락 기록(CorrectLoop/MergeLocal 재스폰). 중단 경로는 락 있음.
+- **R-d** GBA 스레드가 `mnFullBAIdx` 에포크를 무락으로 1차 읽기(재확인은 락 하).
+- **R-e** `mbStopGBA`를 옵티마이저 내부 루프가 raw bool* 폴링(업스트림 의미).
+- **R-f** LC 스레드가 `mpTracker->GetLastKeyFrame()`을 무락 호출(MergeLocal2·GBA).
+  또한 RequestReset*이 LC의 SetFinish 이후 호출되면 영구 스핀.
+
+## GBA 스레드 수명 (P9-2 기록)
+
+- 생성 2곳(CorrectLoop 스폰, MergeLocal 재스폰), **join은 어디에도 없음**.
+  ~~정상 완주한 스레드 객체는 다음 스폰이 포인터를 덮어써 누수~~ → **P9-3에서
+  스폰 직전 joinable이면 join+delete로 해소**(DIVERGENCES #22).
+- 중단은 파이어앤포겟: mbStopGBA + 에포크 증가 + detach/delete. 낡은 결과는
+  에포크 불일치로 자폭하는데, **그 return 경로가 mbRunningGBA=true를 영구
+  잔류**시킬 수 있다(중단자는 플래그를 안 되돌림) — 재스폰 게이트 실패 시
+  isRunningGBA()가 stale-true.
+- **System::Shutdown의 대기 루프가 통째로 주석 처리**되어 있어(업스트림 계승)
+  실행 중 GBA 스레드는 방치된다 — SaveAtlas가 GBA의 맵 변형과 경쟁하는 라이브
+  데이터 레이스. LC 스레드 join도 없음. → **P10에서 Shutdown 프로토콜과 함께
+  일괄 해소**(jthread/stop_token 전환 시).
+
+## SetNotErase/SetErase 래치 프로토콜 (P9-2 기록)
+
+- 래치는 refcount가 아니라 **불리언**(중첩 래치 붕괴). 획득은 LC 2곳뿐
+  (큐 팝 시 현재 KF, BoW 최적 매치). 해제(SetErase)는 `mspLoopEdges`가 빌 때만
+  — **mspMergeEdges는 미검사**: 루프엣지 KF는 영구 핀, 병합엣지 KF는 재컬링
+  가능(MergeLocal2는 AddMergeEdge 자체를 안 함). 컬링이 미룬 SetBadFlag는
+  **LC 스레드의 SetErase에서 완결**된다(#19 가드의 완결 경로).
+- **누수 L1**: ACCUM 중 BoW 재탐지가 매치 KF 포인터를 SetErase 없이 덮어씀 →
+  구 후보 영구 핀(컬링 차단). **누수 L2**: BoW 약시딩이 cnt=0으로 시딩 가능 →
+  해제 경로가 cnt>0 가드라 도달 불가 → 영구 래치+고아 앵커. 둘 다 업스트림
+  계승, FixLevel 후보(docs/P9_RECON.md D2/D3).
+- **리셋 미소거(D5)**: LC의 ResetIfRequested는 큐만 지우고 탐지 상태머신
+  (카운터/앵커/매치 KF 래치)은 안 지운다 — 활성맵 리셋 후 최대 2 KF 동안
+  파괴된 맵으로 교차 reffine 시도. P9-4 타입드 머신이 리셋을 구독해 트레이스로
+  가시화한다(동작 보존).
+
 ## Tombstone은 버그가 아니라 동시성 계약이다
 
 `SetBadFlag()`는 그래프 연결·관측·DB 색인만 해제하고 메모리는 남긴다(mbBad).

@@ -38,6 +38,32 @@
    잔여 이슈로, 골든 빌드도 동일 동작.
 7. LocalMapping의 댕글링 위험 delete 2곳, Atlas 무락 메서드군, mGlobalMutex
    광역 잠금 — docs/OWNERSHIP.md 참조.
+21. **[P9 발견/보존] 루프 탐지의 오염 소비 합성 결함 (R-1 형상, FixLevel
+    1순위)** — 병합 스케일 게이트 중단(`continue`)이 `mbLoopDetected=true`를
+    남긴 채 반복을 탈출하고(루프 상태 소거는 스킵된 병합-소비 경로에 있음),
+    루프 reffine 실패 분기는 병합 쪽과 달리 플래그를 소거하지 않는다. 두
+    비대칭이 합성되면 다음 KF에서 **이전 KF에 앵커된 `mg2oLoopSlw`가 현재
+    KF의 보정 Sim3로 적용**되어 본질그래프가 오염된다. 발현 조건: 다중 맵
+    병합 시도 + 스케일 [0.90,1.1] 밖 + 동시 루프 가설 DETECTED + 후속 reffine
+    실패 — 게이트 시나리오(단일 맵)에서는 도달 불가. bug-for-bug 보존, 수정은
+    FixLevel. 부수 비대칭 3건도 보존: 병합 reffine 성공이 NotFound를 안 지움,
+    BoW 시딩이 NotFound를 안 지움, `mvpMergeMPs` 증거는 어떤 소비 경로도 안
+    읽음. 래치 누수 L1/L2와 리셋 미소거는 OWNERSHIP.md 참조.
+22. **[P9-3] GBA 완주 스레드 객체 join-후-delete** — 업스트림은 정상 완주한
+    GBA의 joinable `std::thread` 객체를 다음 스폰이 포인터로 덮어써 누수했다
+    (delete는 중단 경로에만 존재). 스폰 직전 `joinable()`이면 join(완주 상태라
+    즉시 반환)+delete 후 재스폰한다. 관측 가능 동작 동일, 자원 누수만 해소.
+23. **[P9-3] KFDB DetectNBestCandidates의 bad-KF 무한 루프 가드** — 누적 점수
+    리스트 순회에서 `if(pKFi->isBad()) continue;`가 반복자/인덱스 전진을
+    건너뛰어, bad KF가 리스트에 오르면 **전면 행(무한 루프)**이었다(업스트림
+    계승). 전진을 보장하도록 교정 — 정상 실행에서 동작 동일(해당 조건 미발현
+    시 동일 순회), 병리 조건에서 행 대신 해당 후보 스킵. #19와 동급의 안전
+    강등이며, 후보 집합이 달라질 수 있는 유일한 경우는 기존엔 행이었다.
+24. **[P9 발견/보존] OptimizeSim3에 raw mbFixScale 전달** — BoW 탐지 경로가
+    IMU_MONOCULAR pre-BA2 완화 규칙으로 `bFixedScale`을 계산해 놓고 호출은
+    raw `mbFixScale`을 넘긴다(다른 3개 사이트는 완화값 사용). 단안-관성 초기
+    구간의 Sim3 정련이 스케일 고정으로 도는 수치 차이 — bug-for-bug 보존,
+    게이트가 판별 영역. P9-1에서 죽은 계산을 삭제하며 호출부에 의도 주석 명시.
 
 ## 게이트 방법론 이력
 
