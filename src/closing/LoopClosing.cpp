@@ -1213,7 +1213,21 @@ void LoopClosing::MergeLocal2()
         if(s_on!=1)
             bScaleVel=true;
         mpAtlas->GetCurrentMap()->ApplyScaledRotation(T_on,s_on,bScaleVel);
-        mpTracker->UpdateFrameIMU(s_on,mpCurrentKF->GetImuBias(),mpTracker->GetLastKeyFrame());
+        // P11-A: was a direct cross-thread UpdateFrameIMU call from the LC
+        // thread (TSAN T3 Frame::operator= race class). Posted as a message;
+        // Tracking applies it at its next mMutexMapUpdate acquisition, so it
+        // still lands atomically-with-ApplyScaledRotation from Tracking's
+        // point of view. DIVERGENCES #28.
+        {
+            Tracking::ImuUpdateMsg msg;
+            msg.scale = s_on;
+            msg.bias = mpCurrentKF->GetImuBias();
+            msg.pBaseKF = mpTracker->GetLastKeyFrame();
+            msg.bFirstInit = false;
+            if(msg.pBaseKF)
+                msg.t0Imu = msg.pBaseKF->mTimeStamp;
+            mpTracker->PostImuUpdate(msg);
+        }
     }
 
     const int numKFnew=pCurrentMap->KeyFramesInMap();
@@ -1227,7 +1241,18 @@ void LoopClosing::MergeLocal2()
         mpOptimizer->InertialOptimization(pCurrentMap,bg,ba);
         IMU::Bias b (ba[0],ba[1],ba[2],bg[0],bg[1],bg[2]);
         unique_lock<mutex> lock(mpAtlas->GetCurrentMap()->mMutexMapUpdate);
-        mpTracker->UpdateFrameIMU(1.0f,b,mpTracker->GetLastKeyFrame());
+        // P11-A: message-passing (see the MergeLocal2 rescale post above).
+        // scale 1.0 composes as a no-op on a still-pending rescale.
+        {
+            Tracking::ImuUpdateMsg msg;
+            msg.scale = 1.0f;
+            msg.bias = b;
+            msg.pBaseKF = mpTracker->GetLastKeyFrame();
+            msg.bFirstInit = false;
+            if(msg.pBaseKF)
+                msg.t0Imu = msg.pBaseKF->mTimeStamp;
+            mpTracker->PostImuUpdate(msg);
+        }
 
         // Set map initialized
         pCurrentMap->SetIniertialBA2();

@@ -152,7 +152,7 @@ Tracking::Tracking(IResetRequester* pResetRequester, ORBVocabulary* pVoc, FrameD
             // frame id and no previous state to report.
             std::unique_lock<std::mutex> lock(mMutexTraceState);
             std::ostream& out = TraceStateSink();
-            out << "- NONE -> " << StateName(mState_) << " Tracking::Tracking (ctor)\n";
+            out << "- NONE -> " << StateName(GetState()) << " Tracking::Tracking (ctor)\n";
             out.flush();
         }
     }
@@ -1116,7 +1116,7 @@ void Tracking::Track()
         SetState(NOT_INITIALIZED, "Track: first image received");
     }
 
-    mLastProcessedState_ = mState_;
+    mLastProcessedState_ = GetState();
 
     if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && !mbCreatedMap)
     {
@@ -1136,6 +1136,13 @@ void Tracking::Track()
 
     // Get Map Mutex -> Map cannot be changed
     unique_lock<mutex> lock(pCurrentMap->mMutexMapUpdate);
+
+    // P11-A: apply any pending IMU rescale/rebias message HERE — the single
+    // application point: under the map-update lock (so LM/LC cannot be
+    // mid-ApplyScaledRotation), after this frame's own PreintegrateIMU (so
+    // the old imuIsPreintegrated spin is unnecessary), and before any frame
+    // state below is consumed. See Tracking.hpp ImuUpdateMsg / DIVERGENCES #28.
+    ApplyPendingImuUpdate();
 
     mbMapUpdated = false;
 
@@ -1948,6 +1955,11 @@ void Tracking::CreateMapInAtlas()
     mCurrentFrame = Frame();
     mvIniMatches.clear();
 
+    // P11-A: a pending IMU update is anchored in the map being retired and
+    // would otherwise be applied onto the default-constructed frames above
+    // (upstream's equivalent was the B10/B11 crash window). Drop it.
+    DiscardPendingImuUpdate();
+
     mbCreatedMap = true;
 }
 
@@ -2253,7 +2265,11 @@ bool Tracking::TrackLocalMap()
                 aux2++;
         }
 
-    mnMatchesInliers = 0;
+    // P11-A: count into a local and publish ONCE with a relaxed store —
+    // mnMatchesInliers is atomic (LM's GetMatchesInliers pull-read); the
+    // subsequent decisions below use the local, which on this (the only
+    // writer) thread is identical to re-reading the member.
+    int nMatchesInliers = 0;
 
     // Update MapPoints Statistics
     for(int i=0; i<mCurrentFrame.N; i++)
@@ -2266,28 +2282,30 @@ bool Tracking::TrackLocalMap()
                 if(!mbOnlyTracking)
                 {
                     if(mCurrentFrame.mvpMapPoints[i]->Observations()>0)
-                        mnMatchesInliers++;
+                        nMatchesInliers++;
                 }
                 else
-                    mnMatchesInliers++;
+                    nMatchesInliers++;
             }
             else if(mSensor==System::STEREO)
                 mCurrentFrame.mvpMapPoints[i] = static_cast<MapPoint*>(NULL);
         }
     }
 
+    mnMatchesInliers.store(nMatchesInliers, std::memory_order_relaxed);
+
     // Decide if the tracking was succesful
     // More restrictive if there was a relocalization recently
-    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && mnMatchesInliers<50)
+    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && nMatchesInliers<50)
         return false;
 
-    if((mnMatchesInliers>10)&&(GetState()==RECENTLY_LOST))
+    if((nMatchesInliers>10)&&(GetState()==RECENTLY_LOST))
         return true;
 
 
     if (mSensor == System::IMU_MONOCULAR)
     {
-        if((mnMatchesInliers<15 && mpAtlas->isImuInitialized())||(mnMatchesInliers<50 && !mpAtlas->isImuInitialized()))
+        if((nMatchesInliers<15 && mpAtlas->isImuInitialized())||(nMatchesInliers<50 && !mpAtlas->isImuInitialized()))
         {
             return false;
         }
@@ -2296,7 +2314,7 @@ bool Tracking::TrackLocalMap()
     }
     else if (mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD)
     {
-        if(mnMatchesInliers<15)
+        if(nMatchesInliers<15)
         {
             return false;
         }
@@ -2305,7 +2323,7 @@ bool Tracking::TrackLocalMap()
     }
     else
     {
-        if(mnMatchesInliers<30)
+        if(nMatchesInliers<30)
             return false;
         else
             return true;
@@ -2395,9 +2413,13 @@ bool Tracking::NeedNewKeyFrame()
 
     if(mpCamera2) thRefRatio = 0.75f;
 
+    // P11-A: one relaxed snapshot of the (atomic) member — this thread is
+    // its only writer, so the local equals every in-function re-read.
+    const int nMatchesInliers = mnMatchesInliers.load(std::memory_order_relaxed);
+
     if(mSensor==System::IMU_MONOCULAR)
     {
-        if(mnMatchesInliers>350) // Points tracked from the local map
+        if(nMatchesInliers>350) // Points tracked from the local map
             thRefRatio = 0.75f;
         else
             thRefRatio = 0.90f;
@@ -2408,9 +2430,9 @@ bool Tracking::NeedNewKeyFrame()
     // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
     const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames) && bLocalMappingIdle); //mpLocalMapper->KeyframesInQueue() < 2);
     //Condition 1c: tracking is weak
-    const bool c1c = mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR && mSensor!=System::IMU_STEREO && mSensor!=System::IMU_RGBD && (mnMatchesInliers<nRefMatches*0.25 || bNeedToInsertClose) ;
+    const bool c1c = mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR && mSensor!=System::IMU_STEREO && mSensor!=System::IMU_RGBD && (nMatchesInliers<nRefMatches*0.25 || bNeedToInsertClose) ;
     // Condition 2: Few tracked points compared to reference keyframe. Lots of visual odometry compared to map matches.
-    const bool c2 = (((mnMatchesInliers<nRefMatches*thRefRatio || bNeedToInsertClose)) && mnMatchesInliers>15);
+    const bool c2 = (((nMatchesInliers<nRefMatches*thRefRatio || bNeedToInsertClose)) && nMatchesInliers>15);
 
     //std::cout << "NeedNewKF: c1a=" << c1a << "; c1b=" << c1b << "; c1c=" << c1c << "; c2=" << c2 << std::endl;
     // Temporal condition for Inertial cases
@@ -2430,7 +2452,7 @@ bool Tracking::NeedNewKeyFrame()
     }
 
     bool c4 = false;
-    if ((((mnMatchesInliers<75) && (mnMatchesInliers>15)) || GetState()==RECENTLY_LOST) && (mSensor == System::IMU_MONOCULAR)) // MODIFICATION_2, originally ((((mnMatchesInliers<75) && (mnMatchesInliers>15)) || mState==RECENTLY_LOST) && ((mSensor == System::IMU_MONOCULAR)))
+    if ((((nMatchesInliers<75) && (nMatchesInliers>15)) || GetState()==RECENTLY_LOST) && (mSensor == System::IMU_MONOCULAR)) // MODIFICATION_2, originally ((((mnMatchesInliers<75) && (mnMatchesInliers>15)) || mState==RECENTLY_LOST) && ((mSensor == System::IMU_MONOCULAR)))
         c4=true;
     else
         c4=false;
@@ -3082,6 +3104,11 @@ void Tracking::Reset(bool bLocMap)
     mpLastKeyFrame.store(static_cast<KeyFrame*>(NULL), std::memory_order_release);
     mvIniMatches.clear();
 
+    // P11-A: the LM reset handshake above guarantees no new message can
+    // have been posted after the frames were re-defaulted; a message still
+    // pending from before the reset targets destroyed state. Drop it.
+    DiscardPendingImuUpdate();
+
     if(mpViewer)
         mpViewer->Release();
 
@@ -3173,6 +3200,11 @@ void Tracking::ResetActiveMap(bool bLocMap)
 
     mbVelocity = false;
 
+    // P11-A: same as Reset() — the active-map reset handshake ordered LM
+    // past any posting site; a still-pending message is anchored in the
+    // cleared map. Drop it.
+    DiscardPendingImuUpdate();
+
     if(mpViewer)
         mpViewer->Release();
 
@@ -3190,6 +3222,72 @@ void Tracking::InformOnlyTracking(const bool &flag)
     mbOnlyTracking = flag;
 }
 
+// P11-A: LM/LC-side entry of the IMU message protocol (the former direct
+// cross-thread UpdateFrameIMU call sites — ImuInitializer x3, MergeLocal2 x2).
+// Single-slot mailbox; compose-on-overwrite semantics documented at the
+// ImuUpdateMsg declaration (scale multiplies — it is a rescale DELTA that
+// must land exactly once; bias/pBaseKF last-writer-wins — absolute state
+// anchored at the newest base KF; bFirstInit ORs).
+void Tracking::PostImuUpdate(const ImuUpdateMsg &msg)
+{
+    std::lock_guard<std::mutex> lock(mMutexImuUpdate);
+    if(mPendingImuUpdate)
+    {
+        ImuUpdateMsg composed = msg;
+        composed.scale *= mPendingImuUpdate->scale;
+        composed.bFirstInit = composed.bFirstInit || mPendingImuUpdate->bFirstInit;
+        mPendingImuUpdate = composed;
+    }
+    else
+        mPendingImuUpdate = msg;
+}
+
+// P11-A: tracking-thread application point — called ONLY from Track(),
+// immediately after acquiring pCurrentMap->mMutexMapUpdate. Bounded
+// staleness: the rescale/rebias lands at Tracking's next lock acquisition
+// instead of mid-LM/LC; upstream already exhibited exactly this window
+// nondeterministically (its "locked" call sites raced Tracking's pre-lock
+// frame pipeline). ApplyScaledRotation-vs-frame consistency is preserved
+// because Tracking cannot consume world-frame state without this same lock.
+// DIVERGENCES #28.
+void Tracking::ApplyPendingImuUpdate()
+{
+    ImuUpdateMsg msg;
+    {
+        std::lock_guard<std::mutex> lock(mMutexImuUpdate);
+        if(!mPendingImuUpdate)
+            return;
+        msg = *mPendingImuUpdate;
+        mPendingImuUpdate.reset();
+    }
+
+    UpdateFrameIMU(msg.scale, msg.bias, msg.pBaseKF);
+
+    if(msg.bFirstInit)
+    {
+        // Upstream stamped t0IMU on the LM thread with a racy read of
+        // Tracking's live mCurrentFrame.mTimeStamp (ImuInitializer.cpp,
+        // former :160). The message carries the flag instead and Tracking
+        // stamps its OWN current frame time — at most the bounded-staleness
+        // window later. t0IMU is write-only in this repo (kept for upstream
+        // parity), so the shift has no reader to observe it.
+        t0IMU = mCurrentFrame.mTimeStamp;
+    }
+}
+
+// P11-A: drop a pending message whose anchor state is being retired. Called
+// from Reset(), ResetActiveMap() and CreateMapInAtlas() — the three paths
+// that re-default mCurrentFrame/mLastFrame (rationale at each call site).
+void Tracking::DiscardPendingImuUpdate()
+{
+    std::lock_guard<std::mutex> lock(mMutexImuUpdate);
+    mPendingImuUpdate.reset();
+}
+
+// P11-A: tracking-thread-only from here on (message application body; the
+// upstream cross-thread callers now go through PostImuUpdate). Body is the
+// upstream mutation verbatim EXCEPT the deleted imuIsPreintegrated() spin —
+// see the comment at the former spin site below.
 void Tracking::UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurrentKeyFrame)
 {
     Map * pMap = pCurrentKeyFrame->GetMap();
@@ -3221,11 +3319,15 @@ void Tracking::UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurr
     mLastFrame.SetNewBias(mLastBias);
     mCurrentFrame.SetNewBias(mLastBias);
 
-    while(!mCurrentFrame.imuIsPreintegrated())
-    {
-        usleep(500);
-    }
-
+    // P11-A: the upstream W9 spin (`while(!mCurrentFrame.imuIsPreintegrated())
+    // usleep(500);`) is DELETED, not just unnecessary: this function now runs
+    // on the tracking thread strictly after Track()'s own PreintegrateIMU()
+    // call for this frame, so the handshake it waited for has already
+    // happened on this very thread. This also retires hang risk B1
+    // (docs/IMU_CONTRACT.md §6): PreintegrateIMU's n==0 early return skips
+    // setIntegrated(), which could spin the upstream LM thread forever; the
+    // guarded block below simply proceeds exactly as upstream did after a
+    // satisfied spin. DIVERGENCES #28.
 
     if(mLastFrame.mnId == mLastFrame.mpLastKeyFrame->mnFrameId)
     {
@@ -3275,7 +3377,9 @@ int Tracking::GetNumberDataset()
 
 int Tracking::GetMatchesInliers()
 {
-    return mnMatchesInliers;
+    // P11-A: lock-free pull-read from the LocalMapping thread (bLarge
+    // heuristic); relaxed load on the now-atomic member.
+    return mnMatchesInliers.load(std::memory_order_relaxed);
 }
 
 // P7-1b: the two SaveSubTrajectory debug overloads were deleted here — zero

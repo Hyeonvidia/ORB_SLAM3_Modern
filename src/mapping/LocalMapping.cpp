@@ -955,9 +955,28 @@ void LocalMapping::Release()
             // the canonical order) -- it raced push_back from the SetNotStop-less
             // initialization producers. Trace deque cleared under the same lock
             // (P10-0 shadow-deque contract).
+            //
+            // P11-A (B3, DIVERGENCES #29): raw delete demoted to the #19
+            // pattern (SetBadFlag -> isBad()-guarded delete), mirroring
+            // PurgeNewKeyFramesAfterInertialInit below. The raw delete left
+            // every alias of the queued (never-admitted) KF dangling:
+            // Tracking::mpLastKeyFrame / Frame::mpLastKeyFrame, and the
+            // stereo/RGBD MapPoint observations created in CreateNewKeyFrame.
+            // For un-admitted KFs SetBadFlag's Map/KFDB erases are no-ops and
+            // the observation detach removes the dangling MP back-references;
+            // its early returns (map-origin KF, mbNotErase) are practically
+            // unreachable here, and if reached we leak instead of UAF --
+            // identical in kind to #19/#22/#23/#25/#26, hence unconditional
+            // (not a FixLevel flag). SetBadFlag under mMutexNewKFs is safe:
+            // it takes only KeyFrame/Map/KFDB-layer mutexes, and no path
+            // acquires mMutexNewKFs while holding those (P10-2 R3 precedent).
             unique_lock<mutex> lock3(mMutexNewKFs);
             for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
-                delete *lit;
+            {
+                (*lit)->SetBadFlag();
+                if((*lit)->isBad())
+                    delete *lit;
+            }
             mlNewKeyFrames.clear();
             if(TraceQueueOn())
                 mdqTraceEnqueueTs.clear();

@@ -15,10 +15,11 @@
 | Atlas | System | 없음 (프로세스 수명) |
 
 특수 경로 delete 4곳(맵 편입 전 큐 KF 정리 등)은 LocalMapping/Tracking에 있으며,
-그중 **2곳은 업스트림 그대로의 댕글링 위험**으로 문서화한다:
-- `LocalMapping::Release()`: 큐 KF를 SetBadFlag 없이 delete — Tracking의
-  mpLastKeyFrame이 가리키면 댕글링 (업스트림 계승, FixLevel 후보; T측 협조가
-  필요해 P10 스레딩 현대화로 이월)
+과거 **2곳이 업스트림 그대로의 댕글링 위험**이었다 — 현재 둘 다 강등 완료:
+- `LocalMapping::Release()`: ~~큐 KF를 SetBadFlag 없이 delete~~ →
+  **P11-A(B3)에서 #19 패턴으로 강등 완료**(SetBadFlag → isBad() 확인부
+  delete, DIVERGENCES #29). 미편입 KF에서 Erase류는 no-op, 관측 해제가
+  CreateNewKeyFrame산 MP 역참조 댕글링을 제거. 마지막 잔존 raw delete였음.
 - `LocalMapping::ScaleRefinement()/InitializeIMU()`: SetBadFlag가 초기 KF /
   mbNotErase에서 조기 return해도 delete는 실행 — mspKeyFrames 댕글링 가능
   (**P8-3에서 UAF→누수로 강등**: SetBadFlag 후 isBad() 확인 시에만 delete,
@@ -32,7 +33,7 @@
 
 | 경로 | 처분 | 비고 |
 |---|---|---|
-| Release() | delete만 | 위 댕글링 위험 |
+| Release() | SetBadFlag→delete (P11-A, #29) | 舊 raw delete의 댕글링 강등 |
 | InitializeIMU/ScaleRefinement 말미 | SetBadFlag→delete | P8-3 가드 |
 | ResetIfRequested | clear만 (의도적 누수) | 리셋 중 T는 스핀 대기라 안전 |
 
@@ -115,12 +116,22 @@ FIXED (각 1줄 메커니즘):
   load-acquire, LM 내부 relaxed). 큐 clear 2곳(ResetIfRequested)도
   mMutexNewKFs로 폐쇄 (프로토콜 보호였으나 균일화).
 
-명시적으로 NOT fixed (P10-2 범위 밖, 존치):
-- **Frame 객체/IMU-계약 레이스**: `Frame::operator=` 교차 복사 vs LM/LC의
-  UpdateFrameIMU·`t0IMU`(ImuInitializer.cpp:160)·mState_·mnMatchesInliers —
-  Frame 객체 수명 계약 재설계 필요, P11 이월 (TSAN T3 시그니처 잔존 예상).
-- **툼스톤 계약 클래스**: 154개 무락 isBad() 역참조, Atlas 무락 메서드군,
-  `_Rb_tree` 집합 복사 잡음 — 계약(락 아님), FixLevel 백로그.
+명시적으로 NOT fixed (P10-2 범위 밖) — P11-A 처리 현황:
+- ~~**Frame 객체/IMU-계약 레이스**~~ → **P11-A에서 메시지 패싱으로 FIXED**
+  (DIVERGENCES #28): LM/LC의 UpdateFrameIMU 직접 호출 5곳이
+  `Tracking::PostImuUpdate(ImuUpdateMsg)` 게시로, 적용은 T가 Track() 상단
+  mMutexMapUpdate 획득 직후 1곳에서. `t0IMU`는 T-한정 복귀(bFirstInit
+  플래그가 대체), `mState_` 저장소·`mnMatchesInliers`는 atomic relaxed
+  풀-리드. **Frame 객체 = T-스레드 한정**(FrameDrawer 복사는 기존 뮤텍스).
+  TSAN T3의 `Frame::operator=` 시그니처 클래스 소멸 확인
+  (benchmark/tsan/step_P11-A_T3.ledger).
+- **툼스톤 계약 클래스**: 152개(재계수) 무락 isBad() 역참조,
+  `_Rb_tree` 집합 복사 잡음 — 계약(락 아님), P12+ 백로그. Atlas 무락
+  메서드군은 **P11-A에서 잠금 완료**(AddKeyFrame/AddMapPoint/AddCamera/
+  GetAllCameras/SetMapBad/RemoveBadMaps가 mMutexAtlas 취득; PreSave/
+  PostLoad/배선 세터는 단일 스레드 경로로 문서화, Atlas.cpp 주석).
+  MapPoint 스크래치 필드 교차 읽기(LocalInertialBA의 mTrackDepth 등,
+  T3 잔존 시그니처 1건)는 이 클래스에 남는다.
 - **R2**(EmptyQueue 순서)는 P10-3, **R-e**는 P10-1에서 기해소, GBA 수명/
   Shutdown은 P10-5.
 
@@ -204,5 +215,10 @@ Optimizer 로컬 벡터가 bad 객체를 계속 가리킨다. raw delete 도입�
 - `MapPoint::mGlobalMutex`: pose-only 최적화 동안 전 포인트 위치의 세대 일관
   스냅샷 제공 — per-instance로 축소 시 혼합-세대 좌표 최적화가 되므로 **현상
   유지** (성능 이슈로만 기록)
-- Atlas 무락 메서드군(AddKeyFrame/AddMapPoint/AddCamera 등)의 레이스는
-  업스트림 계승 — FixLevel 후보 목록에 기재
+- Atlas 무락 메서드군(AddKeyFrame/AddMapPoint/AddCamera/GetAllCameras/
+  SetMapBad/RemoveBadMaps) — **P11-A에서 mMutexAtlas 잠금 완료**(순수
+  스레딩, 수치 불가시). 잠금 순서는 기존 Atlas→{Map,KF}-계층 에지만 추가
+  (clearMap/GetCurrentMap 선례), MapUpdate→Atlas 순서는 호출부 선례 유지.
+  PreSave/PostLoad/배선 세터-게터는 단일 스레드 경로라 의도적 무락
+  (PreSave는 잠긴 SetMapBad/RemoveBadMaps를 호출하므로 스스로 mMutexAtlas를
+  들면 안 됨 — Atlas.cpp 주석).

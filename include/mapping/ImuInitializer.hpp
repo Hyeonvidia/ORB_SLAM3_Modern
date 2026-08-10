@@ -33,10 +33,12 @@ class LocalMapping;
 // host LocalMapping and is reached through it: the keyframe queue and its
 // drain/purge semantics (incl. DIVERGENCES #19), bInitializing / mFirstTs /
 // mTinit (shared with Run()'s staging gates, Tracking and System), and the
-// Tracking cross-thread touches (UpdateFrameIMU, t0IMU,
-// NotifyImuInitialized). Both entry points run on the LocalMapping thread
-// exactly as before, so the memory-model status of every access is unchanged
-// (docs/OWNERSHIP.md R3/R5).
+// Tracking touches. P11-A: the former direct cross-thread Tracking
+// mutations (UpdateFrameIMU calls, the raw t0IMU write) are now posted as
+// Tracking::ImuUpdateMsg via PostImuUpdate and applied by the tracking
+// thread itself (DIVERGENCES #28); NotifyImuInitialized remains a direct
+// (atomic-storage) cross-thread state write. Both entry points run on the
+// LocalMapping thread exactly as before.
 class ImuInitializer
 {
 public:

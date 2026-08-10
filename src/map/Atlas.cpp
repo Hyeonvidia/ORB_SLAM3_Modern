@@ -110,20 +110,34 @@ void Atlas::SetViewer(Viewer* pViewer)
     mHasViewer = true;
 }
 
+// P11-A (Atlas lock batch): the upstream-inherited lock-free method group
+// (AddKeyFrame/AddMapPoint/AddCamera/GetAllCameras/SetMapBad/RemoveBadMaps,
+// docs/OWNERSHIP.md "Atlas 무락 메서드군") now takes mMutexAtlas like the
+// rest of the class. Pure threading safety, numerics-invisible. Lock-order
+// note: this adds only Atlas -> {Map,KeyFrame}-layer edges (already
+// established by clearMap/GetCurrentMap); no code path acquires mMutexAtlas
+// while holding a Map/KeyFrame-layer mutex, and callers holding
+// mMutexMapUpdate (e.g. CreateNewKeyFrame -> AddKeyFrame) follow the
+// existing MapUpdate -> Atlas order (ImuInitializer precedent).
 void Atlas::AddKeyFrame(KeyFrame* pKF)
 {
+    unique_lock<mutex> lock(mMutexAtlas);
     Map* pMapKF = pKF->GetMap();
     pMapKF->AddKeyFrame(pKF);
 }
 
 void Atlas::AddMapPoint(MapPoint* pMP)
 {
+    unique_lock<mutex> lock(mMutexAtlas);
     Map* pMapMP = pMP->GetMap();
     pMapMP->AddMapPoint(pMP);
 }
 
 GeometricCamera* Atlas::AddCamera(GeometricCamera* pCam)
 {
+    // P11-A: guards mvpCameras (also read by GetAllCameras from other
+    // threads and by the serialization path).
+    unique_lock<mutex> lock(mMutexAtlas);
     //Check if the camera already exists
     bool bAlreadyInMap = false;
     int index_cam = -1;
@@ -165,6 +179,8 @@ GeometricCamera* Atlas::AddCamera(GeometricCamera* pCam)
 
 std::vector<GeometricCamera*> Atlas::GetAllCameras()
 {
+    // P11-A: copy taken under the lock (see AddCamera).
+    unique_lock<mutex> lock(mMutexAtlas);
     return mvpCameras;
 }
 
@@ -269,6 +285,11 @@ Map* Atlas::GetCurrentMap()
 
 void Atlas::SetMapBad(Map* pMap)
 {
+    // P11-A: mutates mspMaps/mspBadMaps — called from the LC thread
+    // (MergeLocal) concurrently with Tracking's GetCurrentMap/CreateNewMap.
+    // PreSave also calls this, WITHOUT holding mMutexAtlas (single-threaded
+    // post-Shutdown path), so no self-deadlock.
+    unique_lock<mutex> lock(mMutexAtlas);
     mspMaps.erase(pMap);
     pMap->SetBad();
 
@@ -277,6 +298,8 @@ void Atlas::SetMapBad(Map* pMap)
 
 void Atlas::RemoveBadMaps()
 {
+    // P11-A: see SetMapBad.
+    unique_lock<mutex> lock(mMutexAtlas);
     /*for(Map* pMap : mspBadMaps)
     {
         delete pMap;
@@ -309,6 +332,13 @@ bool Atlas::isImuInitialized()
     return mpCurrentMap->isImuInitialized();
 }
 
+// P11-A audit note: PreSave/PostLoad/GetAtlasKeyframes and the
+// KFDB/vocabulary/viewer setter-getters below stay UNLOCKED deliberately —
+// the save/load surface runs single-threaded (SaveAtlas after the P10-5
+// Shutdown join chain; LoadAtlas before thread spawn), and the wiring
+// setters run in the System constructor before any thread exists
+// (happens-before via thread creation). PreSave calls SetMapBad/
+// RemoveBadMaps, which now lock — it must NOT hold mMutexAtlas itself.
 void Atlas::PreSave()
 {
     if(mpCurrentMap){

@@ -1,0 +1,26 @@
+# P11-A T3 ledger (euroc_stereo_inertial MH01 truncated 1500 ts, dev-tsan).
+# Acceptance oracle vs step_P10-2_T3.ledger: the entire Frame::operator=
+# signature class is GONE -- operator= vs SetImuPoseVelocity(441/449/450)/
+# SetNewBias(422)/imuIsPreintegrated(1005/1006)/ImuInitializer:160/
+# UpdateFrameIMU(3255/3260/3263), Frame::HasVelocity|SetImuPoseVelocity,
+# SetState|GetState, TrackLocalMap|GetMatchesInliers, and the Eigen
+# assign_op / _Rb_tree / BAEpochs::get derivatives of the frame copies.
+# Zero new ORB-frame signatures.
+# Survivor NOT in the Frame class: LocalInertialBA(Optimizer.cpp:3020,
+# `pMP->mTrackDepth<10.f`) | Frame::isInFrustum(Frame.cpp:548,
+# `pMP->mTrackDepth = Pc_dist`) is a MapPoint SCRIBBLE-FIELD race (LM reads
+# T's per-frame tracking scratch on the shared MapPoint) -- tombstone/
+# contract class alongside ReplaceMapPointMatch|TrackedMapPoints, untouched
+# by Frame confinement and out of P11-A scope (docs/OWNERSHIP.md).
+# Remaining rows are the known noise classes: interceptor lock-order frames,
+# memset/memset, g2o batch_stats, teardown delete[]|pthread_create,
+# unlock-of-unlocked epilogue.
+29018  lock-order-inversion (potential deadlock)  pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 | pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240
+    2  data race  memset ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:799 | memset ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:799
+    1  data race  ORB_SLAM3::KeyFrame::ReplaceMapPointMatch(int const&, ORB_SLAM3::MapPoint*) src/map/KeyFrame.cpp:320 | memmove ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:810
+    1  data race  ORB_SLAM3::KeyFrame::TrackedMapPoints(int const&) src/map/KeyFrame.cpp:346 | ORB_SLAM3::KeyFrame::ReplaceMapPointMatch(int const&, ORB_SLAM3::MapPoint*) src/map/KeyFrame.cpp:320
+    1  data race  ORB_SLAM3::Optimizer::LocalInertialBA(ORB_SLAM3::KeyFrame*, std::atomic<bool> const*, ORB_SLAM3::Map*, int&, int&, int&, int&, bool, bool, ORB_SLAM3::BAEpochs&) src/backend/Optimizer.cpp:3020 | ORB_SLAM3::Frame::isInFrustum(ORB_SLAM3::MapPoint*, float) src/map/Frame.cpp:548
+    1  data race  ORB_SLAM3::Optimizer::LocalInertialBA(ORB_SLAM3::KeyFrame*, std::atomic<bool> const*, ORB_SLAM3::Map*, int&, int&, int&, int&, bool, bool, ORB_SLAM3::BAEpochs&) src/backend/Optimizer.cpp:3020 | operator new(unsigned long) ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:64
+    1  data race  g2o::G2OBatchStatistics::setGlobalStats(g2o::G2OBatchStatistics*) third_party/g2o/g2o/core/batch_stats.cpp:88 | g2o::G2OBatchStatistics::globalStats() third_party/g2o/g2o/core/batch_stats.h:77
+    1  data race  operator delete[](void*) ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:132 | pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969
+    1  unlock of an unlocked mutex (or by a wrong thread)  pthread_mutex_unlock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4254 | operator new(unsigned long) ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:64

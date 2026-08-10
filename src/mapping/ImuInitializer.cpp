@@ -142,7 +142,18 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         if ((fabs(mScale - 1.f) > 0.00001) || !mHost.mbMonocular) {
             Sophus::SE3f Twg(mRwg.cast<float>().transpose(), Eigen::Vector3f::Zero());
             mHost.mpAtlas->GetCurrentMap()->ApplyScaledRotation(Twg, mScale, true);
-            mHost.mpTracker->UpdateFrameIMU(mScale, vpKF[0]->GetImuBias(), mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
+            // P11-A: was a direct cross-thread UpdateFrameIMU call (TSAN T3
+            // Frame::operator= race class). Posted as a message; Tracking
+            // applies it under its next mMutexMapUpdate acquisition, which
+            // this very lock scope makes atomic with ApplyScaledRotation
+            // from Tracking's point of view. DIVERGENCES #28.
+            Tracking::ImuUpdateMsg msg;
+            msg.scale = mScale;
+            msg.bias = vpKF[0]->GetImuBias();
+            msg.pBaseKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
+            msg.bFirstInit = false;
+            msg.t0Imu = msg.pBaseKF->mTimeStamp;
+            mHost.mpTracker->PostImuUpdate(msg);
         }
 
         // Check if initialization OK
@@ -153,11 +164,26 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
             }
     }
 
-    mHost.mpTracker->UpdateFrameIMU(1.0,vpKF[0]->GetImuBias(),mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
+    // P11-A: was `UpdateFrameIMU(1.0, ...)` followed by a raw cross-thread
+    // write of mpTracker->t0IMU from a racy read of Tracking's live
+    // mCurrentFrame.mTimeStamp (the ImuInitializer:160 TSAN signature). The
+    // rebias rides the message (scale 1.0 composes as a no-op on top of a
+    // still-pending rescale); the first-init t0IMU stamp rides bFirstInit —
+    // Tracking stamps its OWN current frame time at application (bounded
+    // semantic shift, DIVERGENCES #28). SetImuInitialized/bImu stay here:
+    // they are Atlas/KeyFrame state, not Tracking state.
+    {
+        Tracking::ImuUpdateMsg msg;
+        msg.scale = 1.0f;
+        msg.bias = vpKF[0]->GetImuBias();
+        msg.pBaseKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
+        msg.bFirstInit = !mHost.mpAtlas->isImuInitialized();
+        msg.t0Imu = msg.pBaseKF->mTimeStamp;
+        mHost.mpTracker->PostImuUpdate(msg);
+    }
     if (!mHost.mpAtlas->isImuInitialized())
     {
         mHost.mpAtlas->SetImuInitialized();
-        mHost.mpTracker->t0IMU = mHost.mpTracker->mCurrentFrame.mTimeStamp;
         mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->bImu = true;
     }
 
@@ -336,7 +362,14 @@ void ImuInitializer::ScaleRefinement()
     {
         Sophus::SE3f Tgw(mRwg.cast<float>().transpose(),Eigen::Vector3f::Zero());
         mHost.mpAtlas->GetCurrentMap()->ApplyScaledRotation(Tgw,mScale,true);
-        mHost.mpTracker->UpdateFrameIMU(mScale,mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetImuBias(),mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
+        // P11-A: message-passing (see InitializeIMU). DIVERGENCES #28.
+        Tracking::ImuUpdateMsg msg;
+        msg.scale = mScale;
+        msg.pBaseKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
+        msg.bias = msg.pBaseKF->GetImuBias();
+        msg.bFirstInit = false;
+        msg.t0Imu = msg.pBaseKF->mTimeStamp;
+        mHost.mpTracker->PostImuUpdate(msg);
     }
 
     mHost.PurgeNewKeyFramesAfterInertialInit();

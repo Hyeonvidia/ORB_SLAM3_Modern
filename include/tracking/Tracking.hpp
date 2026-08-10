@@ -46,6 +46,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <unordered_set>
 #include <fstream>
 #include <ostream>
@@ -103,7 +104,52 @@ public:
     // Use this function if you have deactivated local mapping and you only want to localize the camera.
     void InformOnlyTracking(const bool &flag);
 
-    void UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurrentKeyFrame);
+    // ------------------------------------------------------------------
+    // P11-A: IMU rescale/rebias message passing (docs/P11_RECON.md 1부 (1c)).
+    //
+    // UpdateFrameIMU used to be CALLED on the LocalMapping thread
+    // (ImuInitializer, 3 sites) and the LoopClosing thread (MergeLocal2,
+    // 2 sites) — a cross-thread mutation of Tracking's Frame objects
+    // (mCurrentFrame/mLastFrame have ~100 unguarded members each) that
+    // raced Tracking's pre-lock frame pipeline even at the call sites that
+    // held mMutexMapUpdate (TSAN T3's surviving Frame::operator= class,
+    // benchmark/tsan/step_P10-2_T3.ledger). LM/LC now post an ImuUpdateMsg
+    // into a single mutex'd slot; the tracking thread applies it itself at
+    // the top of Track(), immediately after acquiring mMutexMapUpdate and
+    // before any frame state is consumed (ApplyPendingImuUpdate). Frame
+    // objects are tracking-thread-confined from P11-A on (the FrameDrawer
+    // copy is already under its own mutex). DIVERGENCES #28.
+    //
+    // Slot semantics — one pending message, composed on overwrite:
+    //   * scale COMPOSES MULTIPLICATIVELY. It is not state but a delta: it
+    //     rescales mlRelativeFramePoses translations to follow a map-side
+    //     ApplyScaledRotation, and every posted rescale must land exactly
+    //     once (upstream ran them synchronously in call order). Plain
+    //     last-writer-wins would drop the s=mScale rescale whenever the
+    //     always-following s=1.0 rebias post (ImuInitializer) overwrote it
+    //     before Tracking got to apply.
+    //   * bias/pBaseKF are absolute state anchored at the newest base KF —
+    //     for these, last-writer-wins is correct: a newer message carries
+    //     the full rebias/re-anchor state and supersedes the older one.
+    //   * bFirstInit ORs (a first-init flag must never be lost).
+    // ------------------------------------------------------------------
+    struct ImuUpdateMsg
+    {
+        float scale = 1.0f;          // mlRelativeFramePoses rescale (delta; composes)
+        IMU::Bias bias;              // absolute rebias state
+        KeyFrame* pBaseKF = nullptr; // anchor: becomes mpLastKeyFrame; frames re-anchored on it
+        bool bFirstInit = false;     // first IMU init: T stamps t0IMU at application
+        // Poster-side anchor timestamp (pBaseKF->mTimeStamp, an immutable
+        // field — race-free to read on LM/LC). Diagnostic only: the applied
+        // t0IMU is Tracking's OWN current-frame timestamp at application
+        // (bounded semantic shift, documented in DIVERGENCES #28).
+        double t0Imu = 0.0;
+    };
+
+    // Called from the LM/LC threads (the former cross-thread UpdateFrameIMU
+    // call sites). Never blocks on Tracking; only the slot mutex is taken.
+    void PostImuUpdate(const ImuUpdateMsg &msg);
+
     KeyFrame* GetLastKeyFrame()
     {
         // P10-2 (ledger race R-f): LoopClosing/GBA call this lock-free from
@@ -152,7 +198,17 @@ private:
     // The state machine itself. Declared HERE, at the exact position the old
     // public `mState` / `mLastProcessedState` members occupied, so that the
     // constructor's member-initialisation ORDER is bit-for-bit unchanged.
-    eTrackingState mState_;
+    //
+    // P11-A: mState_'s storage is now a (lock-free, same-size) atomic. The
+    // state is pull-read from the LocalMapping thread (GetState at
+    // LocalMapping.cpp:233/536) and written cross-thread by exactly one
+    // site (NotifyImuInitialized, LM thread); those were plain-load/store
+    // races since upstream. Relaxed ordering everywhere: the reads are
+    // heuristic pull-reads, not a synchronization protocol — no ordering
+    // guarantee is added, only the data race (UB) is removed.
+    std::atomic<eTrackingState> mState_;
+    static_assert(std::atomic<eTrackingState>::is_always_lock_free,
+                  "mState_ must stay a lock-free scalar");
     eTrackingState mLastProcessedState_;
 
 public:
@@ -172,14 +228,14 @@ public:
     // same values. No locking is introduced -- see GetState().
     // ------------------------------------------------------------------
 
-    // Plain, deliberately UNSYNCHRONIZED read of the tracking state.
+    // Relaxed atomic read of the tracking state.
     //
     // Every pre-P7 read of `mState` was unsynchronized, including the
-    // cross-thread ones (docs/P7_RECON.md F11). Adding a lock here would
-    // change the visibility/timing semantics the current golden baselines
-    // were measured against, so it is intentionally omitted. Making the
-    // state machine properly thread-safe is P10's job, not P7's.
-    eTrackingState GetState() const { return mState_; }
+    // cross-thread ones (docs/P7_RECON.md F11). P11-A keeps exactly those
+    // visibility/timing semantics (no lock, no ordering) but moves the
+    // storage to an atomic so the cross-thread reads stop being data races
+    // (UB). Pull-read semantics unchanged.
+    eTrackingState GetState() const { return mState_.load(std::memory_order_relaxed); }
 
     // The tracking state as it was at the top of the current Track() call,
     // snapshotted once per frame (Tracking.cpp, right after the
@@ -199,8 +255,9 @@ public:
     // docs/P7_RECON.md and finding F11 there.
     //
     // This method exists so the one legitimate external writer has a named,
-    // greppable entry point instead of a raw public data member; it must
-    // keep exactly these semantics until P10 revisits threading.
+    // greppable entry point instead of a raw public data member. P11-A: the
+    // underlying storage is atomic now, so this cross-thread write is no
+    // longer a data race; its unsynchronized timing semantics are unchanged.
     void NotifyImuInitialized();
 
     // Human-readable enumerator name, used by the transition trace.
@@ -243,7 +300,12 @@ public:
     bool mbInitWith3KFs;
     double t0; // time-stamp of first read frame
     double t0vis; // time-stamp of first inserted keyframe
-    double t0IMU; // time-stamp of IMU initialization
+    // Time-stamp of IMU initialization. P11-A: tracking-thread-confined —
+    // the former cross-thread writer (ImuInitializer.cpp, LM thread) now
+    // rides the ImuUpdateMsg bFirstInit flag and Tracking stamps this with
+    // its own mCurrentFrame.mTimeStamp at message application. Write-only
+    // member (no reader in the repo), kept for upstream parity.
+    double t0IMU;
     bool mFastInit = false;
 
 
@@ -301,6 +363,34 @@ protected:
     // Perform preintegration from last frame
     void PreintegrateIMU();
 
+    // ------------------------------------------------------------------
+    // P11-A: tracking-thread side of the IMU message protocol.
+    //
+    // ApplyPendingImuUpdate() is called at exactly ONE point: the top of
+    // Track(), immediately after acquiring pCurrentMap->mMutexMapUpdate and
+    // before any frame state is consumed. That point is naturally AFTER
+    // this frame's PreintegrateIMU() (which runs pre-lock), so the old
+    // cross-thread wait for imuIsPreintegrated() — the W9 spin, with its
+    // B1 infinite-hang risk on PreintegrateIMU's setIntegrated-less early
+    // return — dissolves (docs/IMU_CONTRACT.md §5/§6 B1, retired).
+    //
+    // DiscardPendingImuUpdate() drops the slot on the three paths that
+    // re-default mCurrentFrame/mLastFrame and retire the message's anchor
+    // state (Reset, ResetActiveMap, CreateMapInAtlas). Upstream ordering
+    // equivalence: on the reset paths the LM handshake (RequestReset*)
+    // means no upstream UpdateFrameIMU could land after the frames were
+    // re-defaulted; on the CreateMapInAtlas fork upstream's concurrent
+    // call could land on default-constructed frames — a documented crash
+    // window (IMU_CONTRACT B10/B11) that discarding demotes to a dropped
+    // (already map-retired) update. DIVERGENCES #28.
+    //
+    // UpdateFrameIMU is the unchanged upstream mutation body, now
+    // tracking-thread-only (minus the W9 spin).
+    // ------------------------------------------------------------------
+    void ApplyPendingImuUpdate();
+    void DiscardPendingImuUpdate();
+    void UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurrentKeyFrame);
+
     // Reset IMU biases and compute frame velocity
     void ResetFrameIMU();
 
@@ -329,6 +419,18 @@ protected:
     // pushes from the tracking thread; it permits an async producer in principle,
     // but PreintegrateIMU reads size() unlocked (B2). docs/IMU_CONTRACT.md §1.
     std::mutex mMutexImuQueue;
+
+    // P11-A: the IMU rescale/rebias mailbox (see ImuUpdateMsg above).
+    // Guarded by its own DEDICATED leaf mutex rather than reusing
+    // mMutexImuQueue: the queue mutex implements a different protocol
+    // (per-iteration acquire/release inside PreintegrateIMU's drain loop,
+    // sample FIFO custody) and entangling the message slot with it would
+    // add cross-thread contention to that hot drain for no protection
+    // gain. mMutexImuUpdate is held only for a struct copy in/out and is
+    // NEVER held while taking any other lock (a leaf by construction), so
+    // it introduces no lock-order edges.
+    std::optional<ImuUpdateMsg> mPendingImuUpdate;
+    std::mutex mMutexImuUpdate;
 
     // Imu calibration parameters
     IMU::Calib *mpImuCalib;
@@ -411,7 +513,15 @@ protected:
     float mDepthMapFactor;
 
     //Current matches in frame
-    int mnMatchesInliers;
+    // P11-A: atomic — pull-read lock-free from the LocalMapping thread
+    // (GetMatchesInliers -> bLarge heuristic, LocalMapping.cpp:179), which
+    // was a plain-int data race since upstream. Tracking is the only
+    // writer; TrackLocalMap counts into a local and publishes ONCE with a
+    // relaxed store (LM now sees previous-frame-or-new value instead of
+    // upstream's torn mid-count garbage — both are timing lottery, ours is
+    // at least a well-defined value). Zero-initialized: upstream let LM
+    // read an indeterminate int before the first TrackLocalMap.
+    std::atomic<int> mnMatchesInliers{0};
 
     //Last Frame, KeyFrame and Relocalisation Info
     // P10-2: atomic (ledger race R-f). Tracking-thread writes use
@@ -499,8 +609,10 @@ private:
     // ------------------------------------------------------------------
     void SetState(eTrackingState s, const char* reason, bool bLogEvenIfUnchanged = false)
     {
-        const eTrackingState prev = mState_;
-        mState_ = s;
+        // P11-A: relaxed atomic accesses (storage change only — same
+        // assign-then-trace shape, same values, no added ordering).
+        const eTrackingState prev = mState_.load(std::memory_order_relaxed);
+        mState_.store(s, std::memory_order_relaxed);
         if(mbTraceState && (prev != s || bLogEvenIfUnchanged))
             TraceStateTransition(prev, s, reason);
     }

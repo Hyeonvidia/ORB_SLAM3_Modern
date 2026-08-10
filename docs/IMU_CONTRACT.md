@@ -12,6 +12,14 @@
 `mpTracker->NotifyImuInitialized()` 호출(`LocalMapping.cpp:1446`)로 대체됐다
 (동일 쓰기, 동일 스레드, 동일 무동기화). 본 문서의 모든 라인은 재검증 완료.
 
+**P11-A 갱신 (2026-08-11, DIVERGENCES #28)**: `UpdateFrameIMU`는 더 이상
+교차 스레드로 호출되지 않는다 — LM/LC는 `Tracking::PostImuUpdate(ImuUpdateMsg)`
+로 게시하고, T가 Track() 상단 mMutexMapUpdate 획득 직후 스스로 적용한다
+(§5 갱신부). 이에 따라 §5의 대기 스핀(W9)은 삭제, §6의 B1 행 위험과 B12의
+교차 스레드 암은 **은퇴**했다(각 행의 취소선 주석 참조). 라인 번호는 P11-A
+편집으로 `Tracking.cpp` 후반부가 +수십 행 밀렸다 — 본문 라인은 P7 시점
+기준을 유지하고, 갱신부만 상대 서술로 적는다.
+
 ---
 
 ## 1. `mlQueueImuData` — 생산자/소비자/뮤텍스 프로토콜
@@ -124,8 +132,9 @@
 **바이어스 결합**: `Frame::SetNewBias`(`Frame.cpp:420-425`)는 `mImuBias` 대입 후
 `mpImuPreintegrated`가 있으면 전달한다. `Track():1116`에서는 아직
 `mpImuPreintegrated==NULL`(발행은 `:985`, 즉 `:1130`의 `PreintegrateIMU` 내부)
-이라 객체에는 no-op. `UpdateFrameIMU():3226-3227`에서는 no-op이 **아니며**
-LocalMapping 스레드에서 공유 객체를 변이시킨다(B12).
+이라 객체에는 no-op. `UpdateFrameIMU`의 두 프레임 rebias에서는 no-op이
+**아니며** 공유 preintegration 객체를 변이시킨다 — P11-A부터 이 호출도 T
+스레드에서 실행되므로 교차 스레드 레이스가 아니다(B12 행의 은퇴 주석).
 
 ---
 
@@ -204,12 +213,24 @@ LocalMapping 스레드에서 공유 객체를 변이시킨다(B12).
 않는다: 멤버 수명은 KF 생성(`:2500`), 맵 생성(`:1942`), 초기화 경로
 (`:1612, :1727, :1875`)만으로 결정된다.
 
-`UpdateFrameIMU`(`:3198-3269`)는 Tracking IMU 상태의 유일한 교차 스레드
-변이자다. 호출: `LocalMapping::InitializeIMU` `src/mapping/LocalMapping.cpp:1291`
-(`mMutexMapUpdate` 안, `:1287`) 및 `:1302`(**밖**), `ScaleRefinement` `:1504`
-(안, `:1498`). `mlRelativeFramePoses` 리스케일, `mLastBias`/`mpLastKeyFrame`
-설정, 두 프레임 rebias(`:3226-3227`), `mCurrentFrame.imuIsPreintegrated()` 대기
-스핀(`:3229-3232`), from-KF preintegration으로 두 프레임 pose/velocity 재작성.
+~~`UpdateFrameIMU`(`:3198-3269`)는 Tracking IMU 상태의 유일한 교차 스레드
+변이자다.~~ **P11-A로 폐지된 서술** — 현행 계약: 舊 호출 5곳
+(`ImuInitializer.cpp` ×3, `LoopClosing.cpp` MergeLocal2 ×2)은
+`Tracking::PostImuUpdate(ImuUpdateMsg{scale,bias,pBaseKF,bFirstInit,t0Imu})`
+게시로 대체됐고(단일 뮤텍스 슬롯 `mPendingImuUpdate`/`mMutexImuUpdate`,
+scale 곱 합성·나머지 최신 우선·bFirstInit OR), T가 Track() 상단
+mMutexMapUpdate 획득 직후 `ApplyPendingImuUpdate()`로 적용한다(= 기존
+UpdateFrameIMU 본문, 이제 **T-스레드 전용**: `mlRelativeFramePoses` 리스케일,
+`mLastBias`/`mpLastKeyFrame` 설정, 두 프레임 rebias, from-KF preintegration
+pose/velocity 재작성). `mCurrentFrame.imuIsPreintegrated()` 대기 스핀(W9)은
+적용 지점이 T 자신의 PreintegrateIMU 이후라 **삭제**(B1 행 위험 은퇴).
+`t0IMU` 스탬프는 bFirstInit 플래그를 받아 T가 자기 현재 프레임 시각으로
+찍는다(유계 편차, write-only 멤버라 관측 불가). 미적용 메시지는
+Reset/ResetActiveMap/CreateMapInAtlas에서 폐기된다(프레임 기본 생성 복귀와
+동기 — 리셋 2경로는 LM 핸드셰이크로 업스트림 등가, 포크 경로는 B10/B11
+크래시 창의 드롭 강등). 이로써 Tracking의 프레임 객체·IMU 상태에 대한
+교차 스레드 변이자는 0이 됐다(NotifyImuInitialized의 mState_ 쓰기만 남고,
+그 저장소는 atomic).
 
 ---
 
@@ -219,7 +240,7 @@ LocalMapping 스레드에서 공유 객체를 변이시킨다(B12).
 
 | # | 위치 (현재 HEAD) | 요약 |
 |---|---|---|
-| B1 | `Tracking.cpp:934-937` | `n==0` 조기 리턴이 `setIntegrated()` 누락 (다른 두 조기 리턴 `:886, :895`와 비대칭) → `UpdateFrameIMU():3229-3232`가 무한 스핀 가능 |
+| B1 | `Tracking.cpp:934-937` | `n==0` 조기 리턴이 `setIntegrated()` 누락 (다른 두 조기 리턴 `:886, :895`와 비대칭). ~~→ `UpdateFrameIMU():3229-3232`가 무한 스핀 가능~~ **P11-A에서 행 위험 은퇴**: 대기 스핀 삭제로 `imuIsPreintegrated()`의 소비자가 0 — 비대칭 자체는 보존되나 무해 (DIVERGENCES #28) |
 | B2 | `Tracking.cpp:891-892` | `mlQueueImuData.size()` 2회를 락 밖에서 읽음 (락은 `:903`부터) — 비동기 생산자 등장 시 실제 레이스 |
 | B3 | `Tracking.cpp:925-926` | `break;` 뒤 `bSleep=true;` 도달 불가 → `:929-930`의 지각-IMU 대기 usleep은 죽은 코드 |
 | B4 | `Tracking.cpp:939` + `Frame.hpp:71` + `Frame.cpp:59` | 프레임당 from-frame 객체 누수 (소멸자 주석 처리, 복사 생성자 별칭, delete 전무). `Frame::mpMutexImu`(`Frame.cpp:179, 261, 362, 1095`에서 new) 동일 |
@@ -230,7 +251,7 @@ LocalMapping 스레드에서 공유 객체를 변이시킨다(B12).
 | B9 | `Tracking.cpp:3035-3094, :3096-3185` | `Reset()`/`ResetActiveMap()` 모두 큐 미비움·from-KF 미재생성 (§4) |
 | B10 | `Frame.cpp:41` | 기본 `Frame()`이 `mpMutexImu` 미초기화 (`Frame.hpp:330`) — 기본 프레임 설치 창(`:1951-1952, :3083/:3085, :3173-3174`)에서 `UpdateFrameIMU():3229`가 미정 포인터 락 |
 | B11 | `Tracking.cpp:908/912` (← `ResetActiveMap():3173-3174`) | 지연 리셋 뒤 `mbCreatedMap` 미설정 → 기본 `Frame`의 미정 `mTimeStamp`와 큐 타임스탬프 비교 |
-| B12 | `ImuTypes.cpp:177`(무락) vs `:265`(락) | `IntegrateNewMeasurement`는 `mMutex` 미획득 — 추적 스레드 적분(`Tracking.cpp:980`)과 LocalMapping 스레드 `SetNewBias`(`UpdateFrameIMU:3226-3227`, 호출처 `LocalMapping.cpp:1302`는 `mMutexMapUpdate` **밖**)의 데이터 레이스 |
+| B12 | `ImuTypes.cpp:177`(무락) vs `:265`(락) | `IntegrateNewMeasurement`는 `mMutex` 미획득 — ~~추적 스레드 적분(`Tracking.cpp:980`)과 LocalMapping 스레드 `SetNewBias`의 데이터 레이스~~ **P11-A에서 교차 스레드 암 은퇴**: SetNewBias(프레임 경유)가 T 스레드로 이동해 두 접근이 동일 스레드 — 무락 비대칭 자체는 보존(비동기 생산자 등장 시 재검토) |
 | B13 | `Optimizer.cpp:5201` vs `:5214, :5221` | `PoseInertialOptimizationLastFrame`이 에지는 from-frame 객체로, 랜덤워크 정보 블록은 from-KF 객체 `C`로 구성 — 업스트림 비대칭 보존. 두 객체 통합 리팩토링은 최적화 가중치를 바꾼다 |
 | B14 | `Tracking.hpp:380` / `Tracking.cpp:3268` | `mnFirstImuFrameId` write-only 죽은 멤버 |
 | B15 | `Tracking.cpp:1044-1047 + :1439-1443` | `ResetFrameIMU()` 빈 스텁 — "RESETING FRAME!!!" 경로 무동작 |

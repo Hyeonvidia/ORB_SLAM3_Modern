@@ -43,6 +43,67 @@
     불변이다. 게이트 중립 by construction(어휘 내용 동일 ⇒ bit/smoke 게이트
     유지 의무).
 
+28. **[P11-A] Frame/IMU 계약을 메시지 패싱으로 재설계 — Frame 객체 T-스레드
+    한정화** (docs/P11_RECON.md 1부 (1c)). LM(ImuInitializer ×3)/LC(MergeLocal2
+    ×2)가 Tracking의 `UpdateFrameIMU`를 직접 호출해 T의 살아있는
+    mCurrentFrame/mLastFrame(각 ~100 멤버, 무가드)을 교차 스레드로 변이하던
+    구조를 제거: 호출부는 `Tracking::ImuUpdateMsg{scale, bias, pBaseKF,
+    bFirstInit, t0Imu}`를 단일 뮤텍스 슬롯에 게시(`PostImuUpdate`)하고, T가
+    Track() 상단에서 mMutexMapUpdate 획득 직후·프레임 상태 소비 전에 스스로
+    적용한다(`ApplyPendingImuUpdate` → 기존 UpdateFrameIMU 본문, 이제 T 전용).
+    관측 가능 편차와 판단 근거:
+    - **유계 지연(bounded staleness)**: 리스케일/리바이어스가 LM/LC 실행
+      중간이 아니라 T의 다음 락 획득 시점에 착지한다. 업스트림도 T의 pre-lock
+      구간(프레임 생성·PreintegrateIMU가 락 밖) 때문에 정확히 이 창을
+      **비결정적으로** 노출했다 — 결정화이지 신규 창이 아님.
+      ApplyScaledRotation-프레임 정합은 유지: T는 같은 락 없이 월드 프레임
+      상태를 소비할 수 없다.
+    - **슬롯 합성 의미론(판단)**: scale은 **곱으로 합성**(정찰 문서의 naive
+      last-writer-wins에서 의도적 이탈 — scale은 mlRelativeFramePoses에
+      정확히 1회 착지해야 하는 델타라, 항상 뒤따르는 s=1.0 리바이어스 게시가
+      선행 리스케일을 덮으면 유실된다), bias/pBaseKF는 최신 우선(절대 상태),
+      bFirstInit은 OR.
+    - **t0IMU**: 업스트림은 LM이 T의 mCurrentFrame.mTimeStamp를 레이스로
+      읽어 스탬프했다(ImuInitializer:160 TSAN 시그니처). 이제 메시지가
+      플래그만 나르고 T가 적용 시점의 **자기** 현재 프레임 시각으로
+      스탬프한다 — 리포 내 독자 0의 write-only 멤버라 관측 불가 편차.
+    - **W9 스핀 삭제 = B1 은퇴**: `while(!imuIsPreintegrated()) usleep(500)`은
+      적용 지점이 T의 PreintegrateIMU 이후라 구조적으로 불필요해져 삭제.
+      PreintegrateIMU n==0 조기 리턴의 setIntegrated 누락이 LM을 영구
+      스핀시키던 행 위험(B1, docs/IMU_CONTRACT.md §6)이 함께 소멸. B12의
+      교차 스레드 암(LM의 SetNewBias vs T의 적분)도 동일 메커니즘으로 소멸.
+    - **리셋 경로의 메시지 폐기**: Reset/ResetActiveMap/CreateMapInAtlas는
+      프레임을 기본 생성으로 되돌리므로 미적용 메시지를 폐기한다. 리셋
+      2경로는 LM 핸드셰이크가 게시-이후-착지를 배제하므로 업스트림 등가;
+      CreateMapInAtlas 포크는 업스트림이라면 기본 프레임 위 실행(B10/B11
+      크래시 창)이던 것을 드롭으로 강등 — 병리 창 전용 안전 강등.
+    - **스칼라 원자화**: `mState_` 저장소와 `mnMatchesInliers`를 atomic
+      (relaxed)으로 — LM의 풀-리드(GetState/GetMatchesInliers)가 UB이던 것을
+      제거, 순서 보증은 추가하지 않음. mnMatchesInliers는 TrackLocalMap이
+      지역 카운터로 세고 **말미 1회 게시**: LM은 업스트림의 찢어진 중간값
+      대신 직전 프레임 값 또는 최종값을 본다(양쪽 다 타이밍 복권; 우리 쪽이
+      정의된 값). 초기값 0 명시(업스트림은 첫 TrackLocalMap 전 미정값 노출).
+    - **순효과**: Frame 객체는 T-스레드 한정(FrameDrawer 복사는 기존 뮤텍스).
+      **TSAN T3 오라클**: step_P10-2_T3 대비 `Frame::operator=` 시그니처
+      클래스 전체(operator= vs SetImuPoseVelocity/SetNewBias/
+      imuIsPreintegrated/ImuInitializer:160/UpdateFrameIMU + HasVelocity +
+      SetState|GetState + TrackLocalMap|GetMatchesInliers + 파생 Eigen/
+      _Rb_tree/BAEpochs 잡음) 소멸, 신규 ORB 시그니처 0
+      (benchmark/tsan/step_P11-A_T3.ledger). 잔존 LocalInertialBA:3020|
+      isInFrustum:548은 MapPoint 스크래치 필드(mTrackDepth) 레이스로 Frame
+      클래스가 아니라 툼스톤/계약 클래스 — 헤더 주석 참조.
+29. **[P11-A/B3] Release() 큐 드레인의 raw delete를 #19 패턴으로 강등** —
+    `LocalMapping::Release()`의 드레인은 SetBadFlag 없는 raw delete여서,
+    큐 잔류(맵 미편입) KF를 별칭하는 `Tracking::mpLastKeyFrame`/
+    `Frame::mpLastKeyFrame`/(스테레오·RGBD) CreateNewKeyFrame산(産) MapPoint
+    관측 역참조가 전부 댕글링으로 남았다(OWNERSHIP "업스트림 그대로의 댕글링
+    위험", 마지막 잔존 delete). 이제 PurgeNewKeyFramesAfterInertialInit와
+    동일하게 SetBadFlag 후 `isBad()` 확인부 delete: 미편입 KF에서 Erase류는
+    no-op이고 관측 해제가 MP 역참조 댕글링을 제거하며, 조기 return 도달
+    시(사실상 불가) UAF 대신 누수. #19/#22/#23/#25/#26과 동급이라
+    **무조건부**(FixLevel 플래그 아님). 정상 경로 동작 동일, 병리 창
+    전용 강등.
+
 ## 계승 결함 (bug-for-bug 보존, FixLevel 후보)
 
 5. **Frame::mb 미초기화 읽기** — 스테레오 생성자가 `mb = mbf/fx` 대입(167행)
