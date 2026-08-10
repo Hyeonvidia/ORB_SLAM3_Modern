@@ -222,9 +222,20 @@ struct ImuChainFixture {
 // Builds the deterministic imu_chain fixture described above. Every call
 // constructs a fully independent fixture (fresh Map/KeyFrames/Preintegrated/
 // camera) so two invocations exercise the self-determinism gate end to end.
-// The default argument keeps the P6-3 pair byte-identical.
+// The default arguments keep the P6-3 pair byte-identical.
+//
+// sTrueOverride (P11-F1): > 0 replaces the variant's default s_true (kSTrue
+// for the distorted variants, 1.0 for kBiasOnly). Everything downstream is
+// already parameterized on fx.sTrue (state scaling, residual floor), so the
+// override needs no other change. Meaningful for kScaleGravity only; used by
+// tests/fixlevel/fl9_scale_convergence.cpp to build the s_true = 2.0 fixture
+// that sits exactly at the DIVERGENCES #9 stall point — OUTSIDE the solver
+// convergence region the harness fixtures must stay in (see the kSTrue
+// comment in EquivFixtures.cpp), which is why the equivalence pairs keep the
+// default. 0.0 = no override.
 ImuChainFixture MakeImuChainFixture(
-    ImuChainVariant variant = ImuChainVariant::kScaleGravity);
+    ImuChainVariant variant = ImuChainVariant::kScaleGravity,
+    double sTrueOverride = 0.0);
 
 // PoseInertialFixture (design §B 1.1 + §B class B) — input for
 // Optimizer::PoseInertialOptimizationLastKeyFrame(Frame*, bool).

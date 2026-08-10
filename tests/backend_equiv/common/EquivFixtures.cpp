@@ -185,7 +185,8 @@ constexpr double kBaTrue[3] = {0.02, -0.03, 0.01};
 
 }  // namespace
 
-ImuChainFixture MakeImuChainFixture(ImuChainVariant variant)
+ImuChainFixture MakeImuChainFixture(ImuChainVariant variant,
+                                    double sTrueOverride)
 {
     using ORB_SLAM3::IMU::Bias;
     using ORB_SLAM3::IMU::Calib;
@@ -197,7 +198,10 @@ ImuChainFixture MakeImuChainFixture(ImuChainVariant variant)
     // to 1.0, so its stored trajectory must be the undistorted metric one.
     const bool bDistort = (variant != ImuChainVariant::kBiasOnly);
     const bool bInjectBias = (variant != ImuChainVariant::kScaleGravity);
-    fx.sTrue = bDistort ? kSTrue : 1.0;
+    // P11-F1: sTrueOverride > 0 replaces the variant default (see the header
+    // comment); everything below reads fx.sTrue, so no other change.
+    fx.sTrue = (sTrueOverride > 0.0) ? sTrueOverride
+                                     : (bDistort ? kSTrue : 1.0);
     if (bInjectBias)
         fx.bgTrue = Eigen::Vector3d(kBgTrue[0], kBgTrue[1], kBgTrue[2]);
     // Accelerometer bias is injected ONLY in kBiasOnly. Measured reason

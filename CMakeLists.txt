@@ -179,4 +179,22 @@ if(BUILD_TESTS)
   set_target_properties(fixflags_checks PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
+  # ---- FL-9 scale-convergence property test (P11-F1) ------------------------
+  # extract_hash mold; reuses the backend_equiv imu_chain fixture (with the
+  # P11-F1 s_true override) against the LIVE backend in this build tree.
+  # OFF phase reproduces the DIVERGENCES #9 stall at s_true=2.0; the ON phase
+  # arms Fix.ScaleJacobian through the public write-once FixFlags::Set
+  # (single-threaded binary, no System — the Set-before-threads contract
+  # holds trivially) and asserts convergence. The frozen reference backend
+  # cannot arm the flag, so the ON property lives here, not in backend_equiv.
+  add_executable(fl9_scale_convergence
+    tests/fixlevel/fl9_scale_convergence.cpp
+    tests/backend_equiv/common/EquivFixtures.cpp)
+  target_include_directories(fl9_scale_convergence PRIVATE
+    ${PROJECT_SOURCE_DIR}/tests/backend_equiv/common)
+  target_link_libraries(fl9_scale_convergence PRIVATE ORB_SLAM3::core)
+  set_target_properties(fl9_scale_convergence PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endif()

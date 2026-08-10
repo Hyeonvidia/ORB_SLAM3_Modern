@@ -141,6 +141,10 @@
     raw `mbFixScale`을 넘긴다(다른 3개 사이트는 완화값 사용). 단안-관성 초기
     구간의 Sim3 정련이 스케일 고정으로 도는 수치 차이 — bug-for-bug 보존,
     게이트가 판별 영역. P9-1에서 죽은 계산을 삭제하며 호출부에 의도 주석 명시.
+    **[P11-F2] 수정 탑재 — `Fix.ScaleJacobian`(#9와 동일 플래그, 레벨 2),
+    기본 OFF**: 플래그 ON 시 이미 계산된 완화값 `bFixedScale`을 전달(삼항,
+    설정류 사이트라 캐시 불필요). OFF는 raw 전달 그대로 = 업스트림 동작.
+    ON 검증은 #9의 MI 페어드 런에 동승(별도 런 없음 — 동일 판별 영역).
 25. **[P10-5] GBA 조기 return의 mbRunningGBA 영구 잔류 수정 (scope-exit
     가드)** — `RunGlobalBundleAdjustment`의 정상 꼬리만
     `mbFinishedGBA=true; mbRunningGBA=false`를 기록했고, 에포크 불일치
@@ -186,7 +190,7 @@ System 기동 시 stderr 한 줄(`[FixFlags] non-default fix flags ACTIVE: ...`)
 
 | 플래그 (yaml 키) | 대상 ID | 프리셋 레벨 | 상태 |
 |---|---|---|---|
-| scaleJacobianChainRule (`Fix.ScaleJacobian`) | DIVERGENCES #9 (+#24 동승 예정: 동일 MI 초기 스케일 창 의미론·동일 검증 런) | 2 | 인프라만, 픽스 미탑재 (P11-F1/F2) |
+| scaleJacobianChainRule (`Fix.ScaleJacobian`) | DIVERGENCES #9 (+#24 동승: 동일 MI 초기 스케일 창 의미론·동일 검증 런) | 2 | **픽스 탑재** — P11-F1(#9: EdgeInertialGS 연쇄율, 생성자 캐시+test/branch, ON 속성 테스트 `tests/fixlevel/fl9_scale_convergence.cpp`) + P11-F2(#24: OptimizeSim3에 완화 bFixedScale). 기본 OFF |
 | loopStateHygiene (`Fix.LoopStateHygiene`) | DIVERGENCES #21 | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
 | latchHygiene (`Fix.LatchHygiene`) | OWNERSHIP L1/L2 (P9_RECON D2/D3) | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
 | lcResetWipe (`Fix.LcResetWipe`) | OWNERSHIP D5 | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
@@ -224,6 +228,19 @@ System 기동 시 stderr 한 줄(`[FixFlags] non-default fix flags ACTIVE: ...`)
    단안-관성 초기화가 InertialOptimization으로 영영 복구되지 않는 메커니즘.
    bug-for-bug 원칙에 따라 양 백엔드에 동일 보존(등가성이 곧 증거), 수정은
    FixLevel 후보 1순위. 재현: EQUIV_INERTIAL_DEBUG=1 + s_true=2.0 픽스처.
+   **[P11-F1] 수정 탑재 — `Fix.ScaleJacobian`(레벨 2), 기본 OFF**: 승산
+   갱신의 연쇄율 ∂r/∂w = (∂r/∂s)·s를 라이브 `linearizeOplus`에만 적용
+   (생성자 캐시 bool `mbScaleJacCR` + test+branch — `*(flag?s:1.0)` 승산형
+   금지, #20 명령스트림 규율). 동결 참조 백엔드 쌍둥이는 **의도적 미수정**
+   (OFF 계약 오라클; s_true=1.1 쌍둥이-등가성은 OFF 계약을, 신규
+   `tests/fixlevel/fl9_scale_convergence.cpp`는 ON 계약을 고정 — 픽스처
+   sTrueOverride로 s_true=2.0 그래프 구성, OFF 정지(>5e-3 상대오차) 재현 +
+   ON 수렴(<1e-6, 실측 ~1.6e-8 부동소수 바닥) + s_true=1.1 양 상태 수렴
+   무회귀를 한 바이너리에서 단언). ON 검증 프로토콜: 속성 테스트(1차 증거)
+   + 동일-바이너리 MI 페어드 인터리브 런(FixLevel:2 yaml 사본 vs 게이트
+   yaml, 스크리닝 — 정식 ON 게이트化는 사용자 결정 대기). 블라스트 반경:
+   단안-관성 전용(스테레오/RGBD-관성은 스케일 정점 고정이라 야코비안이
+   정규방정식에 미진입).
 
 ## P6 백엔드 이전에서 드러난 g2o 포크 차이 (2026-08-08 감사)
 

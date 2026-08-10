@@ -74,6 +74,13 @@ elseif(EQUIV_BACKEND STREQUAL "modern")
     ${REPO_ROOT}/src/backend/OrbLevenberg.cpp
     ${REPO_ROOT}/src/backend/G2oTypes.cpp
     ${REPO_ROOT}/src/backend/OptimizableTypes.cpp
+    # P11-F1: the live EdgeInertialGS ctor caches FixFlags::I()
+    # .scaleJacobianChainRule (DIVERGENCES #9). The harness never calls
+    # FixFlags::Set, so this variant runs at the all-false level-0 default —
+    # exactly the OFF contract the cross-variant gate proves. The frozen
+    # vendored variant has no FixFlags reference (and by design cannot arm
+    # the fix); the ON property lives in tests/fixlevel/ instead.
+    ${REPO_ROOT}/src/core/FixFlags.cpp
   )
   # No shadow include dir: the live include/ tree is the modern contract.
   set(EQUIV_BACKEND_INCLUDE "")
