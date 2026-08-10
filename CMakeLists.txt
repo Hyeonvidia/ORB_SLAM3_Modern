@@ -58,6 +58,7 @@ add_subdirectory(third_party/g2o)
 add_library(orbslam3_core SHARED
   src/core/System.cpp
   src/core/Settings.cpp
+  src/core/FixFlags.cpp
   src/camera/CameraFactory.cpp
   src/camera/Pinhole.cpp
   src/camera/KannalaBrandt8.cpp
@@ -165,6 +166,17 @@ if(BUILD_TESTS)
   add_executable(vocab_roundtrip tests/vocab/vocab_roundtrip.cpp)
   target_link_libraries(vocab_roundtrip PRIVATE DBoW2)
   set_target_properties(vocab_roundtrip PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
+  # ---- FixLevel flag parse/preset checks (P11-F0) ---------------------------
+  # extract_hash mold: asserts the all-false level-0 default (the permanent
+  # gate contract), the FixLevel:1/2 preset sets, individual-key override
+  # precedence in both directions, and absent-keys silence, on temp yamls
+  # written by the test itself. Runs well under 1 s.
+  add_executable(fixflags_checks tests/fixflags/fixflags_checks.cpp)
+  target_link_libraries(fixflags_checks PRIVATE ORB_SLAM3::core)
+  set_target_properties(fixflags_checks PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endif()

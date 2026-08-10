@@ -173,6 +173,34 @@
     `WaitUntilStopped()`는 의도적으로 finish-unaware 유지(업스트림 W6
     liveness 특이점 자구 보존).
 
+## FixLevel 레지스트리 (P11-F0, 2026-08-11)
+
+런타임 픽스 플래그 인프라(`include/core/FixFlags.hpp`, docs/P11_RECON.md 2부
+§2/§4). 동일 바이너리 ON/OFF가 설계 동인(#20: ifdef면 레이아웃 교란이 ON 검증을
+오염). System 생성자가 Settings에서 **스레드 스폰 전 1회** 기록(원자화 불필요 —
+스레드 생성이 happens-before), 이후 불변. yaml 표면: `FixLevel: 0|1|2` 프리셋
+(부재 = 0 = 전부 false = 게이트 구성) + 개별 `Fix.<이름>: 0|1` 키(프리셋보다
+우선, 양방향). 레벨 0은 stderr 배너 포함 완전 침묵; 플래그가 하나라도 켜지면
+System 기동 시 stderr 한 줄(`[FixFlags] non-default fix flags ACTIVE: ...`)로
+출처를 남긴다.
+
+| 플래그 (yaml 키) | 대상 ID | 프리셋 레벨 | 상태 |
+|---|---|---|---|
+| scaleJacobianChainRule (`Fix.ScaleJacobian`) | DIVERGENCES #9 (+#24 동승 예정: 동일 MI 초기 스케일 창 의미론·동일 검증 런) | 2 | 인프라만, 픽스 미탑재 (P11-F1/F2) |
+| loopStateHygiene (`Fix.LoopStateHygiene`) | DIVERGENCES #21 | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
+| latchHygiene (`Fix.LatchHygiene`) | OWNERSHIP L1/L2 (P9_RECON D2/D3) | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
+| lcResetWipe (`Fix.LcResetWipe`) | OWNERSHIP D5 | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
+| ldltPoseGraph (`Fix.LdltPoseGraph`) | DIVERGENCES #13 | 2 | 인프라만, 픽스 미탑재 (P11-F5) |
+| stereoMbInit (`Fix.StereoMbInit`) | DIVERGENCES #5 | 1 | 인프라만, 픽스 미탑재 (P11-F4) |
+| legacyImuResetWindow (`Fix.LegacyImuResetWindow`) | DIVERGENCES #3 | 2 | 인프라만, 픽스 미탑재 (P11-F6) |
+| rectifiedResizeCal2 (`Fix.RectifiedResizeCal2`) | DIVERGENCES #6 | 1 | 인프라만, 픽스 미탑재 (P11-F6) |
+
+레벨 1 = 상태 위생 세트(#21, L1/L2, D5, #5, #6), 레벨 2 = 전부(+#9/#24, #13,
+#3). **P11-F0 시점엔 어떤 코드도 이 플래그를 읽지 않는다** — 무해성은 구성 증명
+(all-false 기본값 유닛 테스트 `tests/fixflags/fixflags_checks.cpp`) + 레벨-0
+게이트(bit/smoke)로 확인하고, 각 픽스 탑재 커밋(P11-F1~F6)이 자기 플래그의
+소비 지점·ON 검증·이 표의 상태 갱신을 가져온다.
+
 ## 게이트 방법론 이력
 
 - 체크포인트 리뷰가 **풀 게이트 v2.1의 검정력 결함**을 적발: 2라운드에서

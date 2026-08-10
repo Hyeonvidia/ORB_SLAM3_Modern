@@ -174,6 +174,12 @@ namespace ORB_SLAM3 {
         readOtherParameters(fSettings);
         cout << "\t-Loaded misc parameters" << endl;
 
+        // P11-F0: FixLevel/Fix.* runtime-fix flags. Deliberately quiet:
+        // absent keys (= level 0, every gate yaml) must produce no output —
+        // the provenance banner is System's job and prints only when a
+        // non-default flag is active.
+        fixFlags_ = FixFlags::Parse(fSettings);
+
         if(bNeedToRectify_){
             precomputeRectificationMaps();
             cout << "\t-Computed rectification maps" << endl;

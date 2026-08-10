@@ -24,6 +24,7 @@
 //#define REGISTER_TIMES
 
 #include "camera/GeometricCamera.hpp"
+#include "core/FixFlags.hpp"
 
 #include <unistd.h>
 #include <stdio.h>
@@ -119,6 +120,11 @@ namespace ORB_SLAM3 {
         bool activeLoopClosing() {return activeLoopClosing_;}
         bool fastInit() {return fastInit_;}
         float imageScale() {return imageScale_;}
+
+        // P11-F0: parsed FixLevel/Fix.* flags (all-false when the yaml
+        // carries no Fix keys — every gate yaml). System's ctor installs
+        // this into the process-global FixFlags::I() before thread spawn.
+        const FixFlags& fixFlags() const {return fixFlags_;}
 
         cv::Mat M1l() {return M1l_;}
         cv::Mat M2l() {return M2l_;}
@@ -233,6 +239,11 @@ namespace ORB_SLAM3 {
         bool activeLoopClosing_;
         bool fastInit_;
         float imageScale_;
+
+        /*
+         * P11-F0 FixLevel flags
+         */
+        FixFlags fixFlags_;
 
     };
 };

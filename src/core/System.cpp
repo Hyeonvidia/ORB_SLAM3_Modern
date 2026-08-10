@@ -19,6 +19,7 @@
 
 
 #include "core/System.hpp"
+#include "core/FixFlags.hpp"
 #include "io/Converter.hpp"
 #include <chrono>
 #include <thread>
@@ -86,6 +87,19 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         exit(-1);
     }
     settings_ = new Settings(strSettingsFile,mSensor);
+
+    // P11-F0: install the runtime fix flags into the process-global slot.
+    // MUST stay ahead of every thread spawn in this constructor (the
+    // happens-before edge is thread creation — FixFlags.hpp contract), and
+    // ahead of the Tracking ctor (config-time flags read at parse time).
+    // Provenance: exactly one stderr line when any flag is non-default;
+    // level 0 (all gate yamls) is silent by construction.
+    FixFlags::Set(settings_->fixFlags());
+    {
+        const std::string sActiveFixes = FixFlags::I().ActiveList();
+        if(!sActiveFixes.empty())
+            cerr << "[FixFlags] non-default fix flags ACTIVE: " << sActiveFixes << endl;
+    }
 
     mStrLoadAtlasFromFile = settings_->atlasLoadFile();
     mStrSaveAtlasToFile = settings_->atlasSaveFile();
