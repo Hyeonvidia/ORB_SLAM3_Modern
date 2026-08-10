@@ -191,13 +191,13 @@ System 기동 시 stderr 한 줄(`[FixFlags] non-default fix flags ACTIVE: ...`)
 | 플래그 (yaml 키) | 대상 ID | 프리셋 레벨 | 상태 |
 |---|---|---|---|
 | scaleJacobianChainRule (`Fix.ScaleJacobian`) | DIVERGENCES #9 (+#24 동승: 동일 MI 초기 스케일 창 의미론·동일 검증 런) | 2 | **픽스 탑재** — P11-F1(#9: EdgeInertialGS 연쇄율, 생성자 캐시+test/branch, ON 속성 테스트 `tests/fixlevel/fl9_scale_convergence.cpp`) + P11-F2(#24: OptimizeSim3에 완화 bFixedScale). 기본 OFF |
-| loopStateHygiene (`Fix.LoopStateHygiene`) | DIVERGENCES #21 | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
-| latchHygiene (`Fix.LatchHygiene`) | OWNERSHIP L1/L2 (P9_RECON D2/D3) | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
-| lcResetWipe (`Fix.LcResetWipe`) | OWNERSHIP D5 | 1 | 인프라만, 픽스 미탑재 (P11-F3) |
-| ldltPoseGraph (`Fix.LdltPoseGraph`) | DIVERGENCES #13 | 2 | 인프라만, 픽스 미탑재 (P11-F5) |
-| stereoMbInit (`Fix.StereoMbInit`) | DIVERGENCES #5 | 1 | 인프라만, 픽스 미탑재 (P11-F4) |
-| legacyImuResetWindow (`Fix.LegacyImuResetWindow`) | DIVERGENCES #3 | 2 | 인프라만, 픽스 미탑재 (P11-F6) |
-| rectifiedResizeCal2 (`Fix.RectifiedResizeCal2`) | DIVERGENCES #6 | 1 | 인프라만, 픽스 미탑재 (P11-F6) |
+| loopStateHygiene (`Fix.LoopStateHygiene`) | DIVERGENCES #21 | 1 | **픽스 탑재** — P11-F3(양팔: 스케일 중단 시 루프 와이프 + decay의 detected 소거; 유닛 `detection_machine_checks`가 OFF 비대칭 자구 보존/ON 위생 양쪽 단언). 기본 OFF |
+| latchHygiene (`Fix.LatchHygiene`) | OWNERSHIP L1/L2 (P9_RECON D2/D3) | 1 | **픽스 탑재** — P11-F3(BoW 재시딩 시 구 래치 SetErase+notFound 리셋, cnt==0 시딩 거부; 유닛 동일 바이너리). 기본 OFF |
+| lcResetWipe (`Fix.LcResetWipe`) | OWNERSHIP D5 | 1 | **픽스 탑재** — P11-F3(ResetChannels() 양 리셋 분기 호출 — D5 소거; 유닛+TraceReset 훅). 기본 OFF |
+| ldltPoseGraph (`Fix.LdltPoseGraph`) | DIVERGENCES #13 | 2 | **픽스 탑재** — P11-F5(#13: 벤더드 `LinearSolverEigenLDLT.hpp`[서브모듈 무수정], 본질그래프 7_3 2사이트 선택; 유닛 `fl13_ldlt_posegraph` — LLT 실패/LDLT 해결 준정정 픽스처, 필드 지표는 #15 chi2 무이동 카운터). 기본 OFF |
+| stereoMbInit (`Fix.StereoMbInit`) | DIVERGENCES #5 | 1 | **픽스 탑재** — P11-F4(#5: mb를 ComputeStereoMatches 전 초기화 — 매 스테레오 프레임의 UB/비결정성 소스 제거; 유닛 `fl5_stereo_mb_checks`). 기본 OFF |
+| legacyImuResetWindow (`Fix.LegacyImuResetWindow`) | DIVERGENCES #3 | 2 | **픽스 탑재** — P11-F6(#3 레거시 의미: 구성 시점 mMaxFrames — 핫패스 0 비용 by construction). 기본 OFF |
+| rectifiedResizeCal2 (`Fix.RectifiedResizeCal2`) | DIVERGENCES #6 | 1 | **픽스 탑재** — P11-F6(#6: 리사이즈 블록에 Rectified calibration2_ 포함 — 구성 시점 전용). 기본 OFF |
 
 레벨 1 = 상태 위생 세트(#21, L1/L2, D5, #5, #6), 레벨 2 = 전부(+#9/#24, #13,
 #3). **P11-F0 시점엔 어떤 코드도 이 플래그를 읽지 않는다** — 무해성은 구성 증명

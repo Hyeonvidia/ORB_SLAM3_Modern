@@ -254,6 +254,11 @@ protected:
     // hypotheses via the const LoopCh()/MergeCh() accessors and the named
     // wipe entry points. Declared last; initialized last in the ctor list.
     friend class PlaceRecognition;
+    // P11-F3: test-only access grant (twin of the PlaceRecognition.hpp
+    // declaration) -- lets tests/fixlevel/detection_machine_checks.cpp set
+    // mpCurrentKF and drive ResetIfRequested on a minimally-constructed
+    // host. Defined only in that test binary.
+    friend struct DetectionMachineTestAccess;
     PlaceRecognition mPlaceRec;
 };
 

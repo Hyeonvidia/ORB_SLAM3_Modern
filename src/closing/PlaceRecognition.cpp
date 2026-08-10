@@ -104,9 +104,15 @@ bool PlaceRecognition::NewDetectCommonRegions()
         {
             bLoopDetectedInKF = false;
 
-            // loop channel does NOT clear detected on failure
-            // (docs/DIVERGENCES.md #21)
-            ChannelDecayStep("loop", mLoopCh, /*bClearDetected=*/false);
+            // Level 0: the loop channel does NOT clear detected on failure —
+            // the second half of the DIVERGENCES #21 poisoned-consume
+            // composite (the merge twin below passes true). P11-F3
+            // (Fix.LoopStateHygiene, OFF by default): clear it like the
+            // merge channel does, so a reffine-failed loop hypothesis cannot
+            // stay DETECTED and be consumed off a stale anchor. Per-LC-KF
+            // site, direct flag read (no ctor caching needed).
+            ChannelDecayStep("loop", mLoopCh,
+                             /*bClearDetected=*/FixFlags::I().loopStateHygiene);
         }
     }
 
@@ -286,12 +292,41 @@ void PlaceRecognition::ChannelWipe(const char* ch, DetectionChannel& c, const ch
 // DetectCommonRegionsFromBoW). Seeds -- or overwrites -- the hypothesis:
 // no SetErase on the previously latched anchor/matched KF (leak L1), can
 // seed numCoincidences == 0 (orphan latch L2), and numNotFound is carried
-// over from the dead hypothesis. All upstream, all preserved.
+// over from the dead hypothesis. All upstream, all preserved at level 0;
+// P11-F3 (Fix.LatchHygiene) arms the hygiene block below.
 bool PlaceRecognition::ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFrame* pBestMatchedKF,
                                  int nBestNumCoincidences, const g2o::Sim3& g2oBestScw,
                                  const std::vector<MapPoint*>& vpBestMapPoints,
                                  const std::vector<MapPoint*>& vpBestMatchedMapPoints)
 {
+    // P11-F3 (OWNERSHIP L1/L2, docs/P9_RECON.md D2/D3; Fix.LatchHygiene,
+    // OFF by default; per-seed site, direct flag read):
+    //   L2 -- a seed with zero coincidences would latch a KF the decay path
+    //   (guarded numCoincidences > 0 upstream) can never release: permanent
+    //   orphan latch + stale-anchor carryover. Refuse the seed outright and
+    //   keep the existing hypothesis (and its legitimate latches) intact; a
+    //   cnt==0 seed could never set `detected`, and the BoW callers ignore
+    //   the return value beyond the channel flags, so refusing is the
+    //   minimal divergence.
+    //   L1 -- seeding over a live hypothesis overwrites matchedKF/
+    //   lastCurrentKF without SetErase: the old latches pin those KFs
+    //   against culling forever. Release them first (the current KF keeps
+    //   its queue-pop latch), and zero the numNotFound carried over from
+    //   the dead hypothesis so the fresh one starts clean.
+    if(FixFlags::I().latchHygiene)
+    {
+        if(nBestNumCoincidences == 0)
+        {
+            TraceChannel(ch, "bow-seed-refused-cnt0", c);
+            return false;
+        }
+        if(c.matchedKF)
+            c.matchedKF->SetErase();
+        if(c.lastCurrentKF && c.lastCurrentKF != mHost.mpCurrentKF)
+            c.lastCurrentKF->SetErase();
+        c.numNotFound = 0;
+    }
+
     c.lastCurrentKF = mHost.mpCurrentKF;
     c.numCoincidences = nBestNumCoincidences;
     c.matchedKF = pBestMatchedKF;
@@ -676,6 +711,26 @@ void PlaceRecognition::WipeLoopAfterConsume()
 void PlaceRecognition::WipeMergeOnScaleAbort()
 {
     ChannelWipe("merge", mMergeCh, "wipe-scale-abort");
+}
+
+// P11-F3 (OWNERSHIP D5, Fix.LcResetWipe): full machine wipe for
+// LoopClosing::ResetIfRequested -- both channels, called from both reset
+// branches, ONLY with the flag armed (level 0 preserves the upstream leak:
+// queue cleared, channels survive pointing into the torn-down map for up to
+// two KFs). ChannelWipe's shape derefs the KF latches unconditionally (all
+// its upstream call sites hold a live hypothesis), but a reset can fire
+// before any BoW seed ever ran, so guard on lastCurrentKF: the seed writes
+// lastCurrentKF and matchedKF together, so a null lastCurrentKF means a
+// never-seeded channel with nothing latched. A previously wiped channel
+// keeps stale non-null pointers by design; the repeated SetErase there is
+// idempotent latch release (and the #19 deferred-SetBadFlag completion
+// path), which is exactly the hygiene this flag buys.
+void PlaceRecognition::ResetChannels()
+{
+    if(mLoopCh.lastCurrentKF)
+        ChannelWipe("loop", mLoopCh, "wipe-reset");
+    if(mMergeCh.lastCurrentKF)
+        ChannelWipe("merge", mMergeCh, "wipe-reset");
 }
 
 void PlaceRecognition::TraceReset(const char* reason)

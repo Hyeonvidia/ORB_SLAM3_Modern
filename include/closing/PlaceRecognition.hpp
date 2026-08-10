@@ -92,6 +92,19 @@ public:
     // numNotFound (loop's does); BoW seeding does NOT reset numNotFound;
     // ResetIfRequested does NOT clear the machine at all (D5 -- it only
     // traces both channels).
+    //
+    // P11-F3: three of those asymmetries are now FIXABLE behind runtime
+    // flags, all OFF by default (level 0 = the verbatim behavior above):
+    //   Fix.LoopStateHygiene  #21 -- loop reffine-fail clears detected;
+    //                         the Run() scale-abort discards an escaping
+    //                         DETECTED loop hypothesis (arm A, in
+    //                         LoopClosing.cpp).
+    //   Fix.LatchHygiene      L1/L2 -- ChannelBoWSeed releases the old
+    //                         latches, zeroes the carried numNotFound, and
+    //                         refuses cnt==0 seeds ("bow-seed-refused-cnt0"
+    //                         trace).
+    //   Fix.LcResetWipe       D5 -- ResetIfRequested wipes both channels
+    //                         via ResetChannels() ("wipe-reset" trace).
     // ------------------------------------------------------------------
     struct DetectionChannel {
         int  numCoincidences = 0;
@@ -120,12 +133,24 @@ public:
     void WipeLoopOnMergePriority();   // "wipe-merge-priority-discard"
     void WipeLoopAfterConsume();      // "wipe-consume" (loop)
     void WipeMergeOnScaleAbort();     // "wipe-scale-abort"
+    // P11-F3 (Fix.LcResetWipe, OWNERSHIP D5): full both-channel wipe for
+    // ResetIfRequested ("wipe-reset"); null-guarded for never-seeded
+    // channels. Called ONLY with the flag armed.
+    void ResetChannels();
     // P9-4 D5 visibility traces for ResetIfRequested ("reset-full" /
     // "reset-active-map"): traces BOTH channels, mutates nothing.
     void TraceReset(const char* reason);
 
 private:
     LoopClosing& mHost;
+
+    // P11-F3: test-only access grant so tests/fixlevel/
+    // detection_machine_checks.cpp can drive the REAL channel mutators
+    // headlessly (seed/advance/decay/wipe/reset sequences) instead of a
+    // replica -- the friend-grant precedent is LoopClosing's own grant to
+    // this class (P8-4 pattern). The struct is defined only inside that
+    // test binary; no production code defines or uses it.
+    friend struct DetectionMachineTestAccess;
 
     //Methods to implement the new place recognition algorithm
     bool DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,

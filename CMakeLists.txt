@@ -197,4 +197,13 @@ if(BUILD_TESTS)
   set_target_properties(fl9_scale_convergence PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
+  # ---- P11-F3..F5 fix-level checks -----------------------------------------
+  foreach(tgt detection_machine_checks fl13_ldlt_posegraph fl5_stereo_mb_checks)
+    add_executable(${tgt} tests/fixlevel/${tgt}.cpp)
+    target_link_libraries(${tgt} PRIVATE ORB_SLAM3::core)
+    set_target_properties(${tgt} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+      CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  endforeach()
 endif()
