@@ -212,7 +212,12 @@ public:
     // Stereo baseline multiplied by fx.
     float mbf;
 
-    // Stereo baseline in meters.
+    // Stereo baseline in meters. Deliberately UNinitialized (upstream
+    // layout): the pinhole-stereo ctor reads it inside ComputeStereoMatches
+    // BEFORE its assignment -- DIVERGENCES #5, preserved bug-for-bug at
+    // level 0; Fix.StereoMbInit (P11-F4) hoists the assignment in the ctor
+    // instead of initializing here, so the level-0 indeterminate read stays
+    // byte-for-byte upstream.
     float mb;
 
     // Threshold close/far points. Close points are inserted from 1 view.
