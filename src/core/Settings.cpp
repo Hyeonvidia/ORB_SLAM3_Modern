@@ -141,6 +141,18 @@ namespace ORB_SLAM3 {
             cout << "Loading settings from " << configFile << endl;
         }
 
+        // P11-F0: FixLevel/Fix.* runtime-fix flags. Deliberately quiet:
+        // absent keys (= level 0, every gate yaml) must produce no output —
+        // the provenance banner is System's job and prints only when a
+        // non-default flag is active.
+        // P11-F6 moved this parse AHEAD of the read* calls: config-time
+        // fixes inside Settings itself (Fix.RectifiedResizeCal2 in
+        // readImageInfo) consult the parsed member fixFlags_ directly —
+        // the process-global FixFlags::I() is still all-false here, since
+        // System installs it only AFTER this constructor returns. Parse is
+        // side-effect-free, so hoisting it is inert at level 0.
+        fixFlags_ = FixFlags::Parse(fSettings);
+
         //Read first camera
         readCamera1(fSettings);
         cout << "\t-Loaded camera 1" << endl;
@@ -173,12 +185,6 @@ namespace ORB_SLAM3 {
         cout << "\t-Loaded Atlas settings" << endl;
         readOtherParameters(fSettings);
         cout << "\t-Loaded misc parameters" << endl;
-
-        // P11-F0: FixLevel/Fix.* runtime-fix flags. Deliberately quiet:
-        // absent keys (= level 0, every gate yaml) must produce no output —
-        // the provenance banner is System's job and prints only when a
-        // non-default flag is active.
-        fixFlags_ = FixFlags::Parse(fSettings);
 
         if(bNeedToRectify_){
             precomputeRectificationMaps();
@@ -389,7 +395,17 @@ namespace ORB_SLAM3 {
                 calibration1_->setParameter(calibration1_->getParameter(3) * scaleRowFactor, 3);
 
 
-                if((sensor_ == System::STEREO || sensor_ == System::IMU_STEREO) && cameraType_ != Rectified){
+                // P11-F6 (DIVERGENCES #6, Fix.RectifiedResizeCal2 -- OFF by
+                // default): upstream excludes the Rectified type here, so a
+                // Rectified + Camera.newHeight config keeps calibration2_ at
+                // the PRE-resize clone of calibration1_ (readCamera2 built it
+                // before this scaling). The flag drops the exclusion, keeping
+                // calibration2_ == calibration1_ by definition of rectified
+                // stereo. Consults the parsed member (NOT FixFlags::I(),
+                // which System installs only after this ctor). Config-time
+                // only; no gate yaml resizes.
+                if((sensor_ == System::STEREO || sensor_ == System::IMU_STEREO) &&
+                   (cameraType_ != Rectified || fixFlags_.rectifiedResizeCal2)){
                     calibration2_->setParameter(calibration2_->getParameter(1) * scaleRowFactor, 1);
                     calibration2_->setParameter(calibration2_->getParameter(3) * scaleRowFactor, 3);
                 }
@@ -407,7 +423,12 @@ namespace ORB_SLAM3 {
                 calibration1_->setParameter(calibration1_->getParameter(0) * scaleColFactor, 0);
                 calibration1_->setParameter(calibration1_->getParameter(2) * scaleColFactor, 2);
 
-                if((sensor_ == System::STEREO || sensor_ == System::IMU_STEREO) && cameraType_ != Rectified){
+                // P11-F6 (DIVERGENCES #6, Fix.RectifiedResizeCal2): column
+                // twin of the row-scaling block above -- see the comment
+                // there. (The KannalaBrandt sub-branch is unreachable for
+                // Rectified: cameraType_ is Rectified when the flag matters.)
+                if((sensor_ == System::STEREO || sensor_ == System::IMU_STEREO) &&
+                   (cameraType_ != Rectified || fixFlags_.rectifiedResizeCal2)){
                     calibration2_->setParameter(calibration2_->getParameter(0) * scaleColFactor, 0);
                     calibration2_->setParameter(calibration2_->getParameter(2) * scaleColFactor, 2);
 

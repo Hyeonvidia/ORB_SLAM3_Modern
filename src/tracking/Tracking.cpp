@@ -27,6 +27,7 @@
 #include "backend/ITrackingOptimizer.hpp"
 #include "camera/Pinhole.hpp"
 #include "camera/KannalaBrandt8.hpp"
+#include "core/FixFlags.hpp"        // P11-F6: Fix.LegacyImuResetWindow (newParameterLoader)
 #include "core/IResetRequester.hpp" // P7-1b: narrow System surface (reset latch)
 #include "core/System.hpp"          // P7-1b: for the System::eSensor enumerators only
 #include "geometry/MLPnPsolver.hpp"
@@ -131,7 +132,9 @@ Tracking::Tracking(IResetRequester* pResetRequester, ORBVocabulary* pVoc, FrameD
     // is non-null). Note: upstream's new-format path never assigned
     // mnFramesToResetIMU (the legacy branch set it to mMaxFrames) — the
     // member now has an explicit = 0 initializer to remove the UB while
-    // preserving the golden-baseline behavior.
+    // preserving the golden-baseline behavior; P11-F6's
+    // Fix.LegacyImuResetWindow restores the legacy fps-sized window inside
+    // newParameterLoader (DIVERGENCES #3, OFF by default).
     newParameterLoader(settings);
 
     // P7-1a: opt-in state-transition tracing. OFF unless ORB_TRACE_STATE is
@@ -643,6 +646,17 @@ void Tracking::newParameterLoader(Settings *settings) {
 
     mMinFrames = 0;
     mMaxFrames = settings->fps();
+    // P11-F6 (DIVERGENCES #3, Fix.LegacyImuResetWindow -- OFF by default):
+    // the legacy flat-key parser sized the post-relocalization IMU-reset
+    // window to one second of frames (mnFramesToResetIMU = mMaxFrames); the
+    // upstream V1.0 path never assigned the member at all (indeterminate),
+    // and the golden baseline's measured behavior (= 0, window disabled) is
+    // what the header initializer canonicalizes. The flag restores the
+    // legacy semantics as a config-time value only -- this ternary runs once
+    // per Tracking construction (System installs FixFlags::Set before this
+    // ctor), and none of the five read sites gains a branch: zero hot-path
+    // cost by construction.
+    mnFramesToResetIMU = FixFlags::I().legacyImuResetWindow ? mMaxFrames : 0;
     mbRGB = settings->rgb();
 
     //ORB parameters

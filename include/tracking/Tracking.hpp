@@ -502,7 +502,10 @@ protected:
     int mMaxFrames;
 
     int mnFirstImuFrameId;
-    int mnFramesToResetIMU = 0;  // upstream new-format path never set this (see P2-2 note)
+    int mnFramesToResetIMU = 0;  // upstream new-format path never set this (see P2-2
+                                 // note); P11-F6: newParameterLoader assigns
+                                 // Fix.LegacyImuResetWindow ? mMaxFrames : 0
+                                 // (DIVERGENCES #3, legacy fps-sized window, OFF default)
 
     // Threshold close/far points
     // Points seen as close by the stereo/RGBD sensor are considered reliable
