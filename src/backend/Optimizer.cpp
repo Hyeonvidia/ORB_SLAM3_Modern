@@ -44,7 +44,9 @@
 #include <memory>
 #include <utility>
 #include "backend/G2oTypes.hpp"
+#include "backend/LinearSolverEigenLDLT.hpp"  // P11-F5: Fix.LdltPoseGraph vendored solver (DIVERGENCES #13)
 #include "backend/OrbLevenberg.hpp"
+#include "core/FixFlags.hpp"                  // P11-F5: OptimizeEssentialGraph solver choice
 #include "io/Converter.hpp"
 
 #include<mutex>
@@ -1650,9 +1652,32 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
-    auto linearSolver =
-           std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
-    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
+    // P11-F5 (DIVERGENCES #13, Fix.LdltPoseGraph -- OFF by default): this
+    // pose graph runs with setUserLambdaInit(1e-16), i.e. effectively
+    // undamped, and upstream g2o's LinearSolverEigen factorizes with
+    // SimplicialLLT (strict SPD) where the vendored ORB-SLAM fork used
+    // SimplicialLDLT (semidefinite-tolerant). On a gauge-poor graph the LLT
+    // refusal is SILENT: every trial step is rejected and optimize(20)
+    // returns positive having moved nothing (#15 -- the stall counter below
+    // is the field detector). The flag selects the vendored LDLT shadow
+    // copy (include/backend/LinearSolverEigenLDLT.hpp, OrbLevenberg
+    // pattern; submodule untouched). Per-optimizer-setup site, direct flag
+    // read.
+    std::unique_ptr<g2o::BlockSolver_7_3::LinearSolverType> linearSolver;
+    if(FixFlags::I().ldltPoseGraph)
+    {
+        auto eigenLdlt =
+               std::make_unique<g2o::LinearSolverEigenLDLT<g2o::BlockSolver_7_3::PoseMatrixType>>();
+        eigenLdlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
+        linearSolver = std::move(eigenLdlt);
+    }
+    else
+    {
+        auto eigenLlt =
+               std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
+        eigenLlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
+        linearSolver = std::move(eigenLlt);
+    }
     std::unique_ptr<g2o::BlockSolver_7_3> solver_ptr = std::make_unique<g2o::BlockSolver_7_3>(std::move(linearSolver));
     OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
@@ -1943,9 +1968,23 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
 
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
-    auto linearSolver =
-           std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
-    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
+    // P11-F5 (DIVERGENCES #13, Fix.LdltPoseGraph): merge twin of the loop
+    // OptimizeEssentialGraph site above -- see the comment there.
+    std::unique_ptr<g2o::BlockSolver_7_3::LinearSolverType> linearSolver;
+    if(FixFlags::I().ldltPoseGraph)
+    {
+        auto eigenLdlt =
+               std::make_unique<g2o::LinearSolverEigenLDLT<g2o::BlockSolver_7_3::PoseMatrixType>>();
+        eigenLdlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
+        linearSolver = std::move(eigenLdlt);
+    }
+    else
+    {
+        auto eigenLlt =
+               std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
+        eigenLlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
+        linearSolver = std::move(eigenLlt);
+    }
     std::unique_ptr<g2o::BlockSolver_7_3> solver_ptr = std::make_unique<g2o::BlockSolver_7_3>(std::move(linearSolver));
     OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
