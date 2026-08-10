@@ -352,7 +352,6 @@ void LoopClosing::CorrectLoop()
     // Send a stop signal to Local Mapping
     // Avoid new keyframes are inserted while correcting the loop
     mpLocalMapper->RequestStop();
-    mpLocalMapper->EmptyQueue(); // Proccess keyframes in the queue
 
     // If a Global Bundle Adjustment is running, abort it
     if(isRunningGBA())
@@ -377,6 +376,13 @@ void LoopClosing::CorrectLoop()
     {
         usleep(1000);
     }
+
+    // P10-3 (R2 fix): drain the queue only AFTER Local Mapping is parked.
+    // Upstream called EmptyQueue() right after RequestStop(), before the
+    // wait -- both threads could run ProcessNewKeyFrame concurrently
+    // (docs/OWNERSHIP.md R2). MergeLocal/MergeLocal2 always had the safe
+    // order; CorrectLoop now matches. Same KFs processed, same thread.
+    mpLocalMapper->EmptyQueue(); // Proccess keyframes in the queue
 
     // Ensure current keyframe is updated
     mpCurrentKF->UpdateConnections();
