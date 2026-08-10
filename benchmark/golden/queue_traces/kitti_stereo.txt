@@ -1,0 +1,2 @@
+[queue-trace] lc n=240 p50_us=3172 p95_us=6082 max_us=6330 max_depth=1 iters=20965 empty_iters=20725
+[queue-trace] lm n=241 p50_us=1729 p95_us=3654 max_us=3800 max_depth=1 iters=32129 empty_iters=31886

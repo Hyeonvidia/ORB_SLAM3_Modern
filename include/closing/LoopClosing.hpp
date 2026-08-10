@@ -28,6 +28,8 @@
 #include "recognition/KeyFrameDatabase.hpp"
 #include "closing/PlaceRecognition.hpp"
 
+#include <chrono>
+#include <deque>
 #include <thread>
 #include <mutex>
 #include "g2o/types/sim3/types_seven_dof_expmap.h"
@@ -158,6 +160,16 @@ protected:
     std::list<KeyFrame*> mlpLoopKeyFrameQueue;
 
     std::mutex mMutexLoopQueue;
+
+    // P10-0: opt-in queue-latency tracing (ORB_TRACE_QUEUE=1), the LC twin
+    // of LocalMapping's instrumentation — see the comment there. Stamp deque
+    // shadows mlpLoopKeyFrameQueue under the SAME mMutexLoopQueue; samples
+    // and counters are LC-thread-only; summary emitted from SetFinish().
+    std::deque<std::chrono::steady_clock::time_point> mdqTraceEnqueueTs;
+    std::vector<long> mvTraceDequeueUs;
+    std::size_t mnTraceMaxDepth = 0;
+    unsigned long mnTraceIters = 0;
+    unsigned long mnTraceEmptyIters = 0;
 
     // Loop detector variables
     KeyFrame* mpCurrentKF;

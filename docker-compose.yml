@@ -26,6 +26,15 @@ services:
       - orbmodern-ccache:/ccache
     command: sleep infinity
 
+  # P10-0: TSAN runs only. ThreadSanitizer disables ASLR via the
+  # personality(2) syscall, which Docker's default seccomp profile blocks
+  # (FATAL CHECK in tsan_platform_linux.cpp:296). Diagnostic-only service --
+  # never used for gate/ATE-judged runs.
+  dev-tsan:
+    extends: dev
+    security_opt:
+      - seccomp=unconfined
+
 volumes:
   orbmodern-build:
   orbmodern-ccache:

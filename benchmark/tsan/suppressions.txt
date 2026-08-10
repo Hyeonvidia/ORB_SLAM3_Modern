@@ -1,0 +1,5 @@
+# INTENTIONALLY EMPTY (kept for documentation).
+# gcc-11 TSAN treats a called_from_lib suppression matching more than one
+# library as FATAL (and exitcode=0 masks the death as a clean exit-0 --
+# see docs, P10-0 postmortem). tsan_smoke.sh therefore generates per-library
+# suppressions at runtime from the libraries actually present in the image.

@@ -27,6 +27,8 @@
 #include "map/Atlas.hpp"
 #include "mapping/ImuInitializer.hpp"
 
+#include <chrono>
+#include <deque>
 #include <mutex>
 
 
@@ -182,6 +184,20 @@ protected:
     std::list<MapPoint*> mlpRecentAddedMapPoints;
 
     std::mutex mMutexNewKFs;
+
+    // P10-0: opt-in queue-latency tracing (ORB_TRACE_QUEUE=1, P7-1a env-gate
+    // pattern; docs/P10_RECON.md 3부 §4). Dormant unless the env var is set:
+    // every touch point costs one cached static-bool test when off (no clock
+    // calls, no allocation). The enqueue-stamp deque shadows mlNewKeyFrames
+    // under the SAME mMutexNewKFs (cleared wherever the queue is destructively
+    // drained); latency samples and iteration counters are LM-thread-only.
+    // One summary line is emitted from SetFinish(). Behavior-neutral by
+    // construction: no locking changes, no extra wakeups.
+    std::deque<std::chrono::steady_clock::time_point> mdqTraceEnqueueTs;
+    std::vector<long> mvTraceDequeueUs;
+    std::size_t mnTraceMaxDepth = 0;
+    unsigned long mnTraceIters = 0;
+    unsigned long mnTraceEmptyIters = 0;
 
     bool mbAbortBA;
 

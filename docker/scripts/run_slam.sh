@@ -56,6 +56,11 @@ esac
 OUT="/results/${MODE}_${SEQ}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$OUT"; cd "$OUT"
 echo ">> $MODE $SEQ -> results/$(basename "$OUT")"
+# P10-0: optional bounded-time guard (exit 124 = hang, distinct from the
+# tolerated teardown crash). Unset = behavior unchanged.
+if [[ -n "${RUN_TIMEOUT:-}" ]]; then
+  CMD=(timeout "$RUN_TIMEOUT" "${CMD[@]}")
+fi
 if [[ "${HEADLESS:-0}" == "1" ]]; then
   xvfb-run -a "${CMD[@]}" 2>&1 | tee run.log
 else

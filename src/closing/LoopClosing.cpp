@@ -32,10 +32,29 @@
 #include<map>
 #include<mutex>
 #include<thread>
+#include<algorithm>
+#include<chrono>
+#include<cstdio>
+#include<cstdlib>
 
 
 namespace ORB_SLAM3
 {
+
+namespace
+{
+// P10-0: env gate for the opt-in queue-latency trace (ORB_TRACE_QUEUE,
+// P7-1a pattern) — LC twin of the LocalMapping.cpp helper. getenv runs
+// once; afterwards every call is one static bool test.
+bool TraceQueueOn()
+{
+    static const bool bOn = []{
+        const char* p = std::getenv("ORB_TRACE_QUEUE");
+        return p && p[0] != '\0' && std::string(p) != "0";
+    }();
+    return bOn;
+}
+} // anonymous namespace
 
 LoopClosing::LoopClosing(Atlas *pAtlas, KeyFrameDatabase *pDB, const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs, ILoopOptimizer* pOptimizer):
     mbResetRequested(false), mbResetActiveMapRequested(false), mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas),
@@ -98,6 +117,8 @@ void LoopClosing::Run()
 
     while(1)
     {
+        if(TraceQueueOn())  // P10-0 queue trace, diagnostic only
+            ++mnTraceIters;
 
         //NEW LOOP AND MERGE DETECTION ALGORITHM
         //----------------------------
@@ -260,6 +281,8 @@ void LoopClosing::Run()
             }
             mpLastCurrentKF = mpCurrentKF;
         }
+        else if(TraceQueueOn())  // P10-0: empty poll iteration
+            ++mnTraceEmptyIters;
 
         ResetIfRequested();
 
@@ -277,7 +300,15 @@ void LoopClosing::InsertKeyFrame(KeyFrame *pKF)
 {
     unique_lock<mutex> lock(mMutexLoopQueue);
     if(pKF->mnId!=0)
+    {
         mlpLoopKeyFrameQueue.push_back(pKF);
+        if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
+        {
+            mdqTraceEnqueueTs.push_back(std::chrono::steady_clock::now());
+            if(mlpLoopKeyFrameQueue.size() > mnTraceMaxDepth)
+                mnTraceMaxDepth = mlpLoopKeyFrameQueue.size();
+        }
+    }
 }
 
 bool LoopClosing::CheckNewKeyFrames()
@@ -296,6 +327,12 @@ void LoopClosing::PopNewKeyFrame()
         unique_lock<mutex> lock(mMutexLoopQueue);
         mpCurrentKF = mlpLoopKeyFrameQueue.front();
         mlpLoopKeyFrameQueue.pop_front();
+        if(TraceQueueOn() && !mdqTraceEnqueueTs.empty())  // P10-0 dequeue
+        {
+            mvTraceDequeueUs.push_back((long)std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - mdqTraceEnqueueTs.front()).count());
+            mdqTraceEnqueueTs.pop_front();
+        }
         // Avoid that a keyframe can be erased while it is being process by this thread
         mpCurrentKF->SetNotErase();
         
@@ -1387,6 +1424,8 @@ void LoopClosing::ResetIfRequested()
         // surviving channel state visible; they change nothing.
         mPlaceRec.TraceReset("reset-full");
         mlpLoopKeyFrameQueue.clear();
+        if(TraceQueueOn())  // P10-0: lockstep clear (same R-b discipline —
+            mdqTraceEnqueueTs.clear();  // mMutexReset, not the queue mutex)
         mbResetRequested=false;
         mbResetActiveMapRequested = false;
     }
@@ -1407,6 +1446,9 @@ void LoopClosing::ResetIfRequested()
             else
                 ++it;
         }
+        if(TraceQueueOn())  // P10-0: per-entry match is impossible after a
+            mdqTraceEnqueueTs.clear();  // selective erase; drop all stamps
+                                        // (pops guard on empty -> no sample)
 
         mbResetActiveMapRequested=false;
 
@@ -1607,6 +1649,21 @@ bool LoopClosing::CheckFinish()
 
 void LoopClosing::SetFinish()
 {
+    if(TraceQueueOn())  // P10-0: one summary line, before the finish lock
+    {
+        std::size_t nMaxDepth;
+        {
+            unique_lock<mutex> lock(mMutexLoopQueue);
+            nMaxDepth = mnTraceMaxDepth;
+        }
+        std::vector<long> v = mvTraceDequeueUs;
+        std::sort(v.begin(), v.end());
+        const std::size_t n = v.size();
+        std::fprintf(stderr,
+            "[queue-trace] lc n=%zu p50_us=%ld p95_us=%ld max_us=%ld max_depth=%zu iters=%lu empty_iters=%lu\n",
+            n, n ? v[(n-1)/2] : 0L, n ? v[(95*(n-1))/100] : 0L, n ? v.back() : 0L,
+            nMaxDepth, mnTraceIters, mnTraceEmptyIters);
+    }
     unique_lock<mutex> lock(mMutexFinish);
     mbFinished = true;
 }

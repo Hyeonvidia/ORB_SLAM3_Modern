@@ -30,9 +30,27 @@
 
 #include<mutex>
 #include<chrono>
+#include<algorithm>
+#include<cstdio>
+#include<cstdlib>
 
 namespace ORB_SLAM3
 {
+
+namespace
+{
+// P10-0: env gate for the opt-in queue-latency trace (ORB_TRACE_QUEUE,
+// P7-1a pattern). getenv runs once; afterwards every call is one static
+// bool test. Anything other than unset/empty/"0" enables tracing.
+bool TraceQueueOn()
+{
+    static const bool bOn = []{
+        const char* p = std::getenv("ORB_TRACE_QUEUE");
+        return p && p[0] != '\0' && std::string(p) != "0";
+    }();
+    return bOn;
+}
+} // anonymous namespace
 
 LocalMapping::LocalMapping(Atlas *pAtlas, bool bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer):
     mbMonocular(bMonocular), mbInertial(bInertial), mbResetRequested(false), mbResetRequestedActiveMap(false),
@@ -69,6 +87,9 @@ void LocalMapping::Run()
     {
         // Tracking will see that Local Mapping is busy
         SetAcceptKeyFrames(false);
+
+        if(TraceQueueOn())  // P10-0 queue trace, diagnostic only
+            ++mnTraceIters;
 
         // Check if there are keyframes in the queue
         if(CheckNewKeyFrames() && !mbBadImu)
@@ -258,6 +279,8 @@ void LocalMapping::Run()
             if(CheckFinish())
                 break;
         }
+        else if(TraceQueueOn())  // P10-0: neither processed nor parked
+            ++mnTraceEmptyIters;
 
         ResetIfRequested();
 
@@ -278,6 +301,12 @@ void LocalMapping::InsertKeyFrame(KeyFrame *pKF)
     unique_lock<mutex> lock(mMutexNewKFs);
     mlNewKeyFrames.push_back(pKF);
     mbAbortBA=true;
+    if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
+    {
+        mdqTraceEnqueueTs.push_back(std::chrono::steady_clock::now());
+        if(mlNewKeyFrames.size() > mnTraceMaxDepth)
+            mnTraceMaxDepth = mlNewKeyFrames.size();
+    }
 }
 
 
@@ -293,6 +322,12 @@ void LocalMapping::ProcessNewKeyFrame()
         unique_lock<mutex> lock(mMutexNewKFs);
         mpCurrentKeyFrame = mlNewKeyFrames.front();
         mlNewKeyFrames.pop_front();
+        if(TraceQueueOn() && !mdqTraceEnqueueTs.empty())  // P10-0 dequeue
+        {
+            mvTraceDequeueUs.push_back((long)std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - mdqTraceEnqueueTs.front()).count());
+            mdqTraceEnqueueTs.pop_front();
+        }
     }
 
     // Compute Bags of Words structures
@@ -843,6 +878,8 @@ void LocalMapping::Release()
     for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
         delete *lit;
     mlNewKeyFrames.clear();
+    if(TraceQueueOn())  // P10-0: keep the stamp deque in lockstep (same
+        mdqTraceEnqueueTs.clear();  // (un)locked discipline as the drain, R1)
 
     cout << "Local Mapping RELEASE" << endl;
 }
@@ -1084,6 +1121,8 @@ void LocalMapping::ResetIfRequested()
 
             cout << "LM: Reseting Atlas in Local Mapping..." << endl;
             mlNewKeyFrames.clear();
+            if(TraceQueueOn())  // P10-0 lockstep clear
+                mdqTraceEnqueueTs.clear();
             mlpRecentAddedMapPoints.clear();
             mbResetRequested = false;
             mbResetRequestedActiveMap = false;
@@ -1099,6 +1138,8 @@ void LocalMapping::ResetIfRequested()
             executed_reset = true;
             cout << "LM: Reseting current map in Local Mapping..." << endl;
             mlNewKeyFrames.clear();
+            if(TraceQueueOn())  // P10-0 lockstep clear
+                mdqTraceEnqueueTs.clear();
             mlpRecentAddedMapPoints.clear();
 
             // Inertial parameters
@@ -1129,8 +1170,23 @@ bool LocalMapping::CheckFinish()
 
 void LocalMapping::SetFinish()
 {
+    if(TraceQueueOn())  // P10-0: one summary line, before any finish locks
+    {
+        std::size_t nMaxDepth;
+        {
+            unique_lock<mutex> lock(mMutexNewKFs);
+            nMaxDepth = mnTraceMaxDepth;
+        }
+        std::vector<long> v = mvTraceDequeueUs;
+        std::sort(v.begin(), v.end());
+        const std::size_t n = v.size();
+        std::fprintf(stderr,
+            "[queue-trace] lm n=%zu p50_us=%ld p95_us=%ld max_us=%ld max_depth=%zu iters=%lu empty_iters=%lu\n",
+            n, n ? v[(n-1)/2] : 0L, n ? v[(95*(n-1))/100] : 0L, n ? v.back() : 0L,
+            nMaxDepth, mnTraceIters, mnTraceEmptyIters);
+    }
     unique_lock<mutex> lock(mMutexFinish);
-    mbFinished = true;    
+    mbFinished = true;
     unique_lock<mutex> lock2(mMutexStop);
     mbStopped = true;
 }
@@ -1153,6 +1209,8 @@ void LocalMapping::PurgeNewKeyFramesAfterInertialInit()
             delete *lit;
     }
     mlNewKeyFrames.clear();
+    if(TraceQueueOn())  // P10-0: lockstep clear (same lock-free discipline
+        mdqTraceEnqueueTs.clear();  // as the purge itself, R3)
 }
 
 
