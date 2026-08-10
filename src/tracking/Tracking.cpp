@@ -3034,8 +3034,8 @@ void Tracking::Reset(bool bLocMap)
     if(mpViewer)
     {
         mpViewer->RequestStop();
-        while(!mpViewer->isStopped())
-            usleep(3000);
+        // P10-6: CV wait (was a 3ms isStopped() poll)
+        mpViewer->WaitUntilStopped();
     }
 
     // Reset Local Mapping
@@ -3094,8 +3094,8 @@ void Tracking::ResetActiveMap(bool bLocMap)
     if(mpViewer)
     {
         mpViewer->RequestStop();
-        while(!mpViewer->isStopped())
-            usleep(3000);
+        // P10-6: CV wait (was a 3ms isStopped() poll)
+        mpViewer->WaitUntilStopped();
     }
 
     Map* pMap = mpAtlas->GetCurrentMap();

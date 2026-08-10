@@ -42,6 +42,7 @@
 #include "backend/G2oBackend.hpp"
 #include "backend/ImuTypes.hpp"
 #include "core/IResetRequester.hpp"
+#include "core/IViewerHost.hpp"
 #include "core/Settings.hpp"
 #include "core/Verbose.hpp"
 
@@ -65,7 +66,13 @@ class Settings;
 // docs/P7_RECON.md §B.4). The flag/mutex machinery (mMutexReset,
 // mbResetActiveMap, consumed at the top of the next TrackStereo/TrackRGBD/
 // TrackMonocular) is unchanged; the interface is a pure narrowing.
-class System : public IResetRequester
+//
+// P10-6: System also implements IViewerHost — the 6-method surface the
+// Viewer consumes (docs/P10_RECON.md 2부 item 7). This cuts the
+// System.hpp <-> Viewer.hpp include cycle. The single
+// RequestResetActiveMap() override below is the final overrider for BOTH
+// interfaces' identically-named pure virtual.
+class System : public IResetRequester, public IViewerHost
 {
 public:
     // Input sensor
@@ -89,10 +96,12 @@ public:
     // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
     System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true, const int initFr = 0, const string &strSequence = std::string());
 
-    // P10-5: joins all owned threads. Calls Shutdown() (a no-op if already
-    // latched) and then reaps any thread object still joinable -- the
-    // menuStop-path Shutdown runs ON the viewer thread and must skip its
-    // self-join, leaving the viewer thread for this destructor. A joinable
+    // P10-5: joins all owned threads. Calls Shutdown() (a no-op if the
+    // teardown already ran) and then reaps any thread object still
+    // joinable. P10-6: menuStop no longer runs Shutdown on the viewer
+    // thread (it latches via RequestShutdown), so in practice Shutdown()
+    // joins everything; the joinable() reaping here is the backstop for
+    // a System destroyed without any Shutdown() call. A joinable
     // std::thread value member would otherwise std::terminate here.
     ~System();
 
@@ -114,9 +123,9 @@ public:
 
 
     // This stops local mapping thread (map building) and performs only camera tracking.
-    void ActivateLocalizationMode();
+    void ActivateLocalizationMode() override;
     // This resumes local mapping thread and performs SLAM again.
-    void DeactivateLocalizationMode();
+    void DeactivateLocalizationMode() override;
 
     // Returns true if there have been a big map change (loop closure, global BA)
     // since last call to this function
@@ -126,16 +135,25 @@ public:
     void Reset();
     void ResetActiveMap();
 
-    // IResetRequester (P7-1b): Tracking's narrow entry point. Forwards to
+    // IResetRequester (P7-1b) AND IViewerHost (P10-6): the narrow reset
+    // entry point for Tracking and the Viewer alike. Forwards to
     // ResetActiveMap() — same lock (mMutexReset), same flag (mbResetActiveMap),
     // same one-frame-deferred consumption; the indirection exists only so
-    // Tracking does not need the System type.
+    // the callers do not need the System type.
     void RequestResetActiveMap() override { ResetActiveMap(); }
 
     // All threads will be requested to finish.
     // It waits until all threads have finished.
     // This function must be called before saving the trajectory.
     void Shutdown();
+
+    // IViewerHost (P10-6): latch ONLY — NEVER joins. Sets the mbShutDown
+    // request latch and RequestFinishes the Viewer/LM/LC threads; the joins
+    // and SaveAtlas stay with Shutdown(), whose own idempotence latch
+    // (mbShutdownDone) is deliberately separate so the end-of-example
+    // Shutdown() still tears down after a menuStop RequestShutdown.
+    void RequestShutdown() override;
+
     bool isShutDown();
 
     // Save camera trajectory in the TUM RGB-D dataset format.
@@ -150,8 +168,11 @@ public:
     // See format details at: http://vision.in.tum.de/data/datasets/rgbd-dataset
     void SaveKeyFrameTrajectoryTUM(const string &filename);
 
-    void SaveTrajectoryEuRoC(const string &filename);
-    void SaveKeyFrameTrajectoryEuRoC(const string &filename);
+    // P10-6: the single-argument forms are the IViewerHost overrides (the
+    // menuStop path saves synchronously on the viewer thread, upstream
+    // behavior); the Map* overloads below are plain System API.
+    void SaveTrajectoryEuRoC(const string &filename) override;
+    void SaveKeyFrameTrajectoryEuRoC(const string &filename) override;
 
     void SaveTrajectoryEuRoC(const string &filename, Map* pMap);
     void SaveKeyFrameTrajectoryEuRoC(const string &filename, Map* pMap);
@@ -257,14 +278,18 @@ private:
     bool mbActivateLocalizationMode;
     bool mbDeactivateLocalizationMode;
 
-    // Shutdown flag
-    // P10-5: atomic -- Shutdown()'s idempotence latch is an atomic exchange
-    // (exactly one caller runs the teardown; menuStop-path Shutdown on the
-    // viewer thread and the example main's Shutdown may otherwise both run
-    // the joins). The write still happens inside the existing mMutexReset
-    // scope so the Track* readers (TrackMonocular gate, isShutDown) keep
-    // their lock discipline unchanged.
+    // Shutdown flags
+    // P10-5/P10-6: mbShutDown is the REQUEST latch — set by RequestShutdown
+    // (viewer menuStop) and by Shutdown(); read by the TrackMonocular gate
+    // and isShutDown(). Writes happen inside the existing mMutexReset scope
+    // so those readers keep their lock discipline unchanged.
     std::atomic<bool> mbShutDown;
+    // P10-6: mbShutdownDone is the TEARDOWN latch — exactly one Shutdown()
+    // caller runs the joins + SaveAtlas. Separate from mbShutDown by
+    // design: a menuStop RequestShutdown latches the request WITHOUT
+    // performing teardown (never joins on the viewer thread), and the main
+    // thread's end-of-example Shutdown() must still tear down afterwards.
+    std::atomic<bool> mbShutdownDone;
 
     // Tracking state
     int mTrackingState;

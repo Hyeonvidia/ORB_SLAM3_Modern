@@ -152,6 +152,15 @@ FIXED (각 1줄 메커니즘):
   stop+에포크 증가 후 락 밖에서 join — SaveAtlas 전에 반드시 reap.
   LC::Run 종료부에는 GBA 코드가 없다 — 이 체인 규칙이 그것을 대체한다.
 
+## Viewer/Shutdown 경로 (P10-6 기록)
+
+- Viewer는 System 파사드 대신 **IViewerHost**(6메서드, 제로-include)를 본다 —
+  System↔Viewer 순환의 마지막 절단. menuStop은 **RequestShutdown 래치 전용**
+  (조인 없음): 요청 래치(mbShutDown)와 티어다운 래치(mbShutdownDone)가 분리되어
+  뷰어 스레드는 절대 자기 자신을 join하지 않고, 실제 조인+SaveAtlas는
+  메인 스레드의 Shutdown() 1회가 수행한다(~System이 최종 안전망, viewer-first
+  reap). 파킹 술어의 finish 암은 DIVERGENCES #26.
+
 ## SetNotErase/SetErase 래치 프로토콜 (P9-2 기록)
 
 - 래치는 refcount가 아니라 **불리언**(중첩 래치 붕괴). 획득은 LC 2곳뿐

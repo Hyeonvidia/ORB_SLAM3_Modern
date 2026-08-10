@@ -41,7 +41,8 @@ Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
                const bool bUseViewer, const int initFr, const string &strSequence):
     mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), mbResetActiveMap(false),
-    mbActivateLocalizationMode(false), mbDeactivateLocalizationMode(false), mbShutDown(false)
+    mbActivateLocalizationMode(false), mbDeactivateLocalizationMode(false), mbShutDown(false),
+    mbShutdownDone(false)
 {
     // Output welcome message
     cout << endl <<
@@ -217,7 +218,11 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     if(bUseViewer)
     //if(false) // TODO
     {
-        mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile,settings_);
+        // P10-6: the Viewer consumes only the narrow IViewerHost surface;
+        // the sensor-enum read it used to make (mpSystem->MONOCULAR/...)
+        // is a ctor-injected bool.
+        mpViewer = new Viewer(static_cast<IViewerHost*>(this), mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile,settings_,
+                              mSensor==MONOCULAR || mSensor==STEREO || mSensor==RGBD);
         mptViewer = thread(&Viewer::Run, mpViewer);
         mpTracker->SetViewer(mpViewer);
         mpViewer->both = mpFrameDrawer->both;
@@ -493,6 +498,30 @@ void System::ResetActiveMap()
     mbResetActiveMap = true;
 }
 
+// P10-6 (IViewerHost): latch ONLY -- NEVER joins. Called from the viewer
+// thread (menuStop), where any join would self-deadlock -- the hazard that
+// made upstream comment out Shutdown's viewer wait, and that P10-5 dodged
+// with a get_id() guard, is removed structurally here: the viewer only
+// requests. Sets the mbShutDown request latch (TrackMonocular gate +
+// isShutDown readers) and RequestFinishes all workers so they start
+// winding down; the joins and SaveAtlas remain with Shutdown(), whose OWN
+// idempotence latch (mbShutdownDone) is separate, so the main thread's
+// end-of-example Shutdown() still performs the teardown afterwards.
+void System::RequestShutdown()
+{
+    {
+        unique_lock<mutex> lock(mMutexReset);
+        mbShutDown.store(true);
+    }
+
+    cout << "Shutdown requested" << endl;
+
+    if(mpViewer)
+        mpViewer->RequestFinish();
+    mpLocalMapper->RequestFinish();
+    mpLoopCloser->RequestFinish();
+}
+
 void System::Shutdown()
 {
     // P10-5 (docs/P10_RECON.md 2부 item 6): the upstream wait block below
@@ -501,26 +530,31 @@ void System::Shutdown()
     // ordering (comments per step); upstream's commented-out remains were
     // removed with it.
     //
-    // Step 1 -- idempotence latch: exactly ONE caller runs the teardown
-    // (menuStop-path Shutdown on the viewer thread and the example main's
-    // Shutdown would otherwise both run the joins; a second join is UB).
-    // The atomic exchange is the latch; the mMutexReset scope is kept so
-    // the Track* readers' lock discipline is unchanged.
+    // Step 1 -- teardown idempotence latch: exactly ONE caller runs the
+    // joins (a second join is UB). P10-6: this is a SEPARATE latch from
+    // the mbShutDown REQUEST latch -- a menuStop RequestShutdown has
+    // already set mbShutDown, and the end-of-example Shutdown() must still
+    // tear down; only a second Shutdown() call (e.g. ~System after an
+    // explicit Shutdown) skips.
+    if(mbShutdownDone.exchange(true))
+        return;
+
+    // Request latch (idempotent when RequestShutdown already set it). The
+    // mMutexReset scope keeps the Track* readers' lock discipline.
     {
         unique_lock<mutex> lock(mMutexReset);
-        if(mbShutDown.exchange(true))
-            return;
+        mbShutDown.store(true);
     }
 
     cout << "Shutdown" << endl;
 
     // Step 2 -- Viewer: RequestFinish, then join ONLY from another thread.
-    // The menuStop path (Viewer.cpp) runs Shutdown ON the viewer thread,
-    // where an unconditional join would self-deadlock -- this is exactly
-    // why upstream commented the viewer wait out. On the self-path the
-    // thread object stays joinable and ~System reaps it after Viewer::Run
-    // returns. (P10-6 removes the hazard structurally via a RequestShutdown
-    // latch; viewer internals are out of P10-5 scope.)
+    // P10-6: no caller runs Shutdown on the viewer thread anymore
+    // (menuStop latches via RequestShutdown), so the get_id() guard is
+    // belt-and-braces; if it ever fires, the thread object stays joinable
+    // and ~System reaps it after Viewer::Run returns. A parked viewer is
+    // woken by RequestFinish (P10-6 park predicate includes the finish
+    // flag), so this join cannot hang on a stopped viewer.
     if(mpViewer)
     {
         mpViewer->RequestFinish();
@@ -569,18 +603,17 @@ void System::Shutdown()
 
 System::~System()
 {
-    // P10-5: backstop teardown. Shutdown() is a no-op if already latched;
-    // the joinable() guards then reap whatever an earlier Shutdown could
-    // not join -- in practice only the viewer thread after a menuStop-path
-    // Shutdown (which must skip its self-join). This destructor never runs
-    // on the viewer thread (the System object lives in the example main's
-    // scope), so the unconditional joins here are safe; without them a
-    // joinable std::thread member would std::terminate on destruction.
-    // ORDER MATTERS: the viewer join comes FIRST. If a menuStop-path
-    // Shutdown is still running ON the viewer thread when this destructor
-    // starts (main latched out and fell through), joining the viewer waits
-    // for that whole handler -- including ITS LM/LC/GBA joins -- to finish;
-    // only then are the joinable() checks below race-free.
+    // P10-5: backstop teardown. Shutdown() is a no-op if the teardown
+    // already ran; the joinable() guards then reap anything left. P10-6:
+    // with menuStop reduced to a RequestShutdown latch, no Shutdown ever
+    // runs on the viewer thread anymore -- after a normal end-of-example
+    // Shutdown() everything below is already joined, and this destructor
+    // only matters for a System destroyed without any Shutdown() call.
+    // This destructor never runs on the viewer thread (the System object
+    // lives in the example main's scope), so the joins here are safe;
+    // without them a joinable std::thread member would std::terminate on
+    // destruction. The viewer join stays FIRST (belt-and-braces mirror of
+    // Shutdown's own ordering).
     Shutdown();
     if(mptViewer.joinable())
         mptViewer.join();

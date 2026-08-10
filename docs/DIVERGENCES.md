@@ -86,6 +86,15 @@
     atexit 에필로그("reported N warnings")까지 완주하고 thread-leak 리포트
     0건(리크 검사가 실제로 돌았는데 0 = LM/LC/Viewer 전부 join됨). 종료
     코드 게이트化는 아직 하지 않음(정책 유지, phase 게이트에서 재확인).
+26. **[P10-6] 파킹된 Viewer가 RequestFinish에 깨어남** — 업스트림의 Viewer
+    파킹 루프(`while(isStopped()) usleep(3000)`)는 finish 요청을 보지 않아,
+    정지(로컬라이제이션 모드 등) 상태에서 종료가 오면 Shutdown의 join이
+    영구 대기했다(업스트림에선 join 자체가 주석이라 무증상). CV 전환의 파킹
+    술어에 finish 암을 추가해 파킹 중에도 종료가 진행된다 — P10-5 조인
+    사슬의 전제 조건. 정상 실행 동작 동일(파킹 탈출은 여전히 Release가
+    기본), 종료 코너에서만 행→정상 종료로 강등. Tracking 측
+    `WaitUntilStopped()`는 의도적으로 finish-unaware 유지(업스트림 W6
+    liveness 특이점 자구 보존).
 
 ## 게이트 방법론 이력
 

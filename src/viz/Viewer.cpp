@@ -25,14 +25,13 @@
 namespace ORB_SLAM3
 {
 
-Viewer::Viewer(System* pSystem, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath, Settings* settings):
-    both(false), mpSystem(pSystem), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking),
+Viewer::Viewer(IViewerHost* pHost, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath, Settings* settings, bool bNonInertialSensor):
+    both(false), mpHost(pHost), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking),
+    mbNonInertialSensor(bNonInertialSensor),
     mbFinishRequested(false), mbFinished(true), mbStopped(true), mbStopRequested(false)
 {
     // P2-2: Settings is the single parsing path (never null).
     newParameterLoader(settings);
-
-    mbStopTrack = false;
 }
 
 void Viewer::newParameterLoader(Settings *settings) {
@@ -57,8 +56,18 @@ void Viewer::newParameterLoader(Settings *settings) {
 
 void Viewer::Run()
 {
-    mbFinished = false;
-    mbStopped = false;
+    // P10-6 (R-a analogue, same fix as LM/LC Run entries in P10-2): the
+    // unlocked entry writes raced isFinished/isStopped readers; now under
+    // their owning mutexes. mbFinished stays a plain guarded bool (NOT
+    // atomic — SetFinish couples it with the finish handshake).
+    {
+        unique_lock<mutex> lock(mMutexFinish);
+        mbFinished = false;
+    }
+    {
+        unique_lock<mutex> lock(mMutexStop);
+        mbStopped = false;
+    }
 
     pangolin::CreateWindowAndBind("ORB-SLAM3: Map Viewer",1024,768);
 
@@ -107,7 +116,9 @@ void Viewer::Run()
     bool bStepByStep = false;
     bool bCameraView = true;
 
-    if(mpTracker->mSensor == mpSystem->MONOCULAR || mpTracker->mSensor == mpSystem->STEREO || mpTracker->mSensor == mpSystem->RGBD)
+    // P10-6: ctor-injected bool (was mpTracker->mSensor == mpSystem->
+    // MONOCULAR/STEREO/RGBD — the last System-enum read in the Viewer).
+    if(mbNonInertialSensor)
     {
         menuShowGraph = true;
     }
@@ -120,12 +131,6 @@ void Viewer::Run()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         mpMapDrawer->GetCurrentOpenGLCameraMatrix(Twc,Ow);
-
-        if(mbStopTrack)
-        {
-            menuStepByStep = true;
-            mbStopTrack = false;
-        }
 
         if(menuFollowCamera && bFollow)
         {
@@ -175,12 +180,12 @@ void Viewer::Run()
 
         if(menuLocalizationMode && !bLocalizationMode)
         {
-            mpSystem->ActivateLocalizationMode();
+            mpHost->ActivateLocalizationMode();
             bLocalizationMode = true;
         }
         else if(!menuLocalizationMode && bLocalizationMode)
         {
-            mpSystem->DeactivateLocalizationMode();
+            mpHost->DeactivateLocalizationMode();
             bLocalizationMode = false;
         }
 
@@ -242,34 +247,52 @@ void Viewer::Run()
             menuShowPoints = true;
             menuLocalizationMode = false;
             if(bLocalizationMode)
-                mpSystem->DeactivateLocalizationMode();
+                mpHost->DeactivateLocalizationMode();
             bLocalizationMode = false;
             bFollow = true;
             menuFollowCamera = true;
-            mpSystem->ResetActiveMap();
+            // P10-6: IViewerHost latch (same System flag/mutex as the old
+            // direct ResetActiveMap() call — IResetRequester semantics).
+            mpHost->RequestResetActiveMap();
             menuReset = false;
         }
 
         if(menuStop)
         {
             if(bLocalizationMode)
-                mpSystem->DeactivateLocalizationMode();
+                mpHost->DeactivateLocalizationMode();
 
-            // Stop all threads
-            mpSystem->Shutdown();
+            // P10-6: latch-only shutdown request (was a full System::
+            // Shutdown() ON this thread — the viewer-thread self-join
+            // hazard P10-5 dodged with a get_id() guard). RequestShutdown
+            // sets the shutdown latch and RequestFinishes the workers
+            // (this viewer included); the main thread's end-of-example
+            // Shutdown() performs the joins.
+            mpHost->RequestShutdown();
 
-            // Save camera trajectory
-            mpSystem->SaveTrajectoryEuRoC("CameraTrajectory.txt");
-            mpSystem->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
+            // Save camera trajectory — synchronous on this (viewer)
+            // thread, upstream behavior preserved.
+            mpHost->SaveTrajectoryEuRoC("CameraTrajectory.txt");
+            mpHost->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
             menuStop = false;
         }
 
         if(Stop())
         {
-            while(isStopped())
-            {
-                usleep(3000);
-            }
+            // P10-6: CV park (was `while(isStopped()) usleep(3000)`).
+            // Woken by Release() (clears mbStopped) and by RequestFinish()
+            // — the finish arm is the one behavior change: a parked viewer
+            // used to ignore RequestFinish and could only be freed by
+            // Release, which left Shutdown's viewer join hanging if the
+            // stop window was open. Predicate reads the ATOMIC finish flag
+            // (mMutexFinish here would nest Stop->Finish). UNTIMED wait:
+            // pthread_cond_wait is TSAN-intercepted (the P10-4 clockwait
+            // gap applies only to timed waits — no system_clock net needed).
+            unique_lock<mutex> lock(mMutexStop);
+            mCondStop.wait(lock, [&]{
+                return !mbStopped ||
+                       mbFinishRequested.load(std::memory_order_relaxed);
+            });
         }
 
         if(CheckFinish())
@@ -281,14 +304,27 @@ void Viewer::Run()
 
 void Viewer::RequestFinish()
 {
-    unique_lock<mutex> lock(mMutexFinish);
-    mbFinishRequested = true;
+    {
+        // P10-6: the store keeps the lock (it still orders against the
+        // mbFinished handshake); readers are lock-free. Same discipline as
+        // LocalMapping::RequestFinish (P10-2/P10-4).
+        unique_lock<mutex> lock(mMutexFinish);
+        mbFinishRequested.store(true, std::memory_order_relaxed);
+    }
+    // P10-6: wake a parked Run() (park predicate reads the atomic finish
+    // flag, which is NOT guarded by mMutexStop). The empty mMutexStop
+    // acquisition is required: it orders the store above against the park
+    // wait's predicate check — without it the notify could land in the
+    // window between the waiter's predicate evaluation and its block
+    // (lost wakeup, and the park wait has no timeout).
+    { unique_lock<mutex> lock(mMutexStop); }
+    mCondStop.notify_all();
 }
 
 bool Viewer::CheckFinish()
 {
-    unique_lock<mutex> lock(mMutexFinish);
-    return mbFinishRequested;
+    // P10-6: lock-free (atomic flag; park-predicate read).
+    return mbFinishRequested.load(std::memory_order_relaxed);
 }
 
 void Viewer::SetFinish()
@@ -316,17 +352,34 @@ bool Viewer::isStopped()
     return mbStopped;
 }
 
+void Viewer::WaitUntilStopped()
+{
+    // P10-6: replaces Tracking's two reset-path spins
+    // (`RequestStop(); while(!isStopped()) usleep(3000);`). Woken by
+    // Stop() from the render loop. Deliberately NOT finish-aware — the
+    // upstream quirk (recon W6) is preserved verbatim: if the viewer is
+    // finish-requested, Stop() returns false without setting mbStopped and
+    // the old poll never terminated either.
+    unique_lock<mutex> lock(mMutexStop);
+    mCondStop.wait(lock, [&]{ return mbStopped; });
+}
+
 bool Viewer::Stop()
 {
     unique_lock<mutex> lock(mMutexStop);
-    unique_lock<mutex> lock2(mMutexFinish);
 
-    if(mbFinishRequested)
+    // P10-6: the finish read is the atomic (was a second lock of
+    // mMutexFinish — the Viewer's only Stop->Finish nesting, gone with it).
+    if(mbFinishRequested.load(std::memory_order_relaxed))
         return false;
     else if(mbStopRequested)
     {
         mbStopped = true;
         mbStopRequested = false;
+        // P10-6: wake WaitUntilStopped() (Tracking reset paths). mbStopped
+        // is written under mMutexStop; notifying under the same lock
+        // cannot lose a wakeup.
+        mCondStop.notify_all();
         return true;
     }
 
@@ -336,13 +389,13 @@ bool Viewer::Stop()
 
 void Viewer::Release()
 {
-    unique_lock<mutex> lock(mMutexStop);
-    mbStopped = false;
+    {
+        unique_lock<mutex> lock(mMutexStop);
+        mbStopped = false;
+    }
+    // P10-6: wake the parked Run() (park predicate: !mbStopped). Notify
+    // after unlock; mbStopped was cleared under mMutexStop above.
+    mCondStop.notify_all();
 }
-
-/*void Viewer::SetTrackingPause()
-{
-    mbStopTrack = true;
-}*/
 
 }
