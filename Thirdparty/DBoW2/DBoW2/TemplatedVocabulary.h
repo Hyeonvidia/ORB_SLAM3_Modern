@@ -3,6 +3,11 @@
  * Added functions: Save and Load from text files without using cv::FileStorage.
  * Date: August 2015
  * Raúl Mur-Artal
+ *
+ * Added functions: Save and Load from a binary cache file (fast startup).
+ * The binary file is a host-local derived cache of the text vocabulary;
+ * the text file remains the canonical format. See docs/DIVERGENCES.md #27.
+ * Date: August 2026 (ORB_SLAM3_Modern P11-V)
  */
 
 /**
@@ -26,6 +31,9 @@
 #include <algorithm>
 #include <opencv2/core/core.hpp>
 #include <limits>
+
+#include <stdint.h>
+#include <cstring>
 
 #include "FeatureVector.h"
 #include "BowVector.h"
@@ -244,7 +252,26 @@ public:
    * Saves the vocabulary into a text file
    * @param filename
    */
-  void saveToTextFile(const std::string &filename) const;  
+  void saveToTextFile(const std::string &filename) const;
+
+  /**
+   * Loads the vocabulary from a binary cache file written by
+   * saveToBinaryFile. On any failure the vocabulary contents are
+   * unspecified; callers must fall back to loadFromTextFile (which
+   * clears and reloads everything).
+   * @param filename
+   * @return true iff the whole file was read and accepted
+   */
+  bool loadFromBinaryFile(const std::string &filename);
+
+  /**
+   * Saves the vocabulary into a binary cache file (see the format note
+   * above the implementation). Best-effort: returns false instead of
+   * throwing when the file cannot be written.
+   * @param filename
+   * @return true iff the whole file was written
+   */
+  bool saveToBinaryFile(const std::string &filename) const;
 
   /**
    * Saves the vocabulary into a file
@@ -1446,6 +1473,200 @@ void TemplatedVocabulary<TDescriptor,F>::saveToTextFile(const std::string &filen
     }
 
     f.close();
+}
+
+// --------------------------------------------------------------------------
+
+// Binary vocabulary cache format (ORB_SLAM3_Modern P11-V, DIVERGENCES #27).
+// Native endianness, no padding — a host-local derived cache of the
+// canonical text file, NOT a portable interchange format.
+//
+//   header (40 bytes):
+//     char[8]   magic "DBOW2BIN"
+//     int32     format version (1)
+//     int32     m_k
+//     int32     m_L
+//     int32     scoring type
+//     int32     weighting type
+//     uint64    node record count (m_nodes.size()-1, root excluded)
+//     int32     F::L (descriptor length in bytes)
+//   per node record (13 + F::L bytes), in node id order (ids 1..count):
+//     int32     parent node id
+//     uint8     1 if the node is a word (leaf), 0 otherwise
+//     uint8[F::L] descriptor bytes (assumes TDescriptor = cv::Mat 1xF::L
+//               CV_8U, as created by F::fromString)
+//     float64   weight
+//
+// The word flag records "registered in m_words", NOT children.empty():
+// loadFromTextFile can append a childless non-word node from a trailing
+// blank line, and that in-memory quirk must survive the round trip so a
+// binary load is bit-identical to the text load that produced the cache.
+
+template<class TDescriptor, class F>
+bool TemplatedVocabulary<TDescriptor,F>::saveToBinaryFile(const std::string &filename) const
+{
+    ofstream f;
+    f.open(filename.c_str(), ios_base::out | ios_base::binary);
+    if(!f.is_open())
+        return false;
+
+    const char magic[8] = {'D','B','O','W','2','B','I','N'};
+    const int32_t version = 1;
+    const int32_t k = m_k;
+    const int32_t L = m_L;
+    const int32_t scoring = (int32_t)m_scoring;
+    const int32_t weighting = (int32_t)m_weighting;
+    const uint64_t count = m_nodes.empty() ? 0 : (uint64_t)(m_nodes.size()-1);
+    const int32_t FL = F::L;
+
+    f.write(magic, 8);
+    f.write((const char*)&version, 4);
+    f.write((const char*)&k, 4);
+    f.write((const char*)&L, 4);
+    f.write((const char*)&scoring, 4);
+    f.write((const char*)&weighting, 4);
+    f.write((const char*)&count, 8);
+    f.write((const char*)&FL, 4);
+
+    vector<char> record(13 + F::L);
+    for(size_t i=1; i<m_nodes.size(); i++)
+    {
+        const Node& node = m_nodes[i];
+        char *p = &record[0];
+
+        const int32_t pid = (int32_t)node.parent;
+        memcpy(p, &pid, 4); p += 4;
+
+        // word membership, not children.empty() (see format note above)
+        unsigned char isWord = 0;
+        if(!m_words.empty() && node.word_id < (WordId)m_words.size()
+           && m_words[node.word_id] == &node)
+            isWord = 1;
+        *p++ = (char)isWord;
+
+        if(node.descriptor.empty())
+            memset(p, 0, F::L);
+        else
+            memcpy(p, node.descriptor.template ptr<unsigned char>(), F::L);
+        p += F::L;
+
+        const double w = (double)node.weight;
+        memcpy(p, &w, 8);
+
+        f.write(&record[0], record.size());
+    }
+
+    f.flush();
+    const bool ok = f.good();
+    f.close();
+    return ok;
+}
+
+// --------------------------------------------------------------------------
+
+template<class TDescriptor, class F>
+bool TemplatedVocabulary<TDescriptor,F>::loadFromBinaryFile(const std::string &filename)
+{
+    ifstream f;
+    f.open(filename.c_str(), ios_base::in | ios_base::binary);
+    if(!f.is_open())
+        return false;
+
+    f.seekg(0, ios_base::end);
+    const uint64_t file_size = (uint64_t)f.tellg();
+    f.seekg(0, ios_base::beg);
+
+    char magic[8];
+    int32_t version, k, L, scoring, weighting, FL;
+    uint64_t count;
+    f.read(magic, 8);
+    f.read((char*)&version, 4);
+    f.read((char*)&k, 4);
+    f.read((char*)&L, 4);
+    f.read((char*)&scoring, 4);
+    f.read((char*)&weighting, 4);
+    f.read((char*)&count, 8);
+    f.read((char*)&FL, 4);
+    if(!f.good())
+        return false;
+
+    if(memcmp(magic, "DBOW2BIN", 8) != 0 || version != 1 || FL != F::L)
+        return false;
+
+    // same parameter sanity window as loadFromTextFile
+    if(k<0 || k>20 || L<1 || L>10 || scoring<0 || scoring>5
+       || weighting<0 || weighting>3)
+        return false;
+
+    // the file must be exactly header + count fixed-size records; this
+    // also rejects absurd counts before any allocation happens
+    const size_t record_size = 13 + (size_t)F::L;
+    if(count == 0 || file_size != 40 + count * (uint64_t)record_size)
+        return false;
+
+    m_k = k;
+    m_L = L;
+    m_scoring = (ScoringType)scoring;
+    m_weighting = (WeightingType)weighting;
+    createScoringObject();
+
+    m_words.clear();
+    m_nodes.clear();
+
+    // one buffered read of all fixed-size records, then a linear fill
+    const size_t total = (size_t)count * record_size;
+    vector<char> buf(total);
+    f.read(&buf[0], total);
+    if((size_t)f.gcount() != total)
+        return false;
+
+    // exact reserve: m_words stores pointers into m_nodes, so m_nodes
+    // must never reallocate during the fill
+    m_nodes.reserve(count + 1);
+    m_words.reserve(count);
+
+    m_nodes.resize(1);
+    m_nodes[0].id = 0;
+
+    const char *p = &buf[0];
+    for(uint64_t i=0; i<count; i++)
+    {
+        const int nid = (int)m_nodes.size();
+        m_nodes.resize(m_nodes.size()+1);
+        m_nodes[nid].id = nid;
+
+        int32_t pid;
+        memcpy(&pid, p, 4); p += 4;
+        if(pid < 0 || pid >= nid)   // parents always precede children
+            return false;
+        m_nodes[nid].parent = pid;
+        m_nodes[pid].children.push_back(nid);
+
+        const unsigned char isWord = (unsigned char)*p; p += 1;
+
+        // same construction as F::fromString (cv::Mat 1xF::L CV_8U)
+        m_nodes[nid].descriptor.create(1, F::L, CV_8U);
+        memcpy(m_nodes[nid].descriptor.template ptr<unsigned char>(), p, F::L);
+        p += F::L;
+
+        double w;
+        memcpy(&w, p, 8); p += 8;
+        m_nodes[nid].weight = w;
+
+        if(isWord)
+        {
+            const int wid = (int)m_words.size();
+            m_words.resize(wid+1);
+            m_nodes[nid].word_id = wid;
+            m_words[wid] = &m_nodes[nid];
+        }
+        else
+        {
+            m_nodes[nid].children.reserve(m_k);
+        }
+    }
+
+    return true;
 }
 
 // --------------------------------------------------------------------------

@@ -20,6 +20,7 @@
 
 #include "core/System.hpp"
 #include "io/Converter.hpp"
+#include <chrono>
 #include <thread>
 #include <pangolin/pangolin.h>
 #include <iomanip>
@@ -97,46 +98,29 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     bool loadedAtlas = false;
 
+    //Load ORB Vocabulary (P11-V: one loader for both atlas branches;
+    //binary-cache fast path, text canonical — see LoadVocabulary)
+    cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
+
+    if(!LoadVocabulary(strVocFile))
+    {
+        cerr << "Wrong path to vocabulary. " << endl;
+        cerr << "Falied to open at: " << strVocFile << endl;
+        exit(-1);
+    }
+    cout << "Vocabulary loaded!" << endl << endl;
+
+    //Create KeyFrame Database
+    mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
+
     if(mStrLoadAtlasFromFile.empty())
     {
-        //Load ORB Vocabulary
-        cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
-
-        mpVocabulary = new ORBVocabulary();
-        bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
-        if(!bVocLoad)
-        {
-            cerr << "Wrong path to vocabulary. " << endl;
-            cerr << "Falied to open at: " << strVocFile << endl;
-            exit(-1);
-        }
-        cout << "Vocabulary loaded!" << endl << endl;
-
-        //Create KeyFrame Database
-        mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
-
         //Create the Atlas
         cout << "Initialization of Atlas from scratch " << endl;
         mpAtlas = new Atlas(0);
     }
     else
     {
-        //Load ORB Vocabulary
-        cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
-
-        mpVocabulary = new ORBVocabulary();
-        bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
-        if(!bVocLoad)
-        {
-            cerr << "Wrong path to vocabulary. " << endl;
-            cerr << "Falied to open at: " << strVocFile << endl;
-            exit(-1);
-        }
-        cout << "Vocabulary loaded!" << endl << endl;
-
-        //Create KeyFrame Database
-        mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
-
         cout << "Load File" << endl;
 
         // Load the file with an earlier session
@@ -1407,6 +1391,45 @@ void System::InsertTrackTime(double& time)
     mpTracker->vdTrackTotal_ms.push_back(time);
 }
 #endif
+
+bool System::LoadVocabulary(const std::string &strVocFile)
+{
+    // P11-V (DIVERGENCES #27): the .bin beside the .txt is a derived,
+    // host-local cache (native endianness, no portability contract). The
+    // text file stays canonical: mStrVocabularyFilePath is never pointed
+    // at the .bin, so the SaveAtlas/LoadAtlas MD5 checksum of the TEXT
+    // file (.osa compatibility) is unaffected.
+    mpVocabulary = new ORBVocabulary();
+
+    const std::string strBinFile = strVocFile + ".bin";
+
+    char szTime[32];
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    if(mpVocabulary->loadFromBinaryFile(strBinFile))
+    {
+        snprintf(szTime, sizeof(szTime), "%.3f",
+            std::chrono::duration_cast<std::chrono::duration<double>>(
+                std::chrono::steady_clock::now() - t0).count());
+        cout << "Vocabulary loaded from binary cache " << strBinFile
+             << " in " << szTime << "s" << endl;
+        return true;
+    }
+
+    t0 = std::chrono::steady_clock::now();
+    if(!mpVocabulary->loadFromTextFile(strVocFile))
+        return false;
+    snprintf(szTime, sizeof(szTime), "%.3f",
+        std::chrono::duration_cast<std::chrono::duration<double>>(
+            std::chrono::steady_clock::now() - t0).count());
+    cout << "Vocabulary loaded from text file " << strVocFile
+         << " in " << szTime << "s" << endl;
+
+    // best-effort cache write: failures (e.g. read-only mounts) are benign
+    if(mpVocabulary->saveToBinaryFile(strBinFile))
+        cout << "Saved binary vocabulary cache to " << strBinFile << endl;
+
+    return true;
+}
 
 void System::SaveAtlas(int type){
     if(!mStrSaveAtlasToFile.empty())

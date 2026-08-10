@@ -210,6 +210,15 @@ public:
 
 private:
 
+    // P11-V (DIVERGENCES #27): loads the vocabulary into mpVocabulary,
+    // preferring the derived binary cache <strVocFile>.bin; on a cache
+    // miss/parse failure it loads the canonical text file and best-effort
+    // writes the cache beside it (write failures ignored — read-only
+    // mounts). mStrVocabularyFilePath must keep pointing at the TEXT file:
+    // SaveAtlas/LoadAtlas MD5-checksum the text file for .osa session
+    // compatibility.
+    bool LoadVocabulary(const std::string &strVocFile);
+
     void SaveAtlas(int type);
     bool LoadAtlas(int type);
 

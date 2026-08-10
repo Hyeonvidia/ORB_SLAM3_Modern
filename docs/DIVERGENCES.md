@@ -26,6 +26,22 @@
     KF(미처리 = 맵 미편입, LC 미경유)에서 사실상 도달 불가하므로 정상 실행
     동작은 동일하며, 도달하는 병리적 경우엔 UAF 대신 누수(+맵 잔존)를 택한다.
     mbNotErase 지연 삭제는 이후 LoopClosing::SetErase의 재-SetBadFlag로 완결.
+27. **[P11-V] 벤더드 DBoW2에 바이너리 어휘 캐시 추가** — 벤더드
+    `Thirdparty/DBoW2/DBoW2/TemplatedVocabulary.h`(추적 파일, 서브모듈 아님)에
+    `saveToBinaryFile`/`loadFromBinaryFile`을 추가하고, System 생성자의 중복
+    텍스트 로드 2블록을 `LoadVocabulary` 헬퍼로 통합: `<voc>.txt.bin`을 먼저
+    시도, 미스/파싱 실패 시 텍스트 로드 후 곁에 캐시를 베스트-에포트로
+    기록(쓰기 실패 무시 — 읽기 전용 마운트 허용). 실측 텍스트 ~2.1s →
+    바이너리 ~0.2s(컨테이너 arm64; 엣지에서 이득 더 큼). **메모리 내 어휘는
+    구성상 비트 동일**: 바이너리는 텍스트 파서가 산출한 값(파서의 말미 공백
+    라인 유사-노드 포함)을 그대로 저장/복원하며, is-word 플래그는
+    children.empty()가 아니라 m_words 등록 여부로 기록해 그 quirk 노드가
+    단어로 승격되지 않는다 — `tests/vocab/vocab_roundtrip`이 전 노드
+    비트-정확 비교로 증거. `.bin`은 호스트-로컬 파생 캐시(네이티브 엔디안,
+    이식성 계약 없음)이고 **정본은 텍스트**: `mStrVocabularyFilePath`는 .txt를
+    계속 가리켜 SaveAtlas/LoadAtlas의 어휘 MD5 체크섬(.osa 세션 호환)이
+    불변이다. 게이트 중립 by construction(어휘 내용 동일 ⇒ bit/smoke 게이트
+    유지 의무).
 
 ## 계승 결함 (bug-for-bug 보존, FixLevel 후보)
 

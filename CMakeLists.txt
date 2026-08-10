@@ -156,4 +156,15 @@ if(BUILD_TESTS)
   set_target_properties(threading_checks PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
+  # ---- vocabulary binary-cache round trip (P11-V) ---------------------------
+  # extract_hash mold: text load -> saveToBinaryFile -> loadFromBinaryFile
+  # into a second instance -> node-by-node bit-exact comparison (the
+  # DIVERGENCES #27 "identical by construction" evidence). OpenCV comes
+  # transitively through the DBoW2 target.
+  add_executable(vocab_roundtrip tests/vocab/vocab_roundtrip.cpp)
+  target_link_libraries(vocab_roundtrip PRIVATE DBoW2)
+  set_target_properties(vocab_roundtrip PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endif()
