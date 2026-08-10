@@ -282,9 +282,22 @@ void LocalMapping::Run()
         else if(Stop() && !mbBadImu.load(std::memory_order_relaxed))
         {
             // Safe area to stop
-            while(isStopped() && !CheckFinish())
+            //
+            // P10-4: CV park (was `while(isStopped() && !CheckFinish())
+            // usleep(3000)`). Woken by Release() (clears mbStopped),
+            // RequestFinish()/SetFinish(). The predicate reads the ATOMIC
+            // finish flag -- taking mMutexFinish here would nest
+            // Stop->Finish against the canonical Finish->Stop order.
+            // Invariant 5 preserved: reset flags are deliberately absent
+            // from the predicate (a reset during park waits for Release).
+            // Invariant 4 preserved: the mbBadImu quirk skips this branch
+            // via the same enclosing condition as before.
             {
-                usleep(3000);
+                unique_lock<mutex> lock(mMutexStop);
+                mCondStop.wait(lock, [&]{
+                    return !mbStopped ||
+                           mbFinishRequested.load(std::memory_order_relaxed);
+                });
             }
             if(CheckFinish())
                 break;
@@ -300,7 +313,28 @@ void LocalMapping::Run()
         if(CheckFinish())
             break;
 
-        usleep(3000);
+        // P10-4: CV'd queue wait (was `usleep(3000)`). The 3ms timed net is
+        // PERMANENT by design (docs/P10_RECON.md 2부 item 1, rationale at
+        // the mCondNewKFs declaration): stop/finish/reset/mbBadImu wakeups
+        // live under other mutexes and keep their historical <=3ms bound via
+        // the timeout; a queued KF now wakes the loop immediately instead.
+        // An empty-queue timeout still runs a full iteration, so the P10-0
+        // trace counters (mnTraceIters/mnTraceEmptyIters) keep counting
+        // iterations exactly as under the old poll.
+        // TSAN visibility (P10-4 postmortem): wait_for compiles to
+        // pthread_cond_clockwait (CLOCK_MONOTONIC), which gcc-11 libtsan
+        // does NOT intercept -- every timeout would silently break TSAN's
+        // mutex modeling for mMutexNewKFs and spray spurious race reports
+        // on everything the queue mutex protects. system_clock wait_until
+        // maps to the intercepted pthread_cond_timedwait; a realtime clock
+        // jump can only stretch or clip one 3ms net (harmless -- the
+        // predicate re-check handles it). Do not "modernize" this back.
+        {
+            unique_lock<mutex> lock(mMutexNewKFs);
+            mCondNewKFs.wait_until(lock,
+                                   std::chrono::system_clock::now() + std::chrono::milliseconds(3),
+                                   [&]{ return !mlNewKeyFrames.empty(); });
+        }
     }
 
     SetFinish();
@@ -308,15 +342,20 @@ void LocalMapping::Run()
 
 void LocalMapping::InsertKeyFrame(KeyFrame *pKF)
 {
-    unique_lock<mutex> lock(mMutexNewKFs);
-    mlNewKeyFrames.push_back(pKF);
-    mbAbortBA.store(true, std::memory_order_relaxed);
-    if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
     {
-        mdqTraceEnqueueTs.push_back(std::chrono::steady_clock::now());
-        if(mlNewKeyFrames.size() > mnTraceMaxDepth)
-            mnTraceMaxDepth = mlNewKeyFrames.size();
+        unique_lock<mutex> lock(mMutexNewKFs);
+        mlNewKeyFrames.push_back(pKF);
+        mbAbortBA.store(true, std::memory_order_relaxed);
+        if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
+        {
+            mdqTraceEnqueueTs.push_back(std::chrono::steady_clock::now());
+            if(mlNewKeyFrames.size() > mnTraceMaxDepth)
+                mnTraceMaxDepth = mlNewKeyFrames.size();
+        }
     }
+    // P10-4: wake Run()'s queue wait. Notify AFTER unlock so the woken
+    // consumer never immediately blocks on the mutex we still hold.
+    mCondNewKFs.notify_one();
 }
 
 
@@ -864,6 +903,10 @@ bool LocalMapping::Stop()
     {
         mbStopped = true;
         cout << "Local Mapping STOP" << endl;
+        // P10-4: wake WaitUntilStopped() waiters (LoopClosing windows, GBA,
+        // System localization-mode). mbStopped is written under mMutexStop,
+        // so notifying under the same lock cannot lose a wakeup.
+        mCondStop.notify_all();
         return true;
     }
 
@@ -876,6 +919,19 @@ bool LocalMapping::isStopped()
     return mbStopped;
 }
 
+void LocalMapping::WaitUntilStopped()
+{
+    // P10-4: replaces the 7 external `while(!isStopped()) usleep` spins.
+    // Woken by Stop() and by SetFinish() -- SetFinish also sets mbStopped,
+    // so the old finish-aware GBA variant (`!isStopped() && !isFinished()`)
+    // converges on this same predicate (identical to the polling semantics,
+    // where SetFinish made isStopped() true). Invariant 4 preserved: with
+    // mbBadImu, Stop() still sets mbStopped and notifies while Run() keeps
+    // looping -- external waiters proceed exactly as under the old spin.
+    unique_lock<mutex> lock(mMutexStop);
+    mCondStop.wait(lock, [&]{ return mbStopped; });
+}
+
 bool LocalMapping::stopRequested()
 {
     unique_lock<mutex> lock(mMutexStop);
@@ -884,27 +940,33 @@ bool LocalMapping::stopRequested()
 
 void LocalMapping::Release()
 {
-    // P10-2 (R6): Finish -> Stop, matching SetFinish. The old Stop -> Finish
-    // order was an ABBA deadlock against a concurrent SetFinish (found in
-    // the P10 recon; canonical order documented in LocalMapping.hpp).
-    unique_lock<mutex> lock(mMutexFinish);
-    unique_lock<mutex> lock2(mMutexStop);
-    if(mbFinished)
-        return;
-    mbStopped = false;
-    mbStopRequested = false;
     {
-        // P10-2 (R1): the delete-drain now holds mMutexNewKFs (innermost in
-        // the canonical order) -- it raced push_back from the SetNotStop-less
-        // initialization producers. Trace deque cleared under the same lock
-        // (P10-0 shadow-deque contract).
-        unique_lock<mutex> lock3(mMutexNewKFs);
-        for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
-            delete *lit;
-        mlNewKeyFrames.clear();
-        if(TraceQueueOn())
-            mdqTraceEnqueueTs.clear();
+        // P10-2 (R6): Finish -> Stop, matching SetFinish. The old Stop -> Finish
+        // order was an ABBA deadlock against a concurrent SetFinish (found in
+        // the P10 recon; canonical order documented in LocalMapping.hpp).
+        unique_lock<mutex> lock(mMutexFinish);
+        unique_lock<mutex> lock2(mMutexStop);
+        if(mbFinished)
+            return;
+        mbStopped = false;
+        mbStopRequested = false;
+        {
+            // P10-2 (R1): the delete-drain now holds mMutexNewKFs (innermost in
+            // the canonical order) -- it raced push_back from the SetNotStop-less
+            // initialization producers. Trace deque cleared under the same lock
+            // (P10-0 shadow-deque contract).
+            unique_lock<mutex> lock3(mMutexNewKFs);
+            for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
+                delete *lit;
+            mlNewKeyFrames.clear();
+            if(TraceQueueOn())
+                mdqTraceEnqueueTs.clear();
+        }
     }
+
+    // P10-4: wake the parked Run() (park predicate: !mbStopped). Notify
+    // after unlock; mbStopped was cleared under mMutexStop above.
+    mCondStop.notify_all();
 
     cout << "Local Mapping RELEASE" << endl;
 }
@@ -1101,14 +1163,19 @@ void LocalMapping::RequestReset()
     }
     cout << "LM: Map reset, waiting..." << endl;
 
-    while(1)
+    // P10-4: CV handshake (was a 3ms spin). ResetIfRequested notifies
+    // mCondReset after clearing the flag. Preserved upstream quirks, on
+    // purpose (docs/P10_RECON.md 2부 item 1):
+    //   - reset-while-parked still blocks here until some Release() lets
+    //     Run() reach ResetIfRequested (invariant 5);
+    //   - reset-after-SetFinish still NEVER returns (Run() has exited and
+    //     nothing services the flag -- upstream behavior, documented; do
+    //     NOT add a finished-escape, that would change observable protocol).
     {
-        {
-            unique_lock<mutex> lock2(mMutexReset);
-            if(!mbResetRequested.load(std::memory_order_relaxed))
-                break;
-        }
-        usleep(3000);
+        unique_lock<mutex> lock(mMutexReset);
+        mCondReset.wait(lock, [&]{
+            return !mbResetRequested.load(std::memory_order_relaxed);
+        });
     }
     cout << "LM: Map reset, Done!!!" << endl;
 }
@@ -1123,14 +1190,14 @@ void LocalMapping::RequestResetActiveMap(Map* pMap)
     }
     cout << "LM: Active map reset, waiting..." << endl;
 
-    while(1)
+    // P10-4: CV handshake (was a 3ms spin); same preserved quirks as
+    // RequestReset above (park blocks until Release; after SetFinish this
+    // never returns -- upstream, documented, no finished-escape).
     {
-        {
-            unique_lock<mutex> lock2(mMutexReset);
-            if(!mbResetRequestedActiveMap.load(std::memory_order_relaxed))
-                break;
-        }
-        usleep(3000);
+        unique_lock<mutex> lock(mMutexReset);
+        mCondReset.wait(lock, [&]{
+            return !mbResetRequestedActiveMap.load(std::memory_order_relaxed);
+        });
     }
     cout << "LM: Active map reset, Done!!!" << endl;
 }
@@ -1188,16 +1255,33 @@ void LocalMapping::ResetIfRequested()
         }
     }
     if(executed_reset)
+    {
         cout << "LM: Reset free the mutex" << endl;
+        // P10-4: wake the RequestReset/RequestResetActiveMap handshake
+        // waiters. The flags were cleared under mMutexReset above; notify
+        // after unlock.
+        mCondReset.notify_all();
+    }
 
 }
 
 void LocalMapping::RequestFinish()
 {
-    // P10-2: the store keeps the lock (it still orders against the
-    // mbFinished handshake); readers are lock-free.
-    unique_lock<mutex> lock(mMutexFinish);
-    mbFinishRequested.store(true, std::memory_order_relaxed);
+    {
+        // P10-2: the store keeps the lock (it still orders against the
+        // mbFinished handshake); readers are lock-free.
+        unique_lock<mutex> lock(mMutexFinish);
+        mbFinishRequested.store(true, std::memory_order_relaxed);
+    }
+    // P10-4: wake a parked Run() (park predicate reads the atomic finish
+    // flag, which is NOT guarded by mMutexStop). The empty mMutexStop
+    // acquisition is required: it orders the store above against the park
+    // wait's predicate check -- without it the notify could land in the
+    // window between the waiter's predicate evaluation and its block
+    // (lost wakeup, and the park wait has no timeout). Lock order is
+    // canonical (mMutexFinish released before mMutexStop is taken).
+    { unique_lock<mutex> lock(mMutexStop); }
+    mCondStop.notify_all();
 }
 
 bool LocalMapping::CheckFinish()
@@ -1223,10 +1307,16 @@ void LocalMapping::SetFinish()
             n, n ? v[(n-1)/2] : 0L, n ? v[(95*(n-1))/100] : 0L, n ? v.back() : 0L,
             nMaxDepth, mnTraceIters, mnTraceEmptyIters);
     }
-    unique_lock<mutex> lock(mMutexFinish);
-    mbFinished = true;
-    unique_lock<mutex> lock2(mMutexStop);
-    mbStopped = true;
+    {
+        unique_lock<mutex> lock(mMutexFinish);
+        mbFinished = true;
+        unique_lock<mutex> lock2(mMutexStop);
+        mbStopped = true;
+    }
+    // P10-4: SetFinish sets mbStopped, so external WaitUntilStopped()
+    // waiters (including the old finish-aware GBA wait) must be woken here
+    // too. Notify after unlock; mbStopped was written under mMutexStop.
+    mCondStop.notify_all();
 }
 
 bool LocalMapping::isFinished()

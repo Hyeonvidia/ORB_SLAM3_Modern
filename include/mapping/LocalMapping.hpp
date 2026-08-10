@@ -29,6 +29,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <mutex>
 
@@ -45,8 +46,10 @@ class IMappingOptimizer;
 // =============================================================================
 // Queue/backpressure contract (P8-2, from the docs/P8_RECON.md survey).
 //
-// mlNewKeyFrames is an unbounded producer/consumer queue with no condition
-// variable; Run() polls at 3ms. Producer is always the Tracking thread via
+// mlNewKeyFrames is an unbounded producer/consumer queue. Since P10-4 it is
+// condition-variable-driven: InsertKeyFrame notifies mCondNewKFs, and Run()'s
+// tail is a 3ms-capped timed wait (the timed net is PERMANENT -- see the
+// mCondNewKFs comment below). Producer is always the Tracking thread via
 // InsertKeyFrame (which also preempts any running BA through mbAbortBA).
 // KeyFrames in the queue are NOT yet in the map -- Atlas::AddKeyFrame happens
 // inside ProcessNewKeyFrame, and only KFs consumed by Run()'s main path are
@@ -66,10 +69,12 @@ class IMappingOptimizer;
 //     loop -- external isStopped() waiters proceed while Run() keeps looping;
 //     recovery is the reset Run() self-requested.
 //  5. The park loop does not service ResetIfRequested; a Tracking reset
-//     request spins until some LoopClosing/System path calls Release().
-//  6. Resets are producer-synchronous: RequestReset* spins the calling
-//     thread until consumed, so ResetIfRequested's lock-free queue clear is
-//     protected by the protocol, not the mutex.
+//     request blocks (CV wait since P10-4, spin before) until some
+//     LoopClosing/System path calls Release().
+//  6. Resets are producer-synchronous: RequestReset* blocks the calling
+//     thread until consumed (mCondReset handshake since P10-4), so
+//     ResetIfRequested's queue clear is protected by the protocol on top
+//     of the P10-2 mMutexNewKFs closure.
 //
 // Known inherited races (R1-R5) and the three drain-disposal asymmetries are
 // cataloged in docs/OWNERSHIP.md; fixes are deferred to P10 (threading).
@@ -106,6 +111,13 @@ public:
     bool Stop();
     void Release();
     bool isStopped();
+    // P10-4: CV replacement for the external `while(!isStopped()) usleep`
+    // spin (LoopClosing CorrectLoop/MergeLocal/MergeLocal2, GBA, System
+    // localization-mode). Blocks until mbStopped == true; woken by Stop()
+    // and SetFinish() (which also sets mbStopped, so finish-aware waiters
+    // converge on the same predicate). isStopped()/stopRequested() remain
+    // for non-blocking callers (Tracking::NeedNewKeyFrame).
+    void WaitUntilStopped();
     bool stopRequested();
     bool AcceptKeyFrames();
     void SetAcceptKeyFrames(bool flag);
@@ -182,6 +194,12 @@ protected:
     std::atomic<bool> mbResetRequestedActiveMap;
     Map* mpMapToReset;
     std::mutex mMutexReset;
+    // P10-4: reset handshake CV (paired with mMutexReset). RequestReset*
+    // wait on "my flag cleared"; ResetIfRequested notifies after clearing.
+    // Preserved upstream quirks (see the function comments): a reset
+    // requested while Run() is parked is serviced only after Release(),
+    // and a reset requested after SetFinish() never returns.
+    std::condition_variable mCondReset;
 
     bool CheckFinish();
     void SetFinish();
@@ -217,6 +235,17 @@ protected:
     std::list<MapPoint*> mlpRecentAddedMapPoints;
 
     std::mutex mMutexNewKFs;
+    // P10-4: queue CV (paired with mMutexNewKFs). InsertKeyFrame notifies
+    // after unlocking; Run()'s tail waits on "queue non-empty" with a 3ms
+    // timed net. The net is PERMANENT by design (docs/P10_RECON.md 2부
+    // item 1): the loop's other wake reasons -- stop/finish/reset/mbBadImu
+    // -- live under three OTHER mutexes, and a pure untimed wait would need
+    // them all in this predicate (lock nesting against the canonical order)
+    // while turning the invariant-4 mbBadImu quirk (queue non-empty, work
+    // branch skipped) into an instant-wakeup busy loop where upstream burnt
+    // a 3ms sleep. The timed net keeps every non-queue latency at exactly
+    // the historical <=3ms bound while making KF pickup immediate.
+    std::condition_variable mCondNewKFs;
 
     // P10-0: opt-in queue-latency tracing (ORB_TRACE_QUEUE=1, P7-1a env-gate
     // pattern; docs/P10_RECON.md 3부 §4). Dormant unless the env var is set:
@@ -243,6 +272,16 @@ protected:
     bool mbStopRequested;
     bool mbNotStop;
     std::mutex mMutexStop;
+    // P10-4: stop/park CV (paired with mMutexStop). Two predicate families:
+    //   - Run()'s park waits on "!mbStopped || mbFinishRequested" (the
+    //     atomic finish flag keeps mMutexFinish OUT of the predicate --
+    //     taking it here would nest Stop->Finish against the canonical
+    //     Finish->Stop order). The predicate deliberately EXCLUDES the
+    //     reset flags (invariant 5: a reset during park waits for Release).
+    //   - WaitUntilStopped() waits on "mbStopped".
+    // Notifiers: Stop() on success, Release(), SetFinish(), RequestFinish()
+    // (the latter via a mMutexStop hand-off, see its comment).
+    std::condition_variable mCondStop;
 
     bool mbAcceptKeyFrames;
     std::mutex mMutexAccept;

@@ -145,4 +145,15 @@ if(BUILD_TESTS)
   set_target_properties(extract_hash PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
+  # ---- threading protocol checks (P10-4) ------------------------------------
+  # Dependency-free assert-style binary (extract_hash mold): bounded-wait
+  # checks of the LocalMapping queue+CV+flag protocol shape. See the file
+  # header for the fixture-vs-class scope note.
+  find_package(Threads REQUIRED)
+  add_executable(threading_checks tests/threading/threading_checks.cpp)
+  target_link_libraries(threading_checks PRIVATE Threads::Threads)
+  set_target_properties(threading_checks PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endif()

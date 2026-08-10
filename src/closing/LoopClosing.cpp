@@ -371,11 +371,9 @@ void LoopClosing::CorrectLoop()
         cout << "  Done!!" << endl;
     }
 
-    // Wait until Local Mapping has effectively stopped
-    while(!mpLocalMapper->isStopped())
-    {
-        usleep(1000);
-    }
+    // Wait until Local Mapping has effectively stopped (P10-4: CV wait,
+    // was a 1ms isStopped() poll)
+    mpLocalMapper->WaitUntilStopped();
 
     // P10-3 (R2 fix): drain the queue only AFTER Local Mapping is parked.
     // Upstream called EmptyQueue() right after RequestStop(), before the
@@ -628,11 +626,9 @@ void LoopClosing::MergeLocal()
     }
 
     mpLocalMapper->RequestStop();
-    // Wait until Local Mapping has effectively stopped
-    while(!mpLocalMapper->isStopped())
-    {
-        usleep(1000);
-    }
+    // Wait until Local Mapping has effectively stopped (P10-4: CV wait,
+    // was a 1ms isStopped() poll)
+    mpLocalMapper->WaitUntilStopped();
 
     mpLocalMapper->EmptyQueue();
 
@@ -1065,11 +1061,9 @@ void LoopClosing::MergeLocal()
         }
 
         mpLocalMapper->RequestStop();
-        // Wait until Local Mapping has effectively stopped
-        while(!mpLocalMapper->isStopped())
-        {
-            usleep(1000);
-        }
+        // Wait until Local Mapping has effectively stopped (P10-4: CV wait,
+        // was a 1ms isStopped() poll)
+        mpLocalMapper->WaitUntilStopped();
 
         // Optimize graph (and update the loop position for each element form the begining to the end)
         if(mpTracker->mSensor != System::MONOCULAR)
@@ -1176,11 +1170,9 @@ void LoopClosing::MergeLocal2()
 
 
     mpLocalMapper->RequestStop();
-    // Wait until Local Mapping has effectively stopped
-    while(!mpLocalMapper->isStopped())
-    {
-        usleep(1000);
-    }
+    // Wait until Local Mapping has effectively stopped (P10-4: CV wait,
+    // was a 1ms isStopped() poll)
+    mpLocalMapper->WaitUntilStopped();
 
     Map* pCurrentMap = mpCurrentKF->GetMap();
     Map* pMergeMap = mPlaceRec.MergeCh().matchedKF->GetMap();
@@ -1552,11 +1544,15 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
 
             mpLocalMapper->RequestStop();
             // Wait until Local Mapping has effectively stopped
-
-            while(!mpLocalMapper->isStopped() && !mpLocalMapper->isFinished())
-            {
-                usleep(1000);
-            }
+            //
+            // P10-4: this was the codebase's only FINISH-AWARE stop wait
+            // (`!isStopped() && !isFinished()`, 1ms poll). SetFinish() sets
+            // mbStopped under mMutexStop and notifies mCondStop, so the
+            // plain mbStopped predicate of WaitUntilStopped() covers the
+            // finished case identically -- verified: nothing clears
+            // mbStopped after SetFinish (Release early-returns on
+            // mbFinished), and GBA only exists while/after Run() started.
+            mpLocalMapper->WaitUntilStopped();
 
             // Get Map Mutex
             unique_lock<mutex> lock(pActiveMap->mMutexMapUpdate);

@@ -262,11 +262,9 @@ Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
         {
             mpLocalMapper->RequestStop();
 
-            // Wait until Local Mapping has effectively stopped
-            while(!mpLocalMapper->isStopped())
-            {
-                usleep(1000);
-            }
+            // Wait until Local Mapping has effectively stopped (P10-4: CV
+            // wait, was a 1ms isStopped() poll)
+            mpLocalMapper->WaitUntilStopped();
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
@@ -337,11 +335,9 @@ Sophus::SE3f System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const
         {
             mpLocalMapper->RequestStop();
 
-            // Wait until Local Mapping has effectively stopped
-            while(!mpLocalMapper->isStopped())
-            {
-                usleep(1000);
-            }
+            // Wait until Local Mapping has effectively stopped (P10-4: CV
+            // wait, was a 1ms isStopped() poll)
+            mpLocalMapper->WaitUntilStopped();
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
@@ -412,11 +408,9 @@ Sophus::SE3f System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
         {
             mpLocalMapper->RequestStop();
 
-            // Wait until Local Mapping has effectively stopped
-            while(!mpLocalMapper->isStopped())
-            {
-                usleep(1000);
-            }
+            // Wait until Local Mapping has effectively stopped (P10-4: CV
+            // wait, was a 1ms isStopped() poll)
+            mpLocalMapper->WaitUntilStopped();
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
