@@ -94,6 +94,10 @@ OrbLevenberg::~OrbLevenberg() = default;
 
 g2o::OptimizationAlgorithm::SolverResult OrbLevenberg::solve(int iteration, bool online)
 {
+    // P10-1 shadow-bridge entry refresh: the upstream retrial loop polls the
+    // shadow through _forceStopFlag during this solve() call.
+    refreshShadowStop();
+
     // fork parity: `_nBad = 0` inside `if (iteration == 0)` (vendored :96).
     // SparseOptimizer::optimize() always starts its loop at iteration 0, so the
     // counter is per-optimize() and never leaks across calls.
@@ -104,6 +108,12 @@ g2o::OptimizationAlgorithm::SolverResult OrbLevenberg::solve(int iteration, bool
     const double iniChi = _optimizer->activeRobustChi2();
 
     const SolverResult result = g2o::OptimizationAlgorithmLevenberg::solve(iteration, online);
+
+    // P10-1 shadow-bridge exit refresh: the outer terminate() check in
+    // SparseOptimizer::optimize() reads the shadow right after solve() returns
+    // (all return paths below).
+    refreshShadowStop();
+
     if(result != OK)
         return result;   // Fail / early Terminate: the fork leaves _nBad alone here
 

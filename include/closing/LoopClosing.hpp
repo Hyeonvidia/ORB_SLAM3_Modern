@@ -28,6 +28,7 @@
 #include "recognition/KeyFrameDatabase.hpp"
 #include "closing/PlaceRecognition.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <thread>
@@ -192,7 +193,11 @@ protected:
     // Variables related to Global Bundle Adjustment
     bool mbRunningGBA;
     bool mbFinishedGBA;
-    bool mbStopGBA;
+    // P10-1: atomic (was plain bool, ledger race R-e). LC writes it (abort
+    // paths under mMutexGBA, spawn resets lock-free as before); the GBA
+    // thread reads it and, through the OrbLevenberg shadow bridge, the
+    // optimizer polls it. All accesses relaxed — advisory flag only.
+    std::atomic<bool> mbStopGBA;
     std::mutex mMutexGBA;
     std::thread* mpThreadGBA;
 

@@ -27,6 +27,7 @@
 #include "map/Atlas.hpp"
 #include "mapping/ImuInitializer.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <mutex>
@@ -199,7 +200,12 @@ protected:
     unsigned long mnTraceIters = 0;
     unsigned long mnTraceEmptyIters = 0;
 
-    bool mbAbortBA;
+    // P10-1: atomic (was plain bool, ledger race R4). Written lock-free by
+    // Tracking (InterruptBA) and under mMutexNewKFs by InsertKeyFrame; read
+    // by the LM thread and, through the OrbLevenberg shadow bridge, polled
+    // during BA. All accesses relaxed — it is a lone advisory flag, no
+    // ordering contract with other data.
+    std::atomic<bool> mbAbortBA;
 
     bool mbStopped;
     bool mbStopRequested;

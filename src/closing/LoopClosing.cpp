@@ -354,7 +354,7 @@ void LoopClosing::CorrectLoop()
     {
         cout << "Stoping Global Bundle Adjustment...";
         unique_lock<mutex> lock(mMutexGBA);
-        mbStopGBA = true;
+        mbStopGBA.store(true, std::memory_order_relaxed);
 
         mnFullBAIdx++;
 
@@ -559,7 +559,7 @@ void LoopClosing::CorrectLoop()
     {
         mbRunningGBA = true;
         mbFinishedGBA = false;
-        mbStopGBA = false;
+        mbStopGBA.store(false, std::memory_order_relaxed);
 
         // DIVERGENCES #22: a normally-completed GBA left a joinable thread
         // object here that upstream simply overwrote (only the abort path
@@ -596,7 +596,7 @@ void LoopClosing::MergeLocal()
     if(isRunningGBA())
     {
         unique_lock<mutex> lock(mMutexGBA);
-        mbStopGBA = true;
+        mbStopGBA.store(true, std::memory_order_relaxed);
 
         mnFullBAIdx++;
 
@@ -954,7 +954,9 @@ void LoopClosing::MergeLocal()
     vdMergeMaps_ms.push_back(timeMergeMaps);
 #endif
 
-    bool bStop = false;
+    // P10-1: local atomic to satisfy the migrated optimizer signature; still
+    // never set by anyone (single-thread, dead-in-practice — preserved).
+    std::atomic<bool> bStop{false};
     vpLocalCurrentWindowKFs.clear();
     vpMergeConnectedKFs.clear();
     std::copy(spLocalWindowKFs.begin(), spLocalWindowKFs.end(), std::back_inserter(vpLocalCurrentWindowKFs));
@@ -1103,7 +1105,7 @@ void LoopClosing::MergeLocal()
         // Launch a new thread to perform Global Bundle Adjustment
         mbRunningGBA = true;
         mbFinishedGBA = false;
-        mbStopGBA = false;
+        mbStopGBA.store(false, std::memory_order_relaxed);
         // DIVERGENCES #22: reap a completed predecessor before overwriting.
         if(mpThreadGBA)
         {
@@ -1137,7 +1139,7 @@ void LoopClosing::MergeLocal2()
     if(isRunningGBA())
     {
         unique_lock<mutex> lock(mMutexGBA);
-        mbStopGBA = true;
+        mbStopGBA.store(true, std::memory_order_relaxed);
 
         mnFullBAIdx++;
 
@@ -1307,7 +1309,9 @@ void LoopClosing::MergeLocal2()
     }
 
     // Perform BA
-    bool bStopFlag=false;
+    // P10-1: local atomic to satisfy the migrated optimizer signature; still
+    // never set by anyone (single-thread, dead-in-practice — preserved).
+    std::atomic<bool> bStopFlag{false};
     KeyFrame* pCurrKF = mpTracker->GetLastKeyFrame();
     mpOptimizer->MergeInertialBA(pCurrKF, mPlaceRec.MergeCh().matchedKF, &bStopFlag, pCurrentMap,CorrectedSim3, *mpBAEpochs);
 
@@ -1485,7 +1489,7 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
     double timeGBA = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndGBA - time_StartFGBA).count();
     vdGBA_ms.push_back(timeGBA);
 
-    if(mbStopGBA)
+    if(mbStopGBA.load(std::memory_order_relaxed))
     {
         nFGBA_abort += 1;
     }
@@ -1505,7 +1509,7 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
         if(!bImuInit && pActiveMap->isImuInitialized())
             return;
 
-        if(!mbStopGBA)
+        if(!mbStopGBA.load(std::memory_order_relaxed))
         {
             Verbose::PrintMess("Global Bundle Adjustment finished", Verbose::VERBOSITY_NORMAL);
             Verbose::PrintMess("Updating map ...", Verbose::VERBOSITY_NORMAL);

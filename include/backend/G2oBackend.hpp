@@ -48,15 +48,15 @@ public:
     int PoseInertialOptimizationLastFrame(Frame* pFrame, bool bRecInit) const override;
 
     // ---- ITrackingOptimizer + ILoopOptimizer (single override, both bases) --
-    void GlobalBundleAdjustment(Map* pMap, int nIterations, bool* pbStopFlag,
+    void GlobalBundleAdjustment(Map* pMap, int nIterations, const std::atomic<bool>* pbStopFlag,
                                 unsigned long nLoopKF, bool bRobust,
                                 GBAResult* pResult) const override;
 
     // ---- IMappingOptimizer --------------------------------------------------
-    void LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag, Map* pMap,
+    void LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                BAEpochs& epochs) const override;
-    void LocalInertialBA(KeyFrame* pKF, bool* pbStopFlag, Map* pMap,
+    void LocalInertialBA(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                          int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                          bool bLarge, bool bRecInit, BAEpochs& epochs) const override;
     void InertialOptimization(Map* pMap, Eigen::Matrix3d& Rwg, double& scale,
@@ -67,7 +67,7 @@ public:
 
     // ---- IMappingOptimizer + ILoopOptimizer (single override, both bases) ---
     void FullInertialBA(Map* pMap, int its, bool bFixLocal, unsigned long nLoopKF,
-                        bool* pbStopFlag, bool bInit, float priorG, float priorA,
+                        const std::atomic<bool>* pbStopFlag, bool bInit, float priorG, float priorA,
                         Eigen::VectorXd* vSingVal, bool* bHess,
                         GBAResult* pResult, BAEpochs& epochs) const override;
 
@@ -90,10 +90,10 @@ public:
                                     const KeyFrameAndPose& NonCorrectedSim3,
                                     const KeyFrameAndPose& CorrectedSim3,
                                     const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections) const override;
-    void MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool* pbStopFlag, Map* pMap,
+    void MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                          KeyFrameAndPose& corrPoses, BAEpochs& epochs) const override;
     void LocalBundleAdjustment(KeyFrame* pMainKF, std::vector<KeyFrame*> vpAdjustKF,
-                               std::vector<KeyFrame*> vpFixedKF, bool* pbStopFlag,
+                               std::vector<KeyFrame*> vpFixedKF, const std::atomic<bool>* pbStopFlag,
                                const BAEpochs& epochs) const override;
     void InertialOptimization(Map* pMap, Eigen::Vector3d& bg, Eigen::Vector3d& ba,
                               float priorG, float priorA) const override;

@@ -19,6 +19,8 @@
 #ifndef ITRACKINGOPTIMIZER_H
 #define ITRACKINGOPTIMIZER_H
 
+#include <atomic>
+
 namespace ORB_SLAM3
 {
 
@@ -49,7 +51,12 @@ public:
 
     // Spelling fixed at the interface level (upstream static is the typo'd
     // Optimizer::GlobalBundleAdjustemnt, kept as-is internally).
-    virtual void GlobalBundleAdjustment(Map* pMap, int nIterations = 5, bool* pbStopFlag = nullptr,
+    // pbStopFlag is atomic since P10-1 (cross-thread abort; the g2o-facing
+    // bool* lives behind the OrbLevenberg shadow bridge). The signature must
+    // stay identical to ILoopOptimizer's redeclaration: one G2oBackend
+    // override satisfies both bases (design rule 2).
+    virtual void GlobalBundleAdjustment(Map* pMap, int nIterations = 5,
+                                        const std::atomic<bool>* pbStopFlag = nullptr,
                                         unsigned long nLoopKF = 0, bool bRobust = true,
                                         GBAResult* pResult = nullptr) const = 0;
 };

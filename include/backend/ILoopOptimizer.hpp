@@ -19,6 +19,7 @@
 #ifndef ILOOPOPTIMIZER_H
 #define ILOOPOPTIMIZER_H
 
+#include <atomic>
 #include <map>
 #include <set>
 #include <utility>
@@ -93,13 +94,16 @@ public:
                                             const KeyFrameAndPose& CorrectedSim3,
                                             const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections) const = 0;
 
-    virtual void MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool* pbStopFlag, Map* pMap,
+    // pbStopFlag became const std::atomic<bool>* in P10-1: the abort request
+    // crosses threads; the g2o-facing bool* lives behind the OrbLevenberg
+    // shadow bridge.
+    virtual void MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                  KeyFrameAndPose& corrPoses, BAEpochs& epochs) const = 0;
 
     // Welding variant: local BA in the welding area when two maps are merged
     // (epochs is read-only here).
     virtual void LocalBundleAdjustment(KeyFrame* pMainKF, std::vector<KeyFrame*> vpAdjustKF,
-                                       std::vector<KeyFrame*> vpFixedKF, bool* pbStopFlag,
+                                       std::vector<KeyFrame*> vpFixedKF, const std::atomic<bool>* pbStopFlag,
                                        const BAEpochs& epochs) const = 0;
 
     // Bias variant.
@@ -108,12 +112,12 @@ public:
 
     // Spelling fixed at the interface level (upstream static is the typo'd
     // Optimizer::GlobalBundleAdjustemnt, kept as-is internally).
-    virtual void GlobalBundleAdjustment(Map* pMap, int nIterations, bool* pbStopFlag,
+    virtual void GlobalBundleAdjustment(Map* pMap, int nIterations, const std::atomic<bool>* pbStopFlag,
                                         unsigned long nLoopKF, bool bRobust,
                                         GBAResult* pResult) const = 0;
 
     virtual void FullInertialBA(Map* pMap, int its, bool bFixLocal, unsigned long nLoopKF,
-                                bool* pbStopFlag, bool bInit, float priorG, float priorA,
+                                const std::atomic<bool>* pbStopFlag, bool bInit, float priorG, float priorA,
                                 Eigen::VectorXd* vSingVal, bool* bHess,
                                 GBAResult* pResult, BAEpochs& epochs) const = 0;
 };

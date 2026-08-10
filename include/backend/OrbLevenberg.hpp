@@ -19,6 +19,7 @@
 #ifndef ORB_SLAM3_BACKEND_ORBLEVENBERG_HPP
 #define ORB_SLAM3_BACKEND_ORBLEVENBERG_HPP
 
+#include <atomic>
 #include <memory>
 
 #include "g2o/core/optimization_algorithm_levenberg.h"
@@ -66,9 +67,59 @@ public:
     //! consecutive low-improvement iterations seen so far (the fork's `_nBad`)
     int badIterations() const { return mnBad; }
 
+    // -------------------------------------------------------------------------
+    // P10-1 abort-flag shadow bridge (docs/P10_RECON.md 2부 item 4).
+    //
+    // The producers of the BA-abort request (Tracking::InterruptBA /
+    // InsertKeyFrame, LoopClosing's GBA abort) live on OTHER threads than the
+    // optimization, so the source of truth is a std::atomic<bool>
+    // (LocalMapping::mbAbortBA, LoopClosing::mbStopGBA). g2o, however, polls a
+    // plain `bool*` (`SparseOptimizer::setForceStopFlag(bool*)`; derefs in
+    // sparse_optimizer.h terminate() and the LM retrial loop), and the pinned
+    // submodule is never patched (docs/DIVERGENCES.md item 10).
+    //
+    // Rejected alternatives (both remain data races / UB):
+    //  * std::atomic_ref (C++20): [atomics.ref] requires ALL concurrent
+    //    accesses to go through atomic_ref while one exists — g2o's plain
+    //    `*_forceStopFlag` read concurrent with an atomic_ref store is still a
+    //    data race. C++20 does not solve this.
+    //  * reinterpret_cast<bool*>(&atomic<bool>): works on our ABIs but is UB.
+    //
+    // Sound route: bind the atomic here and hand g2o `&mShadowStop`, a plain
+    // bool touched ONLY by the optimizing thread. solve() refreshes the shadow
+    // from the atomic at entry AND exit (bindAbortFlag() also samples once, so
+    // an abort raised before optimize() starts skips all iterations, matching
+    // the pre-bridge semantics). The single cross-thread edge is the relaxed
+    // atomic load. Abort granularity vs the raw pointer: the outer terminate()
+    // check reads the value sampled at the previous solve() exit (µs-stale);
+    // the retrial-loop poll sees the solve()-entry sample — worst case the
+    // remaining trials of one LM iteration of extra latency. Timing-only.
+    // -------------------------------------------------------------------------
+
+    //! Bind the cross-thread abort flag; samples it once immediately.
+    void bindAbortFlag(const std::atomic<bool>* pAbortFlag)
+    {
+        mpAbortFlag = pAbortFlag;
+        refreshShadowStop();
+    }
+
+    //! Plain-bool alias for g2o's setForceStopFlag(); optimizing-thread-only.
+    bool* shadowPtr() { return &mShadowStop; }
+
 private:
     //! mirrors the fork's `_nBad`; reset on iteration 0 of every optimize() call
     int mnBad = 0;
+
+    //! P10-1 shadow bridge: atomic source of truth (nullptr = no abort flag)
+    const std::atomic<bool>* mpAbortFlag = nullptr;
+    //! P10-1 shadow bridge: what g2o's bool* actually points at
+    bool mShadowStop = false;
+
+    void refreshShadowStop()
+    {
+        if(mpAbortFlag)
+            mShadowStop = mpAbortFlag->load(std::memory_order_relaxed);
+    }
 };
 
 } // namespace ORB_SLAM3

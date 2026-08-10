@@ -176,7 +176,7 @@ bool sortByVal(const pair<MapPoint*, int> &a, const pair<MapPoint*, int> &b)
     return (a.second < b.second);
 }
 
-void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust, GBAResult *pResult)
+void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, const std::atomic<bool>* pbStopFlag, const unsigned long nLoopKF, const bool bRobust, GBAResult *pResult)
 {
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
     vector<MapPoint*> vpMP = pMap->GetAllMapPoints();
@@ -185,7 +185,7 @@ void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopF
 
 
 void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<MapPoint *> &vpMP,
-                                 int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust, GBAResult *pResult)
+                                 int nIterations, const std::atomic<bool>* pbStopFlag, const unsigned long nLoopKF, const bool bRobust, GBAResult *pResult)
 {
     vector<bool> vbNotIncludedMP;
     vbNotIncludedMP.resize(vpMP.size());
@@ -204,7 +204,12 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
     optimizer.setVerbose(false);
 
     if(pbStopFlag)
-        optimizer.setForceStopFlag(pbStopFlag);
+    {
+        // P10-1 shadow bridge: g2o polls a plain bool*; hand it the solver-
+        // local shadow refreshed from the atomic inside OrbLevenberg::solve().
+        solver->bindAbortFlag(pbStopFlag);
+        optimizer.setForceStopFlag(solver->shadowPtr());
+    }
 
     long unsigned int maxKFid = 0;
 
@@ -515,7 +520,7 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
     }
 }
 
-void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const long unsigned int nLoopId, bool *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess, GBAResult *pResult, BAEpochs& epochs)
+void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const long unsigned int nLoopId, const std::atomic<bool> *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess, GBAResult *pResult, BAEpochs& epochs)
 {
     long unsigned int maxKFid = pMap->GetMaxKFid();
     const vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
@@ -535,7 +540,12 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
     optimizer.setVerbose(false);
 
     if(pbStopFlag)
-        optimizer.setForceStopFlag(pbStopFlag);
+    {
+        // P10-1 shadow bridge: g2o polls a plain bool*; hand it the solver-
+        // local shadow refreshed from the atomic inside OrbLevenberg::solve().
+        solver->bindAbortFlag(pbStopFlag);
+        optimizer.setForceStopFlag(solver->shadowPtr());
+    }
 
     int nNonFixed = 0;
 
@@ -846,7 +856,7 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
     }
 
     if(pbStopFlag)
-        if(*pbStopFlag)
+        if(pbStopFlag->load(std::memory_order_relaxed))
             return;
 
 
@@ -1241,7 +1251,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     return nInitialCorrespondences-nBad;
 }
 
-void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, BAEpochs& epochs)
+void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pbStopFlag, Map* pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, BAEpochs& epochs)
 {
     // Local KeyFrames: First Breath Search from Current Keyframe
     list<KeyFrame*> lLocalKeyFrames;
@@ -1329,7 +1339,12 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
     optimizer.setVerbose(false);
 
     if(pbStopFlag)
-        optimizer.setForceStopFlag(pbStopFlag);
+    {
+        // P10-1 shadow bridge: g2o polls a plain bool*; hand it the solver-
+        // local shadow refreshed from the atomic inside OrbLevenberg::solve().
+        solver->bindAbortFlag(pbStopFlag);
+        optimizer.setForceStopFlag(solver->shadowPtr());
+    }
 
     unsigned long maxKFid = 0;
 
@@ -1532,7 +1547,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
     num_edges = nEdges;
 
     if(pbStopFlag)
-        if(*pbStopFlag)
+        if(pbStopFlag->load(std::memory_order_relaxed))
             return;
 
     optimizer.initializeOptimization();
@@ -2523,7 +2538,7 @@ int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
     return nIn;
 }
 
-void Optimizer::LocalInertialBA(KeyFrame *pKF, bool *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, bool bLarge, bool bRecInit, BAEpochs& epochs)
+void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, bool bLarge, bool bRecInit, BAEpochs& epochs)
 {
     Map* pCurrentMap = pKF->GetMap();
 
@@ -2653,15 +2668,15 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, bool *pbStopFlag, Map *pMap, int&
 
     std::unique_ptr<g2o::BlockSolverX> solver_ptr = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
 
+    // P10-1: solver hoisted out of the branches (shadow bridge below needs it)
+    OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
     if(bLarge)
     {
-        OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
         solver->setUserLambdaInit(1e-2); // to avoid iterating for finding optimal lambda
         optimizer.setAlgorithm(solver);
     }
     else
     {
-        OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
         solver->setUserLambdaInit(1e0);
         optimizer.setAlgorithm(solver);
     }
@@ -2986,7 +3001,12 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, bool *pbStopFlag, Map *pMap, int&
     RunOptimization(optimizer, opt_it, "LocalInertialBA"); // Originally to 2
     float err_end = optimizer.activeRobustChi2();
     if(pbStopFlag)
-        optimizer.setForceStopFlag(pbStopFlag);
+    {
+        // P10-1 shadow bridge: g2o polls a plain bool*; hand it the solver-
+        // local shadow refreshed from the atomic inside OrbLevenberg::solve().
+        solver->bindAbortFlag(pbStopFlag);
+        optimizer.setForceStopFlag(solver->shadowPtr());
+    }
 
     vector<pair<KeyFrame*,MapPoint*> > vToErase;
     vToErase.reserve(vpEdgesMono.size()+vpEdgesStereo.size());
@@ -3638,7 +3658,7 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
     Rwg = VGDir->estimate().Rwg;
 }
 
-void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdjustKF, vector<KeyFrame*> vpFixedKF, bool *pbStopFlag, const BAEpochs& epochs)
+void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdjustKF, vector<KeyFrame*> vpFixedKF, const std::atomic<bool> *pbStopFlag, const BAEpochs& epochs)
 {
     bool bShowImages = false;
 
@@ -3657,7 +3677,12 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     optimizer.setVerbose(false);
 
     if(pbStopFlag)
-        optimizer.setForceStopFlag(pbStopFlag);
+    {
+        // P10-1 shadow bridge: g2o polls a plain bool*; hand it the solver-
+        // local shadow refreshed from the atomic inside OrbLevenberg::solve().
+        solver->bindAbortFlag(pbStopFlag);
+        optimizer.setForceStopFlag(solver->shadowPtr());
+    }
 
     long unsigned int maxKFid = 0;
     // Per-call membership sets (replace the old KeyFrame/MapPoint mnBALocalForMerge epoch stamps, P5-G)
@@ -3858,7 +3883,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     }
 
     if(pbStopFlag)
-        if(*pbStopFlag)
+        if(pbStopFlag->load(std::memory_order_relaxed))
             return;
 
     optimizer.initializeOptimization();
@@ -3867,7 +3892,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     bool bDoMore= true;
 
     if(pbStopFlag)
-        if(*pbStopFlag)
+        if(pbStopFlag->load(std::memory_order_relaxed))
             bDoMore = false;
 
     map<unsigned long int, int> mWrongObsKF;
@@ -4088,7 +4113,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
 }
 
 
-void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool *pbStopFlag, Map *pMap, LoopClosing::KeyFrameAndPose &corrPoses, BAEpochs& epochs)
+void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool> *pbStopFlag, Map *pMap, LoopClosing::KeyFrameAndPose &corrPoses, BAEpochs& epochs)
 {
     const int Nd = 6;
     const unsigned long maxKFid = pCurrKF->mnId;
@@ -4510,10 +4535,15 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool *pbS
     }
 
     if(pbStopFlag)
-        optimizer.setForceStopFlag(pbStopFlag);
+    {
+        // P10-1 shadow bridge: g2o polls a plain bool*; hand it the solver-
+        // local shadow refreshed from the atomic inside OrbLevenberg::solve().
+        solver->bindAbortFlag(pbStopFlag);
+        optimizer.setForceStopFlag(solver->shadowPtr());
+    }
 
     if(pbStopFlag)
-        if(*pbStopFlag)
+        if(pbStopFlag->load(std::memory_order_relaxed))
             return;
 
     optimizer.initializeOptimization();

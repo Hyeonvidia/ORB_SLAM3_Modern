@@ -30,6 +30,7 @@
 #include "map/Frame.hpp"
 
 #include <math.h>
+#include <atomic>
 
 #include "g2o/types/sim3/types_seven_dof_expmap.h"
 #include "g2o/core/sparse_block_matrix.h"
@@ -54,18 +55,21 @@ public:
     // receives the optimized poses/velocities/biases/positions when nLoopKF
     // identifies a deferred update; with pResult==NULL those results are
     // dropped (no caller reads them afterwards).
+    // pbStopFlag is const std::atomic<bool>* since P10-1 (cross-thread abort
+    // request; g2o's bool* polling goes through the OrbLevenberg shadow
+    // bridge — see include/backend/OrbLevenberg.hpp).
     void static BundleAdjustment(const std::vector<KeyFrame*> &vpKF, const std::vector<MapPoint*> &vpMP,
-                                 int nIterations = 5, bool *pbStopFlag=NULL, const unsigned long nLoopKF=0,
+                                 int nIterations = 5, const std::atomic<bool> *pbStopFlag=NULL, const unsigned long nLoopKF=0,
                                  const bool bRobust = true, GBAResult *pResult=NULL);
-    void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, bool *pbStopFlag=NULL,
+    void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, const std::atomic<bool> *pbStopFlag=NULL,
                                        const unsigned long nLoopKF=0, const bool bRobust = true,
                                        GBAResult *pResult=NULL);
     // epochs (P5-C, see include/backend/BAEpochs.hpp): persistent local-BA
     // epoch marks. With bFixLocal=true, FullInertialBA reads marks left by a
     // previous LocalInertialBA/MergeInertialBA call to fix those vertices.
-    void static FullInertialBA(Map *pMap, int its, const bool bFixLocal, const unsigned long nLoopKF, bool *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess, GBAResult *pResult, BAEpochs& epochs);
+    void static FullInertialBA(Map *pMap, int its, const bool bFixLocal, const unsigned long nLoopKF, const std::atomic<bool> *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess, GBAResult *pResult, BAEpochs& epochs);
 
-    void static LocalBundleAdjustment(KeyFrame* pKF, bool *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, BAEpochs& epochs);
+    void static LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool> *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, BAEpochs& epochs);
 
     int static PoseOptimization(Frame* pFrame);
     int static PoseInertialOptimizationLastKeyFrame(Frame* pFrame, bool bRecInit = false);
@@ -98,13 +102,13 @@ public:
 
     // For inertial systems
 
-    void static LocalInertialBA(KeyFrame* pKF, bool *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, bool bLarge, bool bRecInit, BAEpochs& epochs);
-    void static MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool *pbStopFlag, Map *pMap, LoopClosing::KeyFrameAndPose &corrPoses, BAEpochs& epochs);
+    void static LocalInertialBA(KeyFrame* pKF, const std::atomic<bool> *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, bool bLarge, bool bRecInit, BAEpochs& epochs);
+    void static MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool> *pbStopFlag, Map *pMap, LoopClosing::KeyFrameAndPose &corrPoses, BAEpochs& epochs);
 
     // Local BA in welding area when two maps are merged
     // (epochs is read-only here: one leftover upstream comparison against
     // localForKF marks stamped by other local-BA calls, feeding statistics)
-    void static LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdjustKF, vector<KeyFrame*> vpFixedKF, bool *pbStopFlag, const BAEpochs& epochs);
+    void static LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdjustKF, vector<KeyFrame*> vpFixedKF, const std::atomic<bool> *pbStopFlag, const BAEpochs& epochs);
 
     // Marginalize block element (start:end,start:end). Perform Schur complement.
     // Marginalized elements are filled with zeros.

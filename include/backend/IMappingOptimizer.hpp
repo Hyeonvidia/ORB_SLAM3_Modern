@@ -19,6 +19,8 @@
 #ifndef IMAPPINGOPTIMIZER_H
 #define IMAPPINGOPTIMIZER_H
 
+#include <atomic>
+
 #include <Eigen/Core>
 
 namespace ORB_SLAM3
@@ -44,11 +46,14 @@ class IMappingOptimizer
 public:
     virtual ~IMappingOptimizer() = default;
 
-    virtual void LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag, Map* pMap,
+    // pbStopFlag became const std::atomic<bool>* in P10-1: the abort request
+    // crosses threads (Tracking/LoopClosing -> the optimizing thread); the
+    // g2o-facing bool* lives behind the OrbLevenberg shadow bridge.
+    virtual void LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                        int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                        BAEpochs& epochs) const = 0;
 
-    virtual void LocalInertialBA(KeyFrame* pKF, bool* pbStopFlag, Map* pMap,
+    virtual void LocalInertialBA(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                  int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                  bool bLarge, bool bRecInit, BAEpochs& epochs) const = 0;
 
@@ -62,7 +67,7 @@ public:
     virtual void InertialOptimization(Map* pMap, Eigen::Matrix3d& Rwg, double& scale) const = 0;
 
     virtual void FullInertialBA(Map* pMap, int its, bool bFixLocal, unsigned long nLoopKF,
-                                bool* pbStopFlag, bool bInit, float priorG, float priorA,
+                                const std::atomic<bool>* pbStopFlag, bool bInit, float priorG, float priorA,
                                 Eigen::VectorXd* vSingVal, bool* bHess,
                                 GBAResult* pResult, BAEpochs& epochs) const = 0;
 };

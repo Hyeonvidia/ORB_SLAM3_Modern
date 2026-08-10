@@ -121,7 +121,7 @@ void LocalMapping::Run()
             // Triangulate new MapPoints
             CreateNewMapPoints();
 
-            mbAbortBA = false;
+            mbAbortBA.store(false, std::memory_order_relaxed);
 
             if(!CheckNewKeyFrames())
             {
@@ -186,7 +186,7 @@ void LocalMapping::Run()
                     vdLBA_ms.push_back(timeLBA_ms);
 
                     nLBA_exec += 1;
-                    if(mbAbortBA)
+                    if(mbAbortBA.load(std::memory_order_relaxed))
                     {
                         nLBA_abort += 1;
                     }
@@ -300,7 +300,7 @@ void LocalMapping::InsertKeyFrame(KeyFrame *pKF)
 {
     unique_lock<mutex> lock(mMutexNewKFs);
     mlNewKeyFrames.push_back(pKF);
-    mbAbortBA=true;
+    mbAbortBA.store(true, std::memory_order_relaxed);
     if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
     {
         mdqTraceEnqueueTs.push_back(std::chrono::steady_clock::now());
@@ -753,7 +753,7 @@ void LocalMapping::SearchInNeighbors()
             vpTargetKFs.push_back(pKFi2);
             sFuseTargets.insert(pKFi2);
         }
-        if (mbAbortBA)
+        if (mbAbortBA.load(std::memory_order_relaxed))
             break;
     }
 
@@ -786,7 +786,7 @@ void LocalMapping::SearchInNeighbors()
     }
 
 
-    if (mbAbortBA)
+    if (mbAbortBA.load(std::memory_order_relaxed))
         return;
 
     // Search matches by projection from target KFs in current KF
@@ -838,8 +838,10 @@ void LocalMapping::RequestStop()
 {
     unique_lock<mutex> lock(mMutexStop);
     mbStopRequested = true;
-    unique_lock<mutex> lock2(mMutexNewKFs);
-    mbAbortBA = true;
+    // P10-1: the mMutexNewKFs nest existed only to guard this write; with
+    // mbAbortBA atomic it is gone — which also removes the codebase's only
+    // Stop->NewKFs lock-order edge (docs/P10_RECON.md 2부 item 4).
+    mbAbortBA.store(true, std::memory_order_relaxed);
 }
 
 bool LocalMapping::Stop()
@@ -910,7 +912,7 @@ bool LocalMapping::SetNotStop(bool flag)
 
 void LocalMapping::InterruptBA()
 {
-    mbAbortBA = true;
+    mbAbortBA.store(true, std::memory_order_relaxed);
 }
 
 void LocalMapping::KeyFrameCulling()
@@ -1060,7 +1062,7 @@ void LocalMapping::KeyFrameCulling()
                 pKF->SetBadFlag();
             }
         }
-        if((count > 20 && mbAbortBA) || count>100)
+        if((count > 20 && mbAbortBA.load(std::memory_order_relaxed)) || count>100)
         {
             break;
         }

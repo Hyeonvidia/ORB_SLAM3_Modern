@@ -46,7 +46,7 @@ int G2oBackend::PoseInertialOptimizationLastFrame(Frame* pFrame, bool bRecInit) 
 
 // ---- ITrackingOptimizer + ILoopOptimizer ------------------------------------
 
-void G2oBackend::GlobalBundleAdjustment(Map* pMap, int nIterations, bool* pbStopFlag,
+void G2oBackend::GlobalBundleAdjustment(Map* pMap, int nIterations, const std::atomic<bool>* pbStopFlag,
                                         unsigned long nLoopKF, bool bRobust,
                                         GBAResult* pResult) const
 {
@@ -55,14 +55,14 @@ void G2oBackend::GlobalBundleAdjustment(Map* pMap, int nIterations, bool* pbStop
 
 // ---- IMappingOptimizer ------------------------------------------------------
 
-void G2oBackend::LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag, Map* pMap,
+void G2oBackend::LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                        int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                        BAEpochs& epochs) const
 {
     Optimizer::LocalBundleAdjustment(pKF, pbStopFlag, pMap, num_fixedKF, num_OptKF, num_MPs, num_edges, epochs);
 }
 
-void G2oBackend::LocalInertialBA(KeyFrame* pKF, bool* pbStopFlag, Map* pMap,
+void G2oBackend::LocalInertialBA(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                  int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                  bool bLarge, bool bRecInit, BAEpochs& epochs) const
 {
@@ -85,7 +85,7 @@ void G2oBackend::InertialOptimization(Map* pMap, Eigen::Matrix3d& Rwg, double& s
 // ---- IMappingOptimizer + ILoopOptimizer -------------------------------------
 
 void G2oBackend::FullInertialBA(Map* pMap, int its, bool bFixLocal, unsigned long nLoopKF,
-                                bool* pbStopFlag, bool bInit, float priorG, float priorA,
+                                const std::atomic<bool>* pbStopFlag, bool bInit, float priorG, float priorA,
                                 Eigen::VectorXd* vSingVal, bool* bHess,
                                 GBAResult* pResult, BAEpochs& epochs) const
 {
@@ -128,14 +128,14 @@ void G2oBackend::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFra
     Optimizer::OptimizeEssentialGraph4DoF(pMap, pLoopKF, pCurKF, NonCorrectedSim3, CorrectedSim3, LoopConnections);
 }
 
-void G2oBackend::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool* pbStopFlag, Map* pMap,
+void G2oBackend::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                  LoopClosing::KeyFrameAndPose& corrPoses, BAEpochs& epochs) const
 {
     Optimizer::MergeInertialBA(pCurrKF, pMergeKF, pbStopFlag, pMap, corrPoses, epochs);
 }
 
 void G2oBackend::LocalBundleAdjustment(KeyFrame* pMainKF, std::vector<KeyFrame*> vpAdjustKF,
-                                       std::vector<KeyFrame*> vpFixedKF, bool* pbStopFlag,
+                                       std::vector<KeyFrame*> vpFixedKF, const std::atomic<bool>* pbStopFlag,
                                        const BAEpochs& epochs) const
 {
     Optimizer::LocalBundleAdjustment(pMainKF, vpAdjustKF, vpFixedKF, pbStopFlag, epochs);
