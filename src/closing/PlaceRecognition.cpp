@@ -20,6 +20,7 @@
 #include "closing/PlaceRecognition.hpp"
 
 #include "closing/LoopClosing.hpp"       // host state via the friend grant (P8-4 pattern)
+#include "core/FixFlags.hpp"             // P11-F2: Fix.ScaleJacobian rides into OptimizeSim3
 #include "core/System.hpp"               // System::eSensor enumerators
 #include "tracking/Tracking.hpp"         // mHost.mpTracker->mSensor reads
 #include "geometry/Sim3Solver.hpp"
@@ -505,9 +506,19 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
                     // Optimize Sim3 transformation with every matches
                     Eigen::Matrix<double, 7, 7> mHessian7x7;
 
-                    // Intentionally passes raw mHost.mbFixScale, without the IMU_MONOCULAR
-                    // relaxation used elsewhere (upstream behavior, docs/P9_RECON.md D6).
-                    int numOptMatches = mHost.mpOptimizer->OptimizeSim3(mHost.mpCurrentKF, pKFi, vpMatchedMP, gScm, 10, mHost.mbFixScale, mHessian7x7, true);
+                    // Upstream passes raw mHost.mbFixScale here, without the
+                    // IMU_MONOCULAR pre-BA2 relaxation already computed above
+                    // (bFixedScale) and used by the other three OptimizeSim3
+                    // sites — preserved bug-for-bug at level 0 (DIVERGENCES
+                    // #24, docs/P9_RECON.md D6). P11-F2: Fix.ScaleJacobian
+                    // (#9's flag — same MI early-scale-window semantics, same
+                    // validation runs) passes the relaxed value instead.
+                    // Config-class site, not hot: direct FixFlags read, no
+                    // ctor caching needed (contrast EdgeInertialGS, P11-F1).
+                    const bool bSim3FixScale =
+                        FixFlags::I().scaleJacobianChainRule ? bFixedScale
+                                                             : mHost.mbFixScale;
+                    int numOptMatches = mHost.mpOptimizer->OptimizeSim3(mHost.mpCurrentKF, pKFi, vpMatchedMP, gScm, 10, bSim3FixScale, mHessian7x7, true);
 
                     if(numOptMatches >= nSim3Inliers)
                     {
