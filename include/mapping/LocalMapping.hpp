@@ -91,6 +91,15 @@ public:
     void EmptyQueue();
 
     // Thread Synch
+    //
+    // P10-2 canonical lock order (also in docs/OWNERSHIP.md):
+    //   mMutexFinish -> mMutexStop -> mMutexNewKFs
+    //   mMutexReset  -> mMutexNewKFs      (LM ResetIfRequested)
+    //   LoopClosing: mMutexReset -> mMutexLoopQueue; mMutexGBA standalone
+    //   mMutexAccept standalone
+    // SetFinish() and Release() both follow Finish -> Stop (Release was
+    // Stop -> Finish until P10-2 -- the R6 ABBA deadlock found in the P10
+    // recon). Never take an earlier mutex while holding a later one.
     void RequestStop();
     void RequestReset();
     void RequestResetActiveMap(Map* pMap);
@@ -115,9 +124,19 @@ public:
     bool IsInitializing();
     double GetCurrKFTime();
 
-    double mFirstTs;
+    // P10-2: atomic (ledger race R5 -- a torn double was possible). TWO
+    // writer threads (Tracking at monocular-inertial map creation,
+    // ImuInitializer on the LM thread) plus cross-thread readers
+    // (System::GetTimeFromIMUInit). Relaxed everywhere: lone timestamp,
+    // no ordering contract with other data.
+    std::atomic<double> mFirstTs;
+    static_assert(std::atomic<double>::is_always_lock_free,
+                  "atomic<double> must be lock-free on target ABIs (arm64/x86-64)");
 
-    bool mbBadImu;
+    // P10-2: atomic (ledger race R5). Written by the LM thread (Run
+    // no-motion branch, ResetIfRequested); read lock-free by Tracking
+    // (Track entry gate) and the LM Run gates. Relaxed -- advisory flag.
+    std::atomic<bool> mbBadImu;
 
     // not consider far points (clouds)
     bool mbFarPoints;
@@ -155,14 +174,22 @@ protected:
     bool mbInertial;
 
     void ResetIfRequested();
-    bool mbResetRequested;
-    bool mbResetRequestedActiveMap;
+    // P10-2: request flags atomic (ledger race R5) -- the ImuInitializer
+    // early guards read them lock-free from the LM thread. Writes stay
+    // inside the existing mMutexReset scopes (the requester spin handshake
+    // is unchanged); mpMapToReset stays mutex-guarded.
+    std::atomic<bool> mbResetRequested;
+    std::atomic<bool> mbResetRequestedActiveMap;
     Map* mpMapToReset;
     std::mutex mMutexReset;
 
     bool CheckFinish();
     void SetFinish();
-    bool mbFinishRequested;
+    // P10-2: atomic (prep for the P10-4 park predicate). The store keeps
+    // the existing mMutexFinish scope in RequestFinish; CheckFinish reads
+    // lock-free relaxed. mbFinished stays under mMutexFinish because
+    // SetFinish couples it with mbStopped.
+    std::atomic<bool> mbFinishRequested;
     bool mbFinished;
     std::mutex mMutexFinish;
 
@@ -180,7 +207,12 @@ protected:
 
     std::list<KeyFrame*> mlNewKeyFrames;
 
-    KeyFrame* mpCurrentKeyFrame;
+    // P10-2: atomic (ledger race R5). Store-release in ProcessNewKeyFrame
+    // (pairs with the mMutexNewKFs handoff to make the Tracking-thread KF
+    // construction visible), load-acquire in GetCurrKFTime (the lock-free
+    // cross-thread reader via System::GetTimeFromIMUInit); all same-thread
+    // (LM) uses are relaxed loads.
+    std::atomic<KeyFrame*> mpCurrentKeyFrame;
 
     std::list<MapPoint*> mlpRecentAddedMapPoints;
 
@@ -220,7 +252,9 @@ protected:
     // called by ImuInitializer at the end of both entry points.
     void PurgeNewKeyFramesAfterInertialInit();
 
-    bool bInitializing;
+    // P10-2: atomic (ledger race R5). Written by ImuInitializer (LM
+    // thread), read lock-free by Tracking via IsInitializing. Relaxed.
+    std::atomic<bool> bInitializing;
 
     float mTinit;
 

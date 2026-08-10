@@ -44,6 +44,7 @@
 
 #include "camera/GeometricCamera.hpp"
 
+#include <atomic>
 #include <mutex>
 #include <unordered_set>
 #include <fstream>
@@ -105,7 +106,9 @@ public:
     void UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurrentKeyFrame);
     KeyFrame* GetLastKeyFrame()
     {
-        return mpLastKeyFrame;
+        // P10-2 (ledger race R-f): LoopClosing/GBA call this lock-free from
+        // their threads; load-acquire pairs with the store-release writes.
+        return mpLastKeyFrame.load(std::memory_order_acquire);
     }
 
     void CreateMapInAtlas();
@@ -411,7 +414,12 @@ protected:
     int mnMatchesInliers;
 
     //Last Frame, KeyFrame and Relocalisation Info
-    KeyFrame* mpLastKeyFrame;
+    // P10-2: atomic (ledger race R-f). Tracking-thread writes use
+    // store-release (so the lock-free readers in LoopClosing/GBA see a
+    // fully constructed KF via GetLastKeyFrame's load-acquire); note
+    // UpdateFrameIMU also writes it FROM the LM/LC threads (inherited
+    // cross-write, unchanged). Tracking-internal reads are relaxed.
+    std::atomic<KeyFrame*> mpLastKeyFrame;
     unsigned int mnLastKeyFrameId;
     unsigned int mnLastRelocFrameId;
     double mTimeStampLost;

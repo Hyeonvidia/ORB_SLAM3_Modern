@@ -205,7 +205,10 @@ protected:
     bool mbFixScale;
 
 
-    int mnFullBAIdx;
+    // P10-2: atomic (ledger race R-d). The GBA thread's first epoch read
+    // is lock-free (relaxed); increments stay inside the existing
+    // mMutexGBA scopes, and the under-lock recheck pairs with them.
+    std::atomic<int> mnFullBAIdx;
 
 
     // To (de)activate LC

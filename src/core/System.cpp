@@ -1269,9 +1269,11 @@ vector<cv::KeyPoint> System::GetTrackedKeyPointsUn()
 
 double System::GetTimeFromIMUInit()
 {
-    double aux = mpLocalMapper->GetCurrKFTime()-mpLocalMapper->mFirstTs;
+    // P10-2 (R5): mFirstTs is atomic now (this lock-free cross-thread read
+    // could tear a double before).
+    double aux = mpLocalMapper->GetCurrKFTime()-mpLocalMapper->mFirstTs.load(std::memory_order_relaxed);
     if ((aux>0.) && mpAtlas->isImuInitialized())
-        return mpLocalMapper->GetCurrKFTime()-mpLocalMapper->mFirstTs;
+        return mpLocalMapper->GetCurrKFTime()-mpLocalMapper->mFirstTs.load(std::memory_order_relaxed);
     else
         return 0.f;
 }

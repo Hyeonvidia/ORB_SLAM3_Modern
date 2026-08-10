@@ -82,6 +82,48 @@ LC 스레드판 R-목록. 상세 file:line은 docs/P9_RECON.md §4 및 정찰 �
 - **R-f** LC 스레드가 `mpTracker->GetLastKeyFrame()`을 무락 호출(MergeLocal2·GBA).
   또한 RequestReset*이 LC의 SetFinish 이후 호출되면 영구 스핀.
 
+### P10-2 수정 기록 (2026-08-10) — 위 대장 중 순수-안전 클래스 일괄 해소
+
+**정준 잠금 순서 (신규, 규범)**: `mMutexFinish → mMutexStop → mMutexNewKFs`;
+`LM mMutexReset → mMutexNewKFs`; `LC mMutexReset → mMutexLoopQueue`;
+`mMutexAccept`/`mMutexGBA` 단독. 역방향 중첩 금지
+(LocalMapping.hpp Thread Synch 주석과 동일 문구).
+
+FIXED (각 1줄 메커니즘):
+- **R1**: `Release()`의 큐 순회+delete+clear가 mMutexNewKFs(최내곽)를 추가로
+  든다 — 초기화 생산자 push_back과의 std::list 동시 변형 소거.
+- **R3**: `PurgeNewKeyFramesAfterInertialInit()` 전체가 mMutexNewKFs 하에서
+  실행 (SetBadFlag는 KF/Map 계층 뮤텍스만 취해 역중첩 없음).
+- **R6**: `Release()` 잠금 순서를 Stop→Finish에서 **Finish→Stop**으로 재배열
+  — SetFinish와의 ABBA 데드락 소거.
+- **R-a**: LM/LC `Run()` 진입부 `mbFinished=false`를 mMutexFinish 하에 기록
+  (atomic 아님 — SetFinish가 mbStopped와 결합).
+- **R-b**: LC `ResetIfRequested`의 큐 변형 2곳이 mMutexLoopQueue(내곽)를
+  추가로 든다 — 생산자와 같은 락으로 통일.
+- **R-c**: GBA 스폰 플래그 3종(mbRunningGBA/mbFinishedGBA/mbStopGBA) 기록을
+  양 스폰 지점에서 mMutexGBA 스코프로 감쌈 (reap-join과 mpThreadGBA는 락
+  밖 — GBA 꼬리가 mMutexGBA를 취하므로 락 하 join은 데드락 가능).
+- **R-d**: `mnFullBAIdx` → atomic<int>; 증가는 기존 mMutexGBA 스코프 유지,
+  GBA의 무락 1차 읽기는 relaxed load.
+- **R-f**(전반부): `Tracking::mpLastKeyFrame` → atomic<KeyFrame*>; 쓰기
+  store-release, GetLastKeyFrame load-acquire, T 내부 읽기 relaxed.
+  (후반부 SetFinish-후-영구-스핀은 미수정 — 문서화된 프로토콜 특이점.)
+- **R5 플래그류**: `mbBadImu`·`bInitializing`·`mbResetRequested(ActiveMap)`·
+  `mbFinishRequested` → atomic<bool> relaxed; `mFirstTs` → atomic<double>
+  (is_always_lock_free static_assert); `mpCurrentKeyFrame` →
+  atomic<KeyFrame*> (ProcessNewKeyFrame store-release ↔ GetCurrKFTime
+  load-acquire, LM 내부 relaxed). 큐 clear 2곳(ResetIfRequested)도
+  mMutexNewKFs로 폐쇄 (프로토콜 보호였으나 균일화).
+
+명시적으로 NOT fixed (P10-2 범위 밖, 존치):
+- **Frame 객체/IMU-계약 레이스**: `Frame::operator=` 교차 복사 vs LM/LC의
+  UpdateFrameIMU·`t0IMU`(ImuInitializer.cpp:160)·mState_·mnMatchesInliers —
+  Frame 객체 수명 계약 재설계 필요, P11 이월 (TSAN T3 시그니처 잔존 예상).
+- **툼스톤 계약 클래스**: 154개 무락 isBad() 역참조, Atlas 무락 메서드군,
+  `_Rb_tree` 집합 복사 잡음 — 계약(락 아님), FixLevel 백로그.
+- **R2**(EmptyQueue 순서)는 P10-3, **R-e**는 P10-1에서 기해소, GBA 수명/
+  Shutdown은 P10-5.
+
 ## GBA 스레드 수명 (P9-2 기록)
 
 - 생성 2곳(CorrectLoop 스폰, MergeLocal 재스폰), **join은 어디에도 없음**.

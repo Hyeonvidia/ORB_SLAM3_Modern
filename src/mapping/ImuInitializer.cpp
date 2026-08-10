@@ -36,7 +36,7 @@ ImuInitializer::ImuInitializer(LocalMapping& host):
 
 void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
 {
-    if (mHost.mbResetRequested)
+    if (mHost.mbResetRequested.load(std::memory_order_relaxed))
         return;
 
     float minTime;
@@ -58,7 +58,7 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
     // Retrieve all keyframe in temporal order
     list<KeyFrame*> lpKF;
-    KeyFrame* pKF = mHost.mpCurrentKeyFrame;
+    KeyFrame* pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
     while(pKF->mPrevKF)
     {
         lpKF.push_front(pKF);
@@ -70,23 +70,23 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     if(vpKF.size()<nMinKF)
         return;
 
-    mHost.mFirstTs=vpKF.front()->mTimeStamp;
-    if(mHost.mpCurrentKeyFrame->mTimeStamp-mHost.mFirstTs<minTime)
+    mHost.mFirstTs.store(vpKF.front()->mTimeStamp, std::memory_order_relaxed);
+    if(mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mTimeStamp-mHost.mFirstTs.load(std::memory_order_relaxed)<minTime)
         return;
 
-    mHost.bInitializing = true;
+    mHost.bInitializing.store(true, std::memory_order_relaxed);
 
     while(mHost.CheckNewKeyFrames())
     {
         mHost.ProcessNewKeyFrame();
-        vpKF.push_back(mHost.mpCurrentKeyFrame);
-        lpKF.push_back(mHost.mpCurrentKeyFrame);
+        vpKF.push_back(mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
+        lpKF.push_back(mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
     }
 
     const int N = vpKF.size();
 
     // Compute and KF velocities mRwg estimation
-    if (!mHost.mpCurrentKeyFrame->GetMap()->isImuInitialized())
+    if (!mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->isImuInitialized())
     {
         Eigen::Matrix3f Rwg;
         Eigen::Vector3f dirG;
@@ -113,13 +113,13 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         Eigen::Vector3f vzg = v*ang/nv;
         Rwg = Sophus::SO3f::exp(vzg).matrix();
         mRwg = Rwg.cast<double>();
-        mHost.mTinit = mHost.mpCurrentKeyFrame->mTimeStamp-mHost.mFirstTs;
+        mHost.mTinit = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mTimeStamp-mHost.mFirstTs.load(std::memory_order_relaxed);
     }
     else
     {
         mRwg = Eigen::Matrix3d::Identity();
-        mbg = mHost.mpCurrentKeyFrame->GetGyroBias().cast<double>();
-        mba = mHost.mpCurrentKeyFrame->GetAccBias().cast<double>();
+        mbg = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetGyroBias().cast<double>();
+        mba = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetAccBias().cast<double>();
     }
 
     mScale=1.0;
@@ -132,7 +132,7 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     if (mScale<1e-1)
     {
         cout << "scale too small" << endl;
-        mHost.bInitializing=false;
+        mHost.bInitializing.store(false, std::memory_order_relaxed);
         return;
     }
 
@@ -142,7 +142,7 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         if ((fabs(mScale - 1.f) > 0.00001) || !mHost.mbMonocular) {
             Sophus::SE3f Twg(mRwg.cast<float>().transpose(), Eigen::Vector3f::Zero());
             mHost.mpAtlas->GetCurrentMap()->ApplyScaledRotation(Twg, mScale, true);
-            mHost.mpTracker->UpdateFrameIMU(mScale, vpKF[0]->GetImuBias(), mHost.mpCurrentKeyFrame);
+            mHost.mpTracker->UpdateFrameIMU(mScale, vpKF[0]->GetImuBias(), mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
         }
 
         // Check if initialization OK
@@ -153,12 +153,12 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
             }
     }
 
-    mHost.mpTracker->UpdateFrameIMU(1.0,vpKF[0]->GetImuBias(),mHost.mpCurrentKeyFrame);
+    mHost.mpTracker->UpdateFrameIMU(1.0,vpKF[0]->GetImuBias(),mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
     if (!mHost.mpAtlas->isImuInitialized())
     {
         mHost.mpAtlas->SetImuInitialized();
         mHost.mpTracker->t0IMU = mHost.mpTracker->mCurrentFrame.mTimeStamp;
-        mHost.mpCurrentKeyFrame->bImu = true;
+        mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->bImu = true;
     }
 
     // Result buffers of this GBA invocation (P5-D, was the KeyFrame/MapPoint
@@ -168,9 +168,9 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     if (bFIBA)
     {
         if (priorA!=0.f)
-            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame->mnId, NULL, true, priorG, priorA, NULL, NULL, &gbaResult, *mHost.mpBAEpochs);
+            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId, NULL, true, priorG, priorA, NULL, NULL, &gbaResult, *mHost.mpBAEpochs);
         else
-            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame->mnId, NULL, false, 1e2, 1e6, NULL, NULL, &gbaResult, *mHost.mpBAEpochs);
+            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId, NULL, false, 1e2, 1e6, NULL, NULL, &gbaResult, *mHost.mpBAEpochs);
     }
 
     Verbose::PrintMess("Global Bundle Adjustment finished\nUpdating map ...", Verbose::VERBOSITY_NORMAL);
@@ -182,8 +182,8 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     while(mHost.CheckNewKeyFrames())
     {
         mHost.ProcessNewKeyFrame();
-        vpKF.push_back(mHost.mpCurrentKeyFrame);
-        lpKF.push_back(mHost.mpCurrentKeyFrame);
+        vpKF.push_back(mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
+        lpKF.push_back(mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
     }
 
     // Correct keyframes starting at map first keyframe
@@ -286,9 +286,9 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     // legitimate cross-thread writer of the tracking state; see the warning
     // block at the top of docs/P7_RECON.md and finding F11 there.
     mHost.mpTracker->NotifyImuInitialized();
-    mHost.bInitializing = false;
+    mHost.bInitializing.store(false, std::memory_order_relaxed);
 
-    mHost.mpCurrentKeyFrame->GetMap()->IncreaseChangeIndex();
+    mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->IncreaseChangeIndex();
 
     return;
 }
@@ -297,12 +297,12 @@ void ImuInitializer::ScaleRefinement()
 {
     // Minimum number of keyframes to compute a solution
     // Minimum time (seconds) between first and last keyframe to compute a solution. Make the difference between monocular and stereo
-    if (mHost.mbResetRequested)
+    if (mHost.mbResetRequested.load(std::memory_order_relaxed))
         return;
 
     // Retrieve all keyframes in temporal order
     list<KeyFrame*> lpKF;
-    KeyFrame* pKF = mHost.mpCurrentKeyFrame;
+    KeyFrame* pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
     while(pKF->mPrevKF)
     {
         lpKF.push_front(pKF);
@@ -314,8 +314,8 @@ void ImuInitializer::ScaleRefinement()
     while(mHost.CheckNewKeyFrames())
     {
         mHost.ProcessNewKeyFrame();
-        vpKF.push_back(mHost.mpCurrentKeyFrame);
-        lpKF.push_back(mHost.mpCurrentKeyFrame);
+        vpKF.push_back(mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
+        lpKF.push_back(mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
     }
 
     mRwg = Eigen::Matrix3d::Identity();
@@ -326,7 +326,7 @@ void ImuInitializer::ScaleRefinement()
     if (mScale<1e-1) // 1e-1
     {
         cout << "scale too small" << endl;
-        mHost.bInitializing=false;
+        mHost.bInitializing.store(false, std::memory_order_relaxed);
         return;
     }
 
@@ -336,13 +336,13 @@ void ImuInitializer::ScaleRefinement()
     {
         Sophus::SE3f Tgw(mRwg.cast<float>().transpose(),Eigen::Vector3f::Zero());
         mHost.mpAtlas->GetCurrentMap()->ApplyScaledRotation(Tgw,mScale,true);
-        mHost.mpTracker->UpdateFrameIMU(mScale,mHost.mpCurrentKeyFrame->GetImuBias(),mHost.mpCurrentKeyFrame);
+        mHost.mpTracker->UpdateFrameIMU(mScale,mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetImuBias(),mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed));
     }
 
     mHost.PurgeNewKeyFramesAfterInertialInit();
 
     // To perform pose-inertial opt w.r.t. last keyframe
-    mHost.mpCurrentKeyFrame->GetMap()->IncreaseChangeIndex();
+    mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->IncreaseChangeIndex();
 
     return;
 }

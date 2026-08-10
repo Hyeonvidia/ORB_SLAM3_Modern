@@ -979,7 +979,7 @@ void Tracking::PreintegrateIMU()
 
     mCurrentFrame.mpImuPreintegratedFrame = pImuPreintegratedFromLastFrame;
     mCurrentFrame.mpImuPreintegrated = mpImuPreintegratedFromLastKF;
-    mCurrentFrame.mpLastKeyFrame = mpLastKeyFrame;
+    mCurrentFrame.mpLastKeyFrame = mpLastKeyFrame.load(std::memory_order_relaxed);
 
     mCurrentFrame.setIntegrated();
 
@@ -995,21 +995,21 @@ bool Tracking::PredictStateIMU()
         return false;
     }
 
-    if(mbMapUpdated && mpLastKeyFrame)
+    if(mbMapUpdated && mpLastKeyFrame.load(std::memory_order_relaxed))
     {
-        const Eigen::Vector3f twb1 = mpLastKeyFrame->GetImuPosition();
-        const Eigen::Matrix3f Rwb1 = mpLastKeyFrame->GetImuRotation();
-        const Eigen::Vector3f Vwb1 = mpLastKeyFrame->GetVelocity();
+        const Eigen::Vector3f twb1 = mpLastKeyFrame.load(std::memory_order_relaxed)->GetImuPosition();
+        const Eigen::Matrix3f Rwb1 = mpLastKeyFrame.load(std::memory_order_relaxed)->GetImuRotation();
+        const Eigen::Vector3f Vwb1 = mpLastKeyFrame.load(std::memory_order_relaxed)->GetVelocity();
 
         const Eigen::Vector3f Gz(0, 0, -IMU::GRAVITY_VALUE);
         const float t12 = mpImuPreintegratedFromLastKF->dT;
 
-        Eigen::Matrix3f Rwb2 = IMU::NormalizeRotation(Rwb1 * mpImuPreintegratedFromLastKF->GetDeltaRotation(mpLastKeyFrame->GetImuBias()));
-        Eigen::Vector3f twb2 = twb1 + Vwb1*t12 + 0.5f*t12*t12*Gz+ Rwb1*mpImuPreintegratedFromLastKF->GetDeltaPosition(mpLastKeyFrame->GetImuBias());
-        Eigen::Vector3f Vwb2 = Vwb1 + t12*Gz + Rwb1 * mpImuPreintegratedFromLastKF->GetDeltaVelocity(mpLastKeyFrame->GetImuBias());
+        Eigen::Matrix3f Rwb2 = IMU::NormalizeRotation(Rwb1 * mpImuPreintegratedFromLastKF->GetDeltaRotation(mpLastKeyFrame.load(std::memory_order_relaxed)->GetImuBias()));
+        Eigen::Vector3f twb2 = twb1 + Vwb1*t12 + 0.5f*t12*t12*Gz+ Rwb1*mpImuPreintegratedFromLastKF->GetDeltaPosition(mpLastKeyFrame.load(std::memory_order_relaxed)->GetImuBias());
+        Eigen::Vector3f Vwb2 = Vwb1 + t12*Gz + Rwb1 * mpImuPreintegratedFromLastKF->GetDeltaVelocity(mpLastKeyFrame.load(std::memory_order_relaxed)->GetImuBias());
         mCurrentFrame.SetImuPoseVelocity(Rwb2,twb2,Vwb2);
 
-        mCurrentFrame.mImuBias = mpLastKeyFrame->GetImuBias();
+        mCurrentFrame.mImuBias = mpLastKeyFrame.load(std::memory_order_relaxed)->GetImuBias();
         mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
         return true;
     }
@@ -1054,7 +1054,7 @@ void Tracking::Track()
         mbStep = false;
     }
 
-    if(mpLocalMapper->mbBadImu)
+    if(mpLocalMapper->mbBadImu.load(std::memory_order_relaxed))
     {
         cout << "TRACK: Reset map because local mapper set the bad imu flag " << endl;
         mpResetRequester->RequestResetActiveMap();
@@ -1108,8 +1108,8 @@ void Tracking::Track()
     }
 
 
-    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && mpLastKeyFrame)
-        mCurrentFrame.SetNewBias(mpLastKeyFrame->GetImuBias());
+    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && mpLastKeyFrame.load(std::memory_order_relaxed))
+        mCurrentFrame.SetNewBias(mpLastKeyFrame.load(std::memory_order_relaxed)->GetImuBias());
 
     if(GetState()==NO_IMAGES_YET)
     {
@@ -1275,8 +1275,8 @@ void Tracking::Track()
                     }else
                         CreateMapInAtlas();
 
-                    if(mpLastKeyFrame)
-                        mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
+                    if(mpLastKeyFrame.load(std::memory_order_relaxed))
+                        mpLastKeyFrame.store(static_cast<KeyFrame*>(NULL), std::memory_order_release);
 
                     Verbose::PrintMess("done", Verbose::VERBOSITY_NORMAL);
 
@@ -1678,7 +1678,7 @@ void Tracking::StereoInitialization()
 
         mLastFrame = Frame(mCurrentFrame);
         mnLastKeyFrameId = mCurrentFrame.mnId;
-        mpLastKeyFrame = pKFini;
+        mpLastKeyFrame.store(pKFini, std::memory_order_release);
         //mnLastRelocFrameId = mCurrentFrame.mnId;
 
         mvpLocalKeyFrames.push_back(pKFini);
@@ -1874,11 +1874,11 @@ void Tracking::CreateInitialMapMonocular()
 
     mpLocalMapper->InsertKeyFrame(pKFini);
     mpLocalMapper->InsertKeyFrame(pKFcur);
-    mpLocalMapper->mFirstTs=pKFcur->mTimeStamp;
+    mpLocalMapper->mFirstTs.store(pKFcur->mTimeStamp, std::memory_order_relaxed);
 
     mCurrentFrame.SetPose(pKFcur->GetPose());
     mnLastKeyFrameId=mCurrentFrame.mnId;
-    mpLastKeyFrame = pKFcur;
+    mpLastKeyFrame.store(pKFcur, std::memory_order_release);
     //mnLastRelocFrameId = mInitialFrame.mnId;
 
     mvpLocalKeyFrames.push_back(pKFcur);
@@ -1938,8 +1938,8 @@ void Tracking::CreateMapInAtlas()
         mpImuPreintegratedFromLastKF = new IMU::Preintegrated(IMU::Bias(),*mpImuCalib);
     }
 
-    if(mpLastKeyFrame)
-        mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
+    if(mpLastKeyFrame.load(std::memory_order_relaxed))
+        mpLastKeyFrame.store(static_cast<KeyFrame*>(NULL), std::memory_order_release);
 
     if(mpReferenceKF)
         mpReferenceKF = static_cast<KeyFrame*>(NULL);
@@ -2316,9 +2316,9 @@ bool Tracking::NeedNewKeyFrame()
 {
     if((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && !mpAtlas->GetCurrentMap()->isImuInitialized())
     {
-        if (mSensor == System::IMU_MONOCULAR && (mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.25)
+        if (mSensor == System::IMU_MONOCULAR && (mCurrentFrame.mTimeStamp-mpLastKeyFrame.load(std::memory_order_relaxed)->mTimeStamp)>=0.25)
             return true;
-        else if ((mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && (mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.25)
+        else if ((mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && (mCurrentFrame.mTimeStamp-mpLastKeyFrame.load(std::memory_order_relaxed)->mTimeStamp)>=0.25)
             return true;
         else
             return false;
@@ -2415,16 +2415,16 @@ bool Tracking::NeedNewKeyFrame()
     //std::cout << "NeedNewKF: c1a=" << c1a << "; c1b=" << c1b << "; c1c=" << c1c << "; c2=" << c2 << std::endl;
     // Temporal condition for Inertial cases
     bool c3 = false;
-    if(mpLastKeyFrame)
+    if(mpLastKeyFrame.load(std::memory_order_relaxed))
     {
         if (mSensor==System::IMU_MONOCULAR)
         {
-            if ((mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.5)
+            if ((mCurrentFrame.mTimeStamp-mpLastKeyFrame.load(std::memory_order_relaxed)->mTimeStamp)>=0.5)
                 c3 = true;
         }
         else if (mSensor==System::IMU_STEREO || mSensor == System::IMU_RGBD)
         {
-            if ((mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.5)
+            if ((mCurrentFrame.mTimeStamp-mpLastKeyFrame.load(std::memory_order_relaxed)->mTimeStamp)>=0.5)
                 c3 = true;
         }
     }
@@ -2481,10 +2481,10 @@ void Tracking::CreateNewKeyFrame()
     mpReferenceKF = pKF;
     mCurrentFrame.mpReferenceKF = pKF;
 
-    if(mpLastKeyFrame)
+    if(mpLastKeyFrame.load(std::memory_order_relaxed))
     {
-        pKF->mPrevKF = mpLastKeyFrame;
-        mpLastKeyFrame->mNextKF = pKF;
+        pKF->mPrevKF = mpLastKeyFrame.load(std::memory_order_relaxed);
+        mpLastKeyFrame.load(std::memory_order_relaxed)->mNextKF = pKF;
     }
     else
         Verbose::PrintMess("No last KF in KF creation!!", Verbose::VERBOSITY_NORMAL);
@@ -2588,7 +2588,7 @@ void Tracking::CreateNewKeyFrame()
     mpLocalMapper->SetNotStop(false);
 
     mnLastKeyFrameId = mCurrentFrame.mnId;
-    mpLastKeyFrame = pKF;
+    mpLastKeyFrame.store(pKF, std::memory_order_release);
 }
 
 void Tracking::SearchLocalPoints()
@@ -3079,7 +3079,7 @@ void Tracking::Reset(bool bLocMap)
     mnLastRelocFrameId = 0;
     mLastFrame = Frame();
     mpReferenceKF = static_cast<KeyFrame*>(NULL);
-    mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
+    mpLastKeyFrame.store(static_cast<KeyFrame*>(NULL), std::memory_order_release);
     mvIniMatches.clear();
 
     if(mpViewer)
@@ -3168,7 +3168,7 @@ void Tracking::ResetActiveMap(bool bLocMap)
     mCurrentFrame = Frame();
     mLastFrame = Frame();
     mpReferenceKF = static_cast<KeyFrame*>(NULL);
-    mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
+    mpLastKeyFrame.store(static_cast<KeyFrame*>(NULL), std::memory_order_release);
     mvIniMatches.clear();
 
     mbVelocity = false;
@@ -3216,7 +3216,7 @@ void Tracking::UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurr
 
     mLastBias = b;
 
-    mpLastKeyFrame = pCurrentKeyFrame;
+    mpLastKeyFrame.store(pCurrentKeyFrame, std::memory_order_release);
 
     mLastFrame.SetNewBias(mLastBias);
     mCurrentFrame.SetNewBias(mLastBias);

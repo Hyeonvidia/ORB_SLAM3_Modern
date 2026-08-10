@@ -113,7 +113,12 @@ void LoopClosing::SetLocalMapper(LocalMapping *pLocalMapper)
 
 void LoopClosing::Run()
 {
-    mbFinished =false;
+    {
+        // P10-2 (R-a): the entry write raced isFinished readers; now under
+        // the owning mutex.
+        unique_lock<mutex> lock(mMutexFinish);
+        mbFinished =false;
+    }
 
     while(1)
     {
@@ -356,7 +361,7 @@ void LoopClosing::CorrectLoop()
         unique_lock<mutex> lock(mMutexGBA);
         mbStopGBA.store(true, std::memory_order_relaxed);
 
-        mnFullBAIdx++;
+        mnFullBAIdx.fetch_add(1, std::memory_order_relaxed);
 
         if(mpThreadGBA)
         {
@@ -557,9 +562,16 @@ void LoopClosing::CorrectLoop()
     // Launch a new thread to perform Global Bundle Adjustment (Only if few keyframes, if not it would take too much time)
     if(!pLoopMap->isImuInitialized() || (pLoopMap->KeyFramesInMap()<200 && mpAtlas->CountMaps()==1))
     {
-        mbRunningGBA = true;
-        mbFinishedGBA = false;
-        mbStopGBA.store(false, std::memory_order_relaxed);
+        {
+            // P10-2 (R-c): spawn flag writes now under mMutexGBA (they raced
+            // isRunningGBA and the GBA tail). The reap-join and mpThreadGBA
+            // stay OUTSIDE the lock: the pointer is LC-thread-confined, and
+            // the GBA tail takes mMutexGBA -- joining under it could deadlock.
+            unique_lock<mutex> lock(mMutexGBA);
+            mbRunningGBA = true;
+            mbFinishedGBA = false;
+            mbStopGBA.store(false, std::memory_order_relaxed);
+        }
 
         // DIVERGENCES #22: a normally-completed GBA left a joinable thread
         // object here that upstream simply overwrote (only the abort path
@@ -598,7 +610,7 @@ void LoopClosing::MergeLocal()
         unique_lock<mutex> lock(mMutexGBA);
         mbStopGBA.store(true, std::memory_order_relaxed);
 
-        mnFullBAIdx++;
+        mnFullBAIdx.fetch_add(1, std::memory_order_relaxed);
 
         if(mpThreadGBA)
         {
@@ -1103,9 +1115,14 @@ void LoopClosing::MergeLocal()
     if(bRelaunchBA && (!pCurrentMap->isImuInitialized() || (pCurrentMap->KeyFramesInMap()<200 && mpAtlas->CountMaps()==1)))
     {
         // Launch a new thread to perform Global Bundle Adjustment
-        mbRunningGBA = true;
-        mbFinishedGBA = false;
-        mbStopGBA.store(false, std::memory_order_relaxed);
+        {
+            // P10-2 (R-c): spawn flag writes under mMutexGBA; reap-join and
+            // mpThreadGBA stay outside (see the CorrectLoop spawn site).
+            unique_lock<mutex> lock(mMutexGBA);
+            mbRunningGBA = true;
+            mbFinishedGBA = false;
+            mbStopGBA.store(false, std::memory_order_relaxed);
+        }
         // DIVERGENCES #22: reap a completed predecessor before overwriting.
         if(mpThreadGBA)
         {
@@ -1141,7 +1158,7 @@ void LoopClosing::MergeLocal2()
         unique_lock<mutex> lock(mMutexGBA);
         mbStopGBA.store(true, std::memory_order_relaxed);
 
-        mnFullBAIdx++;
+        mnFullBAIdx.fetch_add(1, std::memory_order_relaxed);
 
         if(mpThreadGBA)
         {
@@ -1427,9 +1444,16 @@ void LoopClosing::ResetIfRequested()
         // verbatim (docs/P9_RECON.md D5). The two trace lines make the
         // surviving channel state visible; they change nothing.
         mPlaceRec.TraceReset("reset-full");
-        mlpLoopKeyFrameQueue.clear();
-        if(TraceQueueOn())  // P10-0: lockstep clear (same R-b discipline —
-            mdqTraceEnqueueTs.clear();  // mMutexReset, not the queue mutex)
+        {
+            // P10-2 (R-b): queue mutation now under mMutexLoopQueue (inner,
+            // order mMutexReset -> mMutexLoopQueue; no reverse nesting
+            // exists -- producer and pop take only the queue mutex). Trace
+            // deque cleared under the same lock (P10-0 shadow contract).
+            unique_lock<mutex> lockQueue(mMutexLoopQueue);
+            mlpLoopKeyFrameQueue.clear();
+            if(TraceQueueOn())
+                mdqTraceEnqueueTs.clear();
+        }
         mbResetRequested=false;
         mbResetActiveMapRequested = false;
     }
@@ -1440,19 +1464,23 @@ void LoopClosing::ResetIfRequested()
         // two KFs before the decay wipe clears it.
         mPlaceRec.TraceReset("reset-active-map");
 
-        for (list<KeyFrame*>::const_iterator it=mlpLoopKeyFrameQueue.begin(); it != mlpLoopKeyFrameQueue.end();)
         {
-            KeyFrame* pKFi = *it;
-            if(pKFi->GetMap() == mpMapToReset)
+            // P10-2 (R-b): same closure as the full-reset branch above.
+            unique_lock<mutex> lockQueue(mMutexLoopQueue);
+            for (list<KeyFrame*>::const_iterator it=mlpLoopKeyFrameQueue.begin(); it != mlpLoopKeyFrameQueue.end();)
             {
-                it = mlpLoopKeyFrameQueue.erase(it);
+                KeyFrame* pKFi = *it;
+                if(pKFi->GetMap() == mpMapToReset)
+                {
+                    it = mlpLoopKeyFrameQueue.erase(it);
+                }
+                else
+                    ++it;
             }
-            else
-                ++it;
+            if(TraceQueueOn())  // P10-0: per-entry match is impossible after a
+                mdqTraceEnqueueTs.clear();  // selective erase; drop all stamps
+                                            // (pops guard on empty -> no sample)
         }
-        if(TraceQueueOn())  // P10-0: per-entry match is impossible after a
-            mdqTraceEnqueueTs.clear();  // selective erase; drop all stamps
-                                        // (pops guard on empty -> no sample)
 
         mbResetActiveMapRequested=false;
 
@@ -1495,7 +1523,9 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
     }
 #endif
 
-    int idx =  mnFullBAIdx;
+    // P10-2 (R-d): this first epoch read is deliberately lock-free (atomic
+    // now); the authoritative recheck below runs under mMutexGBA.
+    int idx =  mnFullBAIdx.load(std::memory_order_relaxed);
 
     // Update all MapPoints and KeyFrames
     // Local Mapping was active during BA, that means that there might be new keyframes
@@ -1503,7 +1533,7 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
     // We need to propagate the correction through the spanning tree
     {
         unique_lock<mutex> lock(mMutexGBA);
-        if(idx!=mnFullBAIdx)
+        if(idx!=mnFullBAIdx.load(std::memory_order_relaxed))
             return;
 
         if(!bImuInit && pActiveMap->isImuInitialized())
