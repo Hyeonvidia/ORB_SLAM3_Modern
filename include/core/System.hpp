@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include<stdio.h>
 #include<stdlib.h>
+#include<atomic>
 #include<string>
 #include<thread>
 #include<opencv2/core/core.hpp>
@@ -87,6 +88,13 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
     System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true, const int initFr = 0, const string &strSequence = std::string());
+
+    // P10-5: joins all owned threads. Calls Shutdown() (a no-op if already
+    // latched) and then reaps any thread object still joinable -- the
+    // menuStop-path Shutdown runs ON the viewer thread and must skip its
+    // self-join, leaving the viewer thread for this destructor. A joinable
+    // std::thread value member would otherwise std::terminate here.
+    ~System();
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
@@ -230,9 +238,14 @@ private:
 
     // System threads: Local Mapping, Loop Closing, Viewer.
     // The Tracking thread "lives" in the main execution thread that creates the System object.
-    std::thread* mptLocalMapping;
-    std::thread* mptLoopClosing;
-    std::thread* mptViewer;
+    // P10-5: owned VALUE members (were raw `std::thread*`, never joined --
+    // docs/P10_RECON.md 2부 item 6). Joined by Shutdown() in a fixed order
+    // (Viewer -> LM -> LC -> GBA custody via LoopClosing::StopAndJoinGBA),
+    // with ~System as the backstop reaper. mptViewer is default-constructed
+    // (not joinable) when the viewer is disabled.
+    std::thread mptLocalMapping;
+    std::thread mptLoopClosing;
+    std::thread mptViewer;
 
     // Reset flag
     std::mutex mMutexReset;
@@ -245,7 +258,13 @@ private:
     bool mbDeactivateLocalizationMode;
 
     // Shutdown flag
-    bool mbShutDown;
+    // P10-5: atomic -- Shutdown()'s idempotence latch is an atomic exchange
+    // (exactly one caller runs the teardown; menuStop-path Shutdown on the
+    // viewer thread and the example main's Shutdown may otherwise both run
+    // the joins). The write still happens inside the existing mMutexReset
+    // scope so the Track* readers (TrackMonocular gate, isShutDown) keep
+    // their lock discipline unchanged.
+    std::atomic<bool> mbShutDown;
 
     // Tracking state
     int mTrackingState;

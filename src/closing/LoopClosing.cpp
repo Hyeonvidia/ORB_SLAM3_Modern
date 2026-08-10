@@ -59,7 +59,7 @@ bool TraceQueueOn()
 LoopClosing::LoopClosing(Atlas *pAtlas, KeyFrameDatabase *pDB, const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs, ILoopOptimizer* pOptimizer):
     mbResetRequested(false), mbResetActiveMapRequested(false), mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas),
     mpKeyFrameDB(pDB), mpBAEpochs(pBAEpochs), mpOptimizer(pOptimizer), mbRunningGBA(false), mbFinishedGBA(true),
-    mbStopGBA(false), mpThreadGBA(NULL), mbFixScale(bFixScale), mnFullBAIdx(0), mbActiveLC(bActiveLC), mPlaceRec(*this)
+    mbStopGBA(false), mbFixScale(bFixScale), mnFullBAIdx(0), mbActiveLC(bActiveLC), mPlaceRec(*this)
 {
     // P9-4: the former counter/flag init-list entries are now the
     // DetectionChannel default member initializers (mPlaceRec's
@@ -295,7 +295,26 @@ void LoopClosing::Run()
             break;
         }
 
-        usleep(5000);
+        // P10-5: CV'd queue wait (was `usleep(5000)`), the LC twin of the
+        // LocalMapping P10-4 tail. The 5ms timed net is PERMANENT by design
+        // (docs/P10_RECON.md 2부 item 2, rationale at the mCondLoopQueue
+        // declaration): finish/reset wakeups live under other mutexes and
+        // keep their historical <=5ms bound via the timeout; a queued KF now
+        // wakes loop/merge detection immediately instead.
+        // TSAN visibility (P10-4 postmortem): wait_for compiles to
+        // pthread_cond_clockwait (CLOCK_MONOTONIC), which gcc-11 libtsan
+        // does NOT intercept -- every timeout would silently break TSAN's
+        // mutex modeling for mMutexLoopQueue and spray spurious race reports
+        // on everything the queue mutex protects. system_clock wait_until
+        // maps to the intercepted pthread_cond_timedwait; a realtime clock
+        // jump can only stretch or clip one 5ms net (harmless -- the
+        // predicate re-check handles it). Do not "modernize" this back.
+        {
+            unique_lock<mutex> lock(mMutexLoopQueue);
+            mCondLoopQueue.wait_until(lock,
+                                      std::chrono::system_clock::now() + std::chrono::milliseconds(5),
+                                      [&]{ return !mlpLoopKeyFrameQueue.empty(); });
+        }
     }
 
     SetFinish();
@@ -303,17 +322,26 @@ void LoopClosing::Run()
 
 void LoopClosing::InsertKeyFrame(KeyFrame *pKF)
 {
-    unique_lock<mutex> lock(mMutexLoopQueue);
-    if(pKF->mnId!=0)
+    bool bInserted = false;
     {
-        mlpLoopKeyFrameQueue.push_back(pKF);
-        if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
+        unique_lock<mutex> lock(mMutexLoopQueue);
+        if(pKF->mnId!=0)
         {
-            mdqTraceEnqueueTs.push_back(std::chrono::steady_clock::now());
-            if(mlpLoopKeyFrameQueue.size() > mnTraceMaxDepth)
-                mnTraceMaxDepth = mlpLoopKeyFrameQueue.size();
+            mlpLoopKeyFrameQueue.push_back(pKF);
+            bInserted = true;
+            if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
+            {
+                mdqTraceEnqueueTs.push_back(std::chrono::steady_clock::now());
+                if(mlpLoopKeyFrameQueue.size() > mnTraceMaxDepth)
+                    mnTraceMaxDepth = mlpLoopKeyFrameQueue.size();
+            }
         }
     }
+    // P10-5: wake Run()'s queue wait. Notify AFTER unlock so the woken
+    // consumer never immediately blocks on the mutex we still hold; only
+    // when a KF was actually enqueued (id 0 is dropped, upstream).
+    if(bInserted)
+        mCondLoopQueue.notify_one();
 }
 
 bool LoopClosing::CheckNewKeyFrames()
@@ -354,6 +382,14 @@ void LoopClosing::CorrectLoop()
     mpLocalMapper->RequestStop();
 
     // If a Global Bundle Adjustment is running, abort it
+    //
+    // P10-5: the abort DROPS the detach (docs/P10_RECON.md 2부 item 6).
+    // Flag store + epoch bump only; the thread object stays JOINABLE, so
+    // every GBA is accounted for (next spawn's reap-join, or Shutdown's
+    // StopAndJoinGBA). The aborter still returns immediately (observable
+    // fire-and-forget preserved); the price is that the next spawn's
+    // reap-join may block until the aborted GBA actually exits (<= one BA
+    // iteration -- the optimizer polls the stop flag once per iteration).
     if(isRunningGBA())
     {
         cout << "Stoping Global Bundle Adjustment...";
@@ -361,13 +397,6 @@ void LoopClosing::CorrectLoop()
         mbStopGBA.store(true, std::memory_order_relaxed);
 
         mnFullBAIdx.fetch_add(1, std::memory_order_relaxed);
-
-        if(mpThreadGBA)
-        {
-            mpThreadGBA->detach();
-            delete mpThreadGBA;
-            mpThreadGBA = NULL;  // DIVERGENCES #22: keep the pointer honest for the spawn-site reap
-        }
         cout << "  Done!!" << endl;
     }
 
@@ -566,28 +595,27 @@ void LoopClosing::CorrectLoop()
     // Launch a new thread to perform Global Bundle Adjustment (Only if few keyframes, if not it would take too much time)
     if(!pLoopMap->isImuInitialized() || (pLoopMap->KeyFramesInMap()<200 && mpAtlas->CountMaps()==1))
     {
+        // P10-5 reap BEFORE the spawn-flag writes (DIVERGENCES #22 join +
+        // #25 ordering): with the no-detach abort above, this join may block
+        // until an aborted GBA exits (<= one BA iteration) -- and that exit
+        // runs the scope-exit guard which clears mbRunningGBA/mbFinishedGBA
+        // under mMutexGBA. Joining FIRST guarantees the guard's clear lands
+        // before the new spawn's flag set, never on top of it. The join
+        // itself stays OUTSIDE any mMutexGBA scope (the GBA tail takes
+        // mMutexGBA -- joining under it could deadlock).
+        if(mThreadGBA.joinable())
+            mThreadGBA.join();
+
         {
-            // P10-2 (R-c): spawn flag writes now under mMutexGBA (they raced
-            // isRunningGBA and the GBA tail). The reap-join and mpThreadGBA
-            // stay OUTSIDE the lock: the pointer is LC-thread-confined, and
-            // the GBA tail takes mMutexGBA -- joining under it could deadlock.
+            // P10-2 (R-c): spawn flag writes under mMutexGBA (they raced
+            // isRunningGBA and the GBA tail).
             unique_lock<mutex> lock(mMutexGBA);
             mbRunningGBA = true;
             mbFinishedGBA = false;
             mbStopGBA.store(false, std::memory_order_relaxed);
         }
 
-        // DIVERGENCES #22: a normally-completed GBA left a joinable thread
-        // object here that upstream simply overwrote (only the abort path
-        // deleted it). Reap it first; join returns immediately because any
-        // running GBA was aborted (and nulled) above.
-        if(mpThreadGBA)
-        {
-            if(mpThreadGBA->joinable())
-                mpThreadGBA->join();
-            delete mpThreadGBA;
-        }
-        mpThreadGBA = new thread(&LoopClosing::RunGlobalBundleAdjustment, this, pLoopMap, mpCurrentKF->mnId);
+        mThreadGBA = thread(&LoopClosing::RunGlobalBundleAdjustment, this, pLoopMap, mpCurrentKF->mnId);
     }
 
     // Loop closed. Release Local Mapping.
@@ -609,19 +637,16 @@ void LoopClosing::MergeLocal()
     bool bRelaunchBA = false;
 
     // If a Global Bundle Adjustment is running, abort it
+    //
+    // P10-5: no detach -- flag + epoch only; the thread stays joinable and
+    // the relaunch's reap-join below accounts for it (may block <= one BA
+    // iteration; see the CorrectLoop abort comment).
     if(isRunningGBA())
     {
         unique_lock<mutex> lock(mMutexGBA);
         mbStopGBA.store(true, std::memory_order_relaxed);
 
         mnFullBAIdx.fetch_add(1, std::memory_order_relaxed);
-
-        if(mpThreadGBA)
-        {
-            mpThreadGBA->detach();
-            delete mpThreadGBA;
-            mpThreadGBA = NULL;  // DIVERGENCES #22: keep the pointer honest for the spawn-site reap
-        }
         bRelaunchBA = true;
     }
 
@@ -1115,22 +1140,23 @@ void LoopClosing::MergeLocal()
     if(bRelaunchBA && (!pCurrentMap->isImuInitialized() || (pCurrentMap->KeyFramesInMap()<200 && mpAtlas->CountMaps()==1)))
     {
         // Launch a new thread to perform Global Bundle Adjustment
+        //
+        // P10-5: reap-join FIRST (outside mMutexGBA), THEN the flag writes,
+        // THEN the spawn -- see the CorrectLoop spawn site for the full
+        // rationale (the aborted predecessor's scope-exit guard must clear
+        // the flags before, never after, the new spawn sets them).
+        if(mThreadGBA.joinable())
+            mThreadGBA.join();
+
         {
-            // P10-2 (R-c): spawn flag writes under mMutexGBA; reap-join and
-            // mpThreadGBA stay outside (see the CorrectLoop spawn site).
+            // P10-2 (R-c): spawn flag writes under mMutexGBA.
             unique_lock<mutex> lock(mMutexGBA);
             mbRunningGBA = true;
             mbFinishedGBA = false;
             mbStopGBA.store(false, std::memory_order_relaxed);
         }
-        // DIVERGENCES #22: reap a completed predecessor before overwriting.
-        if(mpThreadGBA)
-        {
-            if(mpThreadGBA->joinable())
-                mpThreadGBA->join();
-            delete mpThreadGBA;
-        }
-        mpThreadGBA = new thread(&LoopClosing::RunGlobalBundleAdjustment,this, pMergeMap, mpCurrentKF->mnId);
+
+        mThreadGBA = thread(&LoopClosing::RunGlobalBundleAdjustment,this, pMergeMap, mpCurrentKF->mnId);
     }
 
     mPlaceRec.MergeCh().matchedKF->AddMergeEdge(mpCurrentKF);
@@ -1153,19 +1179,17 @@ void LoopClosing::MergeLocal2()
     KeyFrameAndPose CorrectedSim3;
 
     // If a Global Bundle Adjustment is running, abort it
+    //
+    // P10-5: no detach -- flag + epoch only; the thread stays joinable
+    // (MergeLocal2 never respawns, so the reap is the next CorrectLoop/
+    // MergeLocal spawn or Shutdown's StopAndJoinGBA; see the CorrectLoop
+    // abort comment for the <= one-BA-iteration reap price).
     if(isRunningGBA())
     {
         unique_lock<mutex> lock(mMutexGBA);
         mbStopGBA.store(true, std::memory_order_relaxed);
 
         mnFullBAIdx.fetch_add(1, std::memory_order_relaxed);
-
-        if(mpThreadGBA)
-        {
-            mpThreadGBA->detach();
-            delete mpThreadGBA;
-            mpThreadGBA = NULL;  // DIVERGENCES #22: keep the pointer honest for the spawn-site reap
-        }
     }
 
 
@@ -1401,14 +1425,16 @@ void LoopClosing::RequestReset()
         mbResetRequested = true;
     }
 
-    while(1)
+    // P10-5: CV handshake (was a 5ms spin), the LC twin of the LocalMapping
+    // P10-4 reset handshake. ResetIfRequested notifies mCondReset after
+    // clearing the flag. Preserved upstream quirk, on purpose (docs/
+    // P10_RECON.md 2부 item 2): a reset requested after SetFinish() still
+    // NEVER returns (Run() has exited and nothing services the flag --
+    // upstream behavior, documented; do NOT add a finished-escape, that
+    // would change observable protocol).
     {
-        {
-        unique_lock<mutex> lock2(mMutexReset);
-        if(!mbResetRequested)
-            break;
-        }
-        usleep(5000);
+        unique_lock<mutex> lock(mMutexReset);
+        mCondReset.wait(lock, [&]{ return !mbResetRequested; });
     }
 }
 
@@ -1420,74 +1446,105 @@ void LoopClosing::RequestResetActiveMap(Map *pMap)
         mpMapToReset = pMap;
     }
 
-    while(1)
+    // P10-5: CV handshake (was a 3ms spin); same preserved quirk as
+    // RequestReset above (after SetFinish this never returns -- upstream,
+    // documented, no finished-escape).
     {
-        {
-            unique_lock<mutex> lock2(mMutexReset);
-            if(!mbResetActiveMapRequested)
-                break;
-        }
-        usleep(3000);
+        unique_lock<mutex> lock(mMutexReset);
+        mCondReset.wait(lock, [&]{ return !mbResetActiveMapRequested; });
     }
 }
 
 void LoopClosing::ResetIfRequested()
 {
-    unique_lock<mutex> lock(mMutexReset);
-    if(mbResetRequested)
+    bool executed_reset = false;
     {
-        cout << "Loop closer reset requested..." << endl;
-        // P9-4 (D5 visibility): the reset does NOT clear the detection
-        // machine -- upstream only clears the queue, and we preserve that
-        // verbatim (docs/P9_RECON.md D5). The two trace lines make the
-        // surviving channel state visible; they change nothing.
-        mPlaceRec.TraceReset("reset-full");
+        unique_lock<mutex> lock(mMutexReset);
+        if(mbResetRequested)
         {
-            // P10-2 (R-b): queue mutation now under mMutexLoopQueue (inner,
-            // order mMutexReset -> mMutexLoopQueue; no reverse nesting
-            // exists -- producer and pop take only the queue mutex). Trace
-            // deque cleared under the same lock (P10-0 shadow contract).
-            unique_lock<mutex> lockQueue(mMutexLoopQueue);
-            mlpLoopKeyFrameQueue.clear();
-            if(TraceQueueOn())
-                mdqTraceEnqueueTs.clear();
-        }
-        mbResetRequested=false;
-        mbResetActiveMapRequested = false;
-    }
-    else if(mbResetActiveMapRequested)
-    {
-        // P9-4 (D5 visibility): same as above -- state survives an
-        // active-map reset and may point into the torn-down map for up to
-        // two KFs before the decay wipe clears it.
-        mPlaceRec.TraceReset("reset-active-map");
-
-        {
-            // P10-2 (R-b): same closure as the full-reset branch above.
-            unique_lock<mutex> lockQueue(mMutexLoopQueue);
-            for (list<KeyFrame*>::const_iterator it=mlpLoopKeyFrameQueue.begin(); it != mlpLoopKeyFrameQueue.end();)
+            executed_reset = true;
+            cout << "Loop closer reset requested..." << endl;
+            // P9-4 (D5 visibility): the reset does NOT clear the detection
+            // machine -- upstream only clears the queue, and we preserve that
+            // verbatim (docs/P9_RECON.md D5). The two trace lines make the
+            // surviving channel state visible; they change nothing.
+            mPlaceRec.TraceReset("reset-full");
             {
-                KeyFrame* pKFi = *it;
-                if(pKFi->GetMap() == mpMapToReset)
-                {
-                    it = mlpLoopKeyFrameQueue.erase(it);
-                }
-                else
-                    ++it;
+                // P10-2 (R-b): queue mutation now under mMutexLoopQueue (inner,
+                // order mMutexReset -> mMutexLoopQueue; no reverse nesting
+                // exists -- producer and pop take only the queue mutex). Trace
+                // deque cleared under the same lock (P10-0 shadow contract).
+                unique_lock<mutex> lockQueue(mMutexLoopQueue);
+                mlpLoopKeyFrameQueue.clear();
+                if(TraceQueueOn())
+                    mdqTraceEnqueueTs.clear();
             }
-            if(TraceQueueOn())  // P10-0: per-entry match is impossible after a
-                mdqTraceEnqueueTs.clear();  // selective erase; drop all stamps
-                                            // (pops guard on empty -> no sample)
+            mbResetRequested=false;
+            mbResetActiveMapRequested = false;
         }
+        else if(mbResetActiveMapRequested)
+        {
+            executed_reset = true;
+            // P9-4 (D5 visibility): same as above -- state survives an
+            // active-map reset and may point into the torn-down map for up to
+            // two KFs before the decay wipe clears it.
+            mPlaceRec.TraceReset("reset-active-map");
 
-        mbResetActiveMapRequested=false;
+            {
+                // P10-2 (R-b): same closure as the full-reset branch above.
+                unique_lock<mutex> lockQueue(mMutexLoopQueue);
+                for (list<KeyFrame*>::const_iterator it=mlpLoopKeyFrameQueue.begin(); it != mlpLoopKeyFrameQueue.end();)
+                {
+                    KeyFrame* pKFi = *it;
+                    if(pKFi->GetMap() == mpMapToReset)
+                    {
+                        it = mlpLoopKeyFrameQueue.erase(it);
+                    }
+                    else
+                        ++it;
+                }
+                if(TraceQueueOn())  // P10-0: per-entry match is impossible after a
+                    mdqTraceEnqueueTs.clear();  // selective erase; drop all stamps
+                                                // (pops guard on empty -> no sample)
+            }
 
+            mbResetActiveMapRequested=false;
+
+        }
+    }
+    if(executed_reset)
+    {
+        // P10-5: wake the RequestReset/RequestResetActiveMap handshake
+        // waiters (LC twin of the LM P10-4 pattern). The flags were cleared
+        // under mMutexReset above; notify after unlock.
+        mCondReset.notify_all();
     }
 }
 
 void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoopKF)
-{  
+{
     Verbose::PrintMess("Starting Global Bundle Adjustment", Verbose::VERBOSITY_NORMAL);
+
+    // P10-5 (DIVERGENCES #25): scope-exit guard -- mbRunningGBA/mbFinishedGBA
+    // are cleared/set under mMutexGBA on ALL return paths. Upstream (and this
+    // code until P10-5) reset them only at the normal tail: the epoch-abort
+    // return and the imu-went-initialized-mid-run return left mbRunningGBA
+    // true FOREVER, so a later isRunningGBA() reported a phantom GBA and the
+    // respawn gate stayed poisoned. Declared before any lock so it runs after
+    // the tail's mMutexGBA scope is released (a local class of a member
+    // function has the member function's access rights). The spawn-site
+    // reap-join order guarantees this clear lands before the next spawn's
+    // flag set (see the CorrectLoop spawn comment).
+    struct GBAFlagsGuard
+    {
+        LoopClosing* pLC;
+        ~GBAFlagsGuard()
+        {
+            unique_lock<mutex> lock(pLC->mMutexGBA);
+            pLC->mbFinishedGBA = true;
+            pLC->mbRunningGBA = false;
+        }
+    } flagsGuard{this};
 
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_StartFGBA = std::chrono::steady_clock::now();
@@ -1666,8 +1723,9 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
             Verbose::PrintMess("Map updated!", Verbose::VERBOSITY_NORMAL);
         }
 
-        mbFinishedGBA = true;
-        mbRunningGBA = false;
+        // P10-5: the former tail writes `mbFinishedGBA = true; mbRunningGBA
+        // = false;` moved into the GBAFlagsGuard above so the early returns
+        // get them too (DIVERGENCES #25).
     }
 }
 
@@ -1675,6 +1733,25 @@ void LoopClosing::RequestFinish()
 {
     unique_lock<mutex> lock(mMutexFinish);
     mbFinishRequested = true;
+}
+
+// P10-5: System::Shutdown's GBA custody step (docs/P10_RECON.md 2부 item 6
+// step 6). Caller contract: the LC thread is already joined, so System has
+// exclusive access to mThreadGBA (custody chain, docs/OWNERSHIP.md). The
+// GBA cannot hang: LM is finished (SetFinish set mbStopped and notified),
+// so its WaitUntilStopped predicate is already true and its Release() a
+// no-op; the stop flag + epoch bump end the optimizer within one iteration.
+void LoopClosing::StopAndJoinGBA()
+{
+    {
+        unique_lock<mutex> lock(mMutexGBA);
+        mbStopGBA.store(true, std::memory_order_relaxed);
+        mnFullBAIdx.fetch_add(1, std::memory_order_relaxed);
+    }
+    // Join OUTSIDE mMutexGBA -- the GBA tail (and the #25 scope-exit guard)
+    // takes it; joining under the lock could deadlock.
+    if(mThreadGBA.joinable())
+        mThreadGBA.join();
 }
 
 bool LoopClosing::CheckFinish()

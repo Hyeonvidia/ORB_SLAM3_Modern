@@ -185,7 +185,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpLocalMapper = new LocalMapping(mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR,
                                      mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO || mSensor==IMU_RGBD, &mBAEpochs,
                                      static_cast<IMappingOptimizer*>(&mBackend));
-    mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
+    mptLocalMapping = thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
     mpLocalMapper->mThFarPoints = settings_->thFarPoints();
     if(mpLocalMapper->mThFarPoints!=0)
     {
@@ -199,7 +199,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     // mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR
     mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mSensor!=MONOCULAR, activeLC, &mBAEpochs,
                                    static_cast<ILoopOptimizer*>(&mBackend)); // mSensor!=MONOCULAR);
-    mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
+    mptLoopClosing = thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
 
     //Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
@@ -218,7 +218,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //if(false) // TODO
     {
         mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile,settings_);
-        mptViewer = new thread(&Viewer::Run, mpViewer);
+        mptViewer = thread(&Viewer::Run, mpViewer);
         mpTracker->SetViewer(mpViewer);
         mpViewer->both = mpFrameDrawer->both;
     }
@@ -495,51 +495,99 @@ void System::ResetActiveMap()
 
 void System::Shutdown()
 {
+    // P10-5 (docs/P10_RECON.md 2부 item 6): the upstream wait block below
+    // this point was entirely commented out -- SaveAtlas raced live LM/LC/
+    // GBA threads and nothing was ever joined. Restored as a strict join
+    // ordering (comments per step); upstream's commented-out remains were
+    // removed with it.
+    //
+    // Step 1 -- idempotence latch: exactly ONE caller runs the teardown
+    // (menuStop-path Shutdown on the viewer thread and the example main's
+    // Shutdown would otherwise both run the joins; a second join is UB).
+    // The atomic exchange is the latch; the mMutexReset scope is kept so
+    // the Track* readers' lock discipline is unchanged.
     {
         unique_lock<mutex> lock(mMutexReset);
-        mbShutDown = true;
+        if(mbShutDown.exchange(true))
+            return;
     }
 
     cout << "Shutdown" << endl;
 
-    mpLocalMapper->RequestFinish();
-    mpLoopCloser->RequestFinish();
-    /*if(mpViewer)
+    // Step 2 -- Viewer: RequestFinish, then join ONLY from another thread.
+    // The menuStop path (Viewer.cpp) runs Shutdown ON the viewer thread,
+    // where an unconditional join would self-deadlock -- this is exactly
+    // why upstream commented the viewer wait out. On the self-path the
+    // thread object stays joinable and ~System reaps it after Viewer::Run
+    // returns. (P10-6 removes the hazard structurally via a RequestShutdown
+    // latch; viewer internals are out of P10-5 scope.)
+    if(mpViewer)
     {
         mpViewer->RequestFinish();
-        while(!mpViewer->isFinished())
-            usleep(5000);
-    }*/
+        if(mptViewer.joinable() &&
+           std::this_thread::get_id() != mptViewer.get_id())
+            mptViewer.join();
+    }
 
-    // Wait until all thread have effectively stopped
-    /*while(!mpLocalMapper->isFinished() || !mpLoopCloser->isFinished() || mpLoopCloser->isRunningGBA())
-    {
-        if(!mpLocalMapper->isFinished())
-            cout << "mpLocalMapper is not finished" << endl;*/
-        /*if(!mpLoopCloser->isFinished())
-            cout << "mpLoopCloser is not finished" << endl;
-        if(mpLoopCloser->isRunningGBA()){
-            cout << "mpLoopCloser is running GBA" << endl;
-            cout << "break anyway..." << endl;
-            break;
-        }*/
-        /*usleep(5000);
-    }*/
+    // Step 3 -- ask LM and LC to finish. Both notify their P10-4/P10-5 CVs,
+    // so a parked LM / net-waiting LC wakes promptly.
+    mpLocalMapper->RequestFinish();
+    mpLoopCloser->RequestFinish();
 
+    // Step 4 -- join LM FIRST: its SetFinish() sets mbStopped and notifies
+    // mCondStop, so any LC/GBA WaitUntilStopped converges on a dead LM
+    // instead of hanging.
+    if(mptLocalMapping.joinable())
+        mptLocalMapping.join();
+
+    // Step 5 -- join LC: an in-flight CorrectLoop/Merge completes; its
+    // Release() is a no-op on the finished LM (upstream semantics).
+    if(mptLoopClosing.joinable())
+        mptLoopClosing.join();
+
+    // Step 6 -- GBA custody transfer + reap: with LC dead, System has
+    // exclusive access to the GBA thread object (custody chain,
+    // docs/OWNERSHIP.md GBA section). Stop flag + epoch bump under
+    // mMutexGBA, join outside it.
+    mpLoopCloser->StopAndJoinGBA();
+
+    // Step 7 -- ONLY NOW SaveAtlas: provably zero live LM/LC/GBA threads,
+    // so boost serialization cannot race a map mutation. Achieved by join
+    // ordering, not by locks.
     if(!mStrSaveAtlasToFile.empty())
     {
         Verbose::PrintMess("Atlas saving to file " + mStrSaveAtlasToFile, Verbose::VERBOSITY_NORMAL);
         SaveAtlas(FileType::BINARY_FILE);
     }
 
-    /*if(mpViewer)
-        pangolin::BindToContext("ORB-SLAM2: Map Viewer");*/
-
 #ifdef REGISTER_TIMES
     mpTracker->PrintTimeStats();
 #endif
 
 
+}
+
+System::~System()
+{
+    // P10-5: backstop teardown. Shutdown() is a no-op if already latched;
+    // the joinable() guards then reap whatever an earlier Shutdown could
+    // not join -- in practice only the viewer thread after a menuStop-path
+    // Shutdown (which must skip its self-join). This destructor never runs
+    // on the viewer thread (the System object lives in the example main's
+    // scope), so the unconditional joins here are safe; without them a
+    // joinable std::thread member would std::terminate on destruction.
+    // ORDER MATTERS: the viewer join comes FIRST. If a menuStop-path
+    // Shutdown is still running ON the viewer thread when this destructor
+    // starts (main latched out and fell through), joining the viewer waits
+    // for that whole handler -- including ITS LM/LC/GBA joins -- to finish;
+    // only then are the joinable() checks below race-free.
+    Shutdown();
+    if(mptViewer.joinable())
+        mptViewer.join();
+    if(mptLocalMapping.joinable())
+        mptLocalMapping.join();
+    if(mptLoopClosing.joinable())
+        mptLoopClosing.join();
 }
 
 bool System::isShutDown() {

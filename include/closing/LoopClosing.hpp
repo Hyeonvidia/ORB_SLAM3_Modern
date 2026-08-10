@@ -30,6 +30,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <thread>
 #include <mutex>
@@ -78,6 +79,14 @@ public:
     }
 
     void RequestFinish();
+
+    // P10-5: GBA custody transfer + reap, called by System::Shutdown ONLY,
+    // strictly AFTER the LC thread has been joined (custody chain,
+    // docs/OWNERSHIP.md GBA section: mThreadGBA is LC-thread-confined while
+    // LC lives, System-confined once LC is joined). Sets mbStopGBA and bumps
+    // the epoch under mMutexGBA, then joins OUTSIDE the lock (the GBA tail
+    // takes mMutexGBA -- joining under it could deadlock).
+    void StopAndJoinGBA();
 
     bool isFinished();
 
@@ -135,6 +144,13 @@ protected:
     bool mbResetActiveMapRequested;
     Map* mpMapToReset;
     std::mutex mMutexReset;
+    // P10-5: reset handshake CV (paired with mMutexReset), the LC twin of
+    // LocalMapping::mCondReset. RequestReset* wait on "my flag cleared";
+    // ResetIfRequested notifies after clearing. Preserved upstream quirk
+    // (docs/P10_RECON.md 2부 item 2, R-f second half): a reset requested
+    // after SetFinish() never returns -- Run() has exited and nothing
+    // services the flag. Documented, NOT fixed (no finished-escape).
+    std::condition_variable mCondReset;
 
     bool CheckFinish();
     void SetFinish();
@@ -161,6 +177,16 @@ protected:
     std::list<KeyFrame*> mlpLoopKeyFrameQueue;
 
     std::mutex mMutexLoopQueue;
+    // P10-5: queue CV (paired with mMutexLoopQueue), the LC twin of
+    // LocalMapping::mCondNewKFs. InsertKeyFrame notifies after unlocking;
+    // Run()'s tail waits on "queue non-empty" with a 5ms timed net. The net
+    // is PERMANENT by design (docs/P10_RECON.md 2부 item 2, same rationale
+    // as the LM 3ms net): the loop's other wake reasons -- finish and reset
+    // -- live under OTHER mutexes (mMutexFinish/mMutexReset), and a pure
+    // untimed wait would need them in this predicate (lock nesting or more
+    // atomics). The timed net keeps their historical <=5ms latency bound
+    // while making loop/merge-detection pickup of a queued KF immediate.
+    std::condition_variable mCondLoopQueue;
 
     // P10-0: opt-in queue-latency tracing (ORB_TRACE_QUEUE=1), the LC twin
     // of LocalMapping's instrumentation — see the comment there. Stamp deque
@@ -199,7 +225,15 @@ protected:
     // optimizer polls it. All accesses relaxed — advisory flag only.
     std::atomic<bool> mbStopGBA;
     std::mutex mMutexGBA;
-    std::thread* mpThreadGBA;
+    // P10-5: owned VALUE member (was `std::thread* mpThreadGBA`, docs/
+    // P10_RECON.md 2부 item 6). Custody chain (docs/OWNERSHIP.md): LC-thread
+    // -confined while LC lives; System-confined after System::Shutdown joins
+    // the LC thread; reaped by StopAndJoinGBA before SaveAtlas. The abort
+    // paths NO LONGER detach (flag + epoch only) -- every GBA stays
+    // joinable, so the next spawn's reap-join (or Shutdown) always accounts
+    // for it. The reap-join always executes OUTSIDE any mMutexGBA scope:
+    // the exiting GBA's tail takes mMutexGBA.
+    std::thread mThreadGBA;
 
     // Fix scale in the stereo/RGB-D case
     bool mbFixScale;

@@ -64,6 +64,28 @@
     raw `mbFixScale`을 넘긴다(다른 3개 사이트는 완화값 사용). 단안-관성 초기
     구간의 Sim3 정련이 스케일 고정으로 도는 수치 차이 — bug-for-bug 보존,
     게이트가 판별 영역. P9-1에서 죽은 계산을 삭제하며 호출부에 의도 주석 명시.
+25. **[P10-5] GBA 조기 return의 mbRunningGBA 영구 잔류 수정 (scope-exit
+    가드)** — `RunGlobalBundleAdjustment`의 정상 꼬리만
+    `mbFinishedGBA=true; mbRunningGBA=false`를 기록했고, 에포크 불일치
+    return과 imu-도중-초기화 return은 두 플래그를 건드리지 않아
+    **mbRunningGBA=true가 영구 잔류**했다(업스트림 계승; 중단자도 안
+    되돌림). 이후 isRunningGBA()가 유령 GBA를 보고해 CorrectLoop/MergeLocal
+    은 존재하지 않는 GBA를 다시 "중단"하고(에포크만 헛증가), MergeLocal은
+    bRelaunchBA=true로 **돌지 않던 GBA를 재스폰**했다. 이제 함수 전체를
+    mMutexGBA 하의 scope-exit 가드(지역 RAII 구조체)가 감싸 **모든 return
+    경로**에서 플래그를 정리한다. 정상 완주 경로 동작 동일; 병리 조건
+    (에포크 중단 경합)에서만 재스폰 결과가 달라진다 — 잔류-true의 유령
+    재스폰 대신 정직한 not-running. #22/#23과 동급의 안전 강등이며, P10-5의
+    no-detach 전환(스폰 직전 reap-join이 가드의 정리 이후에 오도록 join →
+    플래그 기록 → 스폰 순서로 재배열)과 한 몸이다.
+    **부수 관측 — 티어다운 크래시 소멸**: Shutdown join 복원 후 P10-5 검증
+    전 실행(스모크·kitti07×3·kitti00·SI 페어·TSAN T1/T2)이 **exit 0 클린
+    종료**. TSAN 원시 로그가 직접 증거: P10-4 시점 T2는 `SEGV in _XSend →
+    ABORTING`(미조인 viewer의 X 활동이 프로세스 종료와 경쟁), T1은 종료 중
+    glib 파괴-뮤텍스 레이스에서 로그 절단이었으나, P10-5는 양쪽 다 TSAN
+    atexit 에필로그("reported N warnings")까지 완주하고 thread-leak 리포트
+    0건(리크 검사가 실제로 돌았는데 0 = LM/LC/Viewer 전부 join됨). 종료
+    코드 게이트化는 아직 하지 않음(정책 유지, phase 게이트에서 재확인).
 
 ## 게이트 방법론 이력
 

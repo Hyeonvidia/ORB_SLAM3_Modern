@@ -124,19 +124,33 @@ FIXED (각 1줄 메커니즘):
 - **R2**(EmptyQueue 순서)는 P10-3, **R-e**는 P10-1에서 기해소, GBA 수명/
   Shutdown은 P10-5.
 
-## GBA 스레드 수명 (P9-2 기록)
+## GBA 스레드 수명 (P9-2 기록, P10-5 해소)
 
-- 생성 2곳(CorrectLoop 스폰, MergeLocal 재스폰), **join은 어디에도 없음**.
-  ~~정상 완주한 스레드 객체는 다음 스폰이 포인터를 덮어써 누수~~ → **P9-3에서
-  스폰 직전 joinable이면 join+delete로 해소**(DIVERGENCES #22).
-- 중단은 파이어앤포겟: mbStopGBA + 에포크 증가 + detach/delete. 낡은 결과는
-  에포크 불일치로 자폭하는데, **그 return 경로가 mbRunningGBA=true를 영구
-  잔류**시킬 수 있다(중단자는 플래그를 안 되돌림) — 재스폰 게이트 실패 시
-  isRunningGBA()가 stale-true.
-- **System::Shutdown의 대기 루프가 통째로 주석 처리**되어 있어(업스트림 계승)
-  실행 중 GBA 스레드는 방치된다 — SaveAtlas가 GBA의 맵 변형과 경쟁하는 라이브
-  데이터 레이스. LC 스레드 join도 없음. → **P10에서 Shutdown 프로토콜과 함께
-  일괄 해소**(jthread/stop_token 전환 시).
+- 생성 2곳(CorrectLoop 스폰, MergeLocal 재스폰), ~~join은 어디에도 없음~~ →
+  P9-3에서 스폰 직전 reap-join(DIVERGENCES #22), **P10-5에서 완전 해소**(아래).
+- ~~중단은 파이어앤포겟: mbStopGBA + 에포크 증가 + detach/delete~~ →
+  **P10-5: 중단 경로에서 detach 제거** — 플래그 + 에포크만 남기고 스레드는
+  joinable로 유지. 중단자는 여전히 즉시 반환(관측 가능한 fire-and-forget
+  보존); 대가는 다음 스폰의 reap-join이 중단된 GBA의 실제 종료까지(≤ BA
+  1회 반복) 블록할 수 있다는 것. 에포크 불일치 return의 **mbRunningGBA
+  영구 잔류는 scope-exit 가드로 수정**(모든 return 경로에서 mMutexGBA 하에
+  mbFinishedGBA=true/mbRunningGBA=false — DIVERGENCES #25).
+- ~~System::Shutdown의 대기 루프가 통째로 주석 처리~~ → **P10-5: Shutdown
+  join 순서 복원**. 원자 exchange 래치(1회만 해체 실행) → Viewer
+  RequestFinish+조건부 join(viewer 스레드 자신이면 self-join 회피, ~System이
+  뒷정리) → LM/LC RequestFinish(CV 통지) → **LM join**(SetFinish가
+  mbStopped 세팅+통지라 LC/GBA의 stop 대기가 죽은 LM에 수렴) → **LC join**
+  → GBA 커스터디 스텝 → **그 후에야 SaveAtlas**(살아있는 LM/LC/GBA 0 —
+  boost 직렬화가 맵 변형과 경쟁 불가; 락이 아니라 join 순서로 달성).
+  System의 스레드 3종은 `std::thread` 값 멤버, ~System이 백스톱 reaper.
+- **mThreadGBA 커스터디 체인 (규범)**: `std::thread` 값 멤버(포인터 아님).
+  ① LC 살아있는 동안 — LC 스레드 전속(스폰/reap-join 전부 LC 스레드,
+  reap-join은 항상 mMutexGBA **밖**: GBA 꼬리와 #25 가드가 그 락을 취함;
+  join → 플래그 기록 → 스폰 순서 필수, 가드의 정리가 새 스폰 플래그를
+  덮지 않도록) ② System::Shutdown이 LC를 join한 뒤 — System 전속
+  ③ `LoopClosing::StopAndJoinGBA()`(Shutdown 6단계 전용)가 mMutexGBA 하에
+  stop+에포크 증가 후 락 밖에서 join — SaveAtlas 전에 반드시 reap.
+  LC::Run 종료부에는 GBA 코드가 없다 — 이 체인 규칙이 그것을 대체한다.
 
 ## SetNotErase/SetErase 래치 프로토콜 (P9-2 기록)
 
