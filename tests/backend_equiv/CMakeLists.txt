@@ -52,6 +52,21 @@ if(EQUIV_BACKEND STREQUAL "vendored")
   # (their only change was the g2o include path; the live copies now point at
   # the upstream submodule, which this variant must not see).
   set(EQUIV_BACKEND_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/reference_backend/include)
+  # P7-1b repair (2026-08-11, see docs/DIVERGENCES.md 게이트 방법론 이력): the
+  # frozen Optimizer.cpp uses Verbose but never includes it — the declaration
+  # arrived transitively via frozen closing/LoopClosing.hpp -> live
+  # tracking/Tracking.hpp -> core/System.hpp -> core/Verbose.hpp, a chain
+  # P7-1b severed. The live TU gained an explicit #include in that commit; the
+  # byte-frozen snapshot cannot. Re-inject the declaration at the compile
+  # command instead of freezing pre-P7-1b Tracking.hpp: that header's change
+  # was an API refactor, outside the P6-2 include-drift precedent, and
+  # freezing it would re-couple the snapshot to the still-drifting
+  # System/Viewer closure. core/Verbose.hpp is unchanged since P2-3, so the
+  # TU sees byte-identical content to the pre-P7-1b build; Verbose::th's
+  # definition already lives in common/EquivMain.cpp.
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/reference_backend/Optimizer.cpp
+    PROPERTIES COMPILE_OPTIONS "-include;${REPO_ROOT}/include/core/Verbose.hpp")
   set(EQUIV_G2O_TARGETS g2o)
 elseif(EQUIV_BACKEND STREQUAL "modern")
   # Live migrated backend + pinned upstream g2o submodule (20241228_git).
@@ -74,13 +89,6 @@ elseif(EQUIV_BACKEND STREQUAL "modern")
     ${REPO_ROOT}/src/backend/OrbLevenberg.cpp
     ${REPO_ROOT}/src/backend/G2oTypes.cpp
     ${REPO_ROOT}/src/backend/OptimizableTypes.cpp
-    # P11-F1: the live EdgeInertialGS ctor caches FixFlags::I()
-    # .scaleJacobianChainRule (DIVERGENCES #9). The harness never calls
-    # FixFlags::Set, so this variant runs at the all-false level-0 default —
-    # exactly the OFF contract the cross-variant gate proves. The frozen
-    # vendored variant has no FixFlags reference (and by design cannot arm
-    # the fix); the ON property lives in tests/fixlevel/ instead.
-    ${REPO_ROOT}/src/core/FixFlags.cpp
   )
   # No shadow include dir: the live include/ tree is the modern contract.
   set(EQUIV_BACKEND_INCLUDE "")
@@ -97,6 +105,15 @@ endif()
 # design §B.0/§B.5). ImuTypes is deliberately NOT snapshotted: shared float
 # path used live by both variants.
 set(EQUIV_SHARED_SOURCES
+  # FixFlags is SHARED since P11-F4: originally modern-only (P11-F1, for the
+  # live EdgeInertialGS ctor's .scaleJacobianChainRule cache, DIVERGENCES #9),
+  # but P11-F4 added a FixFlags::I().stereoMbInit cache to the shared
+  # src/map/Frame.cpp stereo ctor, so the vendored variant now links it too
+  # (caught 2026-08-11 alongside the P7-1b Verbose repair). The harness never
+  # calls FixFlags::Set, so BOTH variants run at the all-false level-0
+  # default — exactly the OFF contract the cross-variant gate proves; the ON
+  # properties live in tests/fixlevel/ instead.
+  ${REPO_ROOT}/src/core/FixFlags.cpp
   ${REPO_ROOT}/src/backend/ImuTypes.cpp
   ${REPO_ROOT}/src/map/Frame.cpp
   ${REPO_ROOT}/src/map/KeyFrame.cpp

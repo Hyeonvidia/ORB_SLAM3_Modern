@@ -215,6 +215,28 @@ System 기동 시 stderr 한 줄(`[FixFlags] non-default fix flags ACTIVE: ...`)
   신선도 가드 추가. 비트 게이트는 비결정성 감지 exit code를 전파.
 - 골든 해시의 환경 전제(dev 이미지 digest, OpenCV 버전)를
   benchmark/golden/bit_hashes_env.txt에 고정.
+- **backend_equiv 벤더드 변형 빌드 회귀 — P7-1b 잠복, 2026-08-11 적발·수리.**
+  동결 스냅샷 reference_backend/Optimizer.cpp는 Verbose를 35곳에서 쓰면서
+  직접 include하지 않았다: 선언은 동결 closing/LoopClosing.hpp → 라이브
+  tracking/Tracking.hpp → core/System.hpp → core/Verbose.hpp 전이 경로로
+  유입되고 있었고, P7-1b(95a41f9)가 Tracking→System 사이클을 끊자 소멸했다.
+  마지막 하네스 실행이 P7-1b 착지 수 분 전(out/ mtime 2026-08-09 02:10)이라
+  P8~P11 동안 미탐지 잠복. 링크 단계에서 두 번째 잠복 회귀도 연쇄 적발:
+  P11-F4가 공유 소스 Frame.cpp에 FixFlags::I() 캐시를 넣으면서 "동결 벤더드
+  변형은 FixFlags 참조가 없다"던 P11-F1의 배선 전제가 무효화돼 있었다.
+  수리는 둘 다 하네스 글루만으로, 스냅샷 바이트 무변경: ① 해당 TU 컴파일
+  커맨드에 -include core/Verbose.hpp 강제 주입(P7-1b가 라이브 TU에 넣은
+  명시 include의 동결측 등가물; Verbose.hpp는 P2-3 이후 무변경이라 TU가
+  보는 바이트는 이전과 동일), ② FixFlags.cpp를 EQUIV_SHARED_SOURCES로 이동
+  (하네스는 FixFlags::Set을 호출하지 않으므로 양 변형 모두 레벨-0 all-false
+  기본 = OFF 계약 그대로). pre-P7-1b Tracking.hpp를 동결하는 대안은 기각 —
+  P6-2 선례(include 경로 드리프트 전용) 밖의 API 리팩터 헤더이고, 스냅샷을
+  여전히 드리프트 중인 System/Viewer 클로저에 재결합시켜 같은 부류의 파손을
+  재생산한다. 재실행 결과 전 게이트 그린, pose_optimization 크로스 변형
+  바이트 동일(P6 기록) 유지. 교훈: 라이브 include 그래프나 공유 소스의 심볼
+  표면을 바꾸는 커밋은 run_equiv.sh 재실행을 검증 목록에 포함할 것 — 이번
+  건은 마지막 실행 수 분 뒤 착지한 커밋이 여섯 페이즈 동안 하네스를 조용히
+  죽여 둔 사례다.
 
 8. **GBA 전파의 stamped-but-bad refKF 엣지** (P5-4 그룹 D) — 업스트림은 GBA
    스탬프는 찍혔으나 pop되지 않은(bad) 참조 KF의 stale/미기록 mTcwBefGBA로
