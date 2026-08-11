@@ -124,8 +124,10 @@ target_link_libraries(orbslam3_core PUBLIC
 # ---- dataset examples (golden-gate binaries) --------------------------------
 if(BUILD_EXAMPLES)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-  # TUM/RealSense/RGB-D and Examples_old targets are intentionally not built:
-  # outside the golden-gate scope (see docs/PROJECT_PLAN.md §4).
+  # TUM/RealSense/RGB-D targets are intentionally not built: outside the
+  # golden-gate scope (see docs/PROJECT_PLAN.md §4). Examples_old/ (old-API
+  # examples, never referenced by any target) was deleted post-phase-11;
+  # recover from git history if ever needed.
   add_executable(mono_euroc Examples/Monocular/mono_euroc.cc)
   add_executable(mono_kitti Examples/Monocular/mono_kitti.cc)
   add_executable(stereo_euroc Examples/Stereo/stereo_euroc.cc)
