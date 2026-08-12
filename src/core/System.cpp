@@ -20,6 +20,7 @@
 
 #include "core/System.hpp"
 #include "core/FixFlags.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 #include "io/Converter.hpp"
 #include <chrono>
 #include <thread>
@@ -668,6 +669,7 @@ void System::SaveTrajectoryTUM(const string &filename)
         // If the reference keyframe was culled, traverse the spanning tree to get a suitable keyframe.
         while(pKF->isBad())
         {
+            LT_PROBE_BAD("SysTrajTUM.walk", 'K', pKF->mnId);
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
         }
@@ -706,7 +708,10 @@ void System::SaveKeyFrameTrajectoryTUM(const string &filename)
        // pKF->SetPose(pKF->GetPose()*Two);
 
         if(pKF->isBad())
+        {
+            LT_PROBE_BAD("SysKFTrajTUM.skip", 'K', pKF->mnId);
             continue;
+        }
 
         Sophus::SE3f Twc = pKF->GetPoseInverse();
         Eigen::Quaternionf q = Twc.unit_quaternion();
@@ -796,6 +801,7 @@ void System::SaveTrajectoryEuRoC(const string &filename)
 
         while(pKF->isBad())
         {
+            LT_PROBE_BAD("SysTrajEuRoC.walk", 'K', pKF->mnId);
             //cout << " 2.bad" << endl;
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
@@ -901,6 +907,7 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 
         while(pKF->isBad())
         {
+            LT_PROBE_BAD("SysTrajEuRoCMap.walk1", 'K', pKF->mnId);
             //cout << " 2.bad" << endl;
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
@@ -1016,6 +1023,7 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 
         while(pKF->isBad())
         {
+            LT_PROBE_BAD("SysTrajEuRoCMap.walk2", 'K', pKF->mnId);
             //cout << " 2.bad" << endl;
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
@@ -1094,7 +1102,10 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
        // pKF->SetPose(pKF->GetPose()*Two);
 
         if(pKF->isBad())
+        {
+            LT_PROBE_BAD("SysTrajEuRoCMap.skip", 'K', pKF->mnId);
             continue;
+        }
         if (mSensor == IMU_MONOCULAR || mSensor == IMU_STEREO || mSensor==IMU_RGBD)
         {
             cv::Mat R = pKF->GetImuRotation().t();
@@ -1152,7 +1163,10 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
        // pKF->SetPose(pKF->GetPose()*Two);
 
         if(!pKF || pKF->isBad())
+        {
+            if(pKF) LT_PROBE_BAD("SysKFTrajEuRoC.skip", 'K', pKF->mnId);
             continue;
+        }
         if (mSensor == IMU_MONOCULAR || mSensor == IMU_STEREO || mSensor==IMU_RGBD)
         {
             Sophus::SE3f Twb = pKF->GetImuPose();
@@ -1190,7 +1204,10 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename, Map* pMap)
         KeyFrame* pKF = vpKFs[i];
 
         if(!pKF || pKF->isBad())
+        {
+            if(pKF) LT_PROBE_BAD("SysKFTrajEuRoCMap.skip", 'K', pKF->mnId);
             continue;
+        }
         if (mSensor == IMU_MONOCULAR || mSensor == IMU_STEREO || mSensor==IMU_RGBD)
         {
             Sophus::SE3f Twb = pKF->GetImuPose();
@@ -1246,6 +1263,7 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename, Map* pMap)
 
         while(pKF->isBad())
         {
+            LT_PROBE_BAD("SysKFTrajEuRoCMap.walk", 'K', pKF->mnId);
             Trw = Trw * Converter::toCvMat(pKF->mTcp.matrix());
             pKF = pKF->GetParent();
         }
@@ -1303,6 +1321,7 @@ void System::SaveTrajectoryKITTI(const string &filename)
 
         while(pKF->isBad())
         {
+            LT_PROBE_BAD("SysTrajKITTI.walk", 'K', pKF->mnId);
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
         }

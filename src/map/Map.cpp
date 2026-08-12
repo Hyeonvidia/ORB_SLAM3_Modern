@@ -18,6 +18,7 @@
 
 
 #include "map/Map.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 
 #include<mutex>
 
@@ -59,6 +60,7 @@ Map::~Map()
 
 void Map::AddKeyFrame(KeyFrame *pKF)
 {
+    LT_SEQ_BUMP();  // L0-D1: map-op axis for seq_delta
     unique_lock<mutex> lock(mMutexMap);
     if(mspKeyFrames.empty()){
         cout << "First KF:" << pKF->mnId << "; Map init KF:" << mnInitKFid << endl;
@@ -362,7 +364,10 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
     for(MapPoint* pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
+        {
+            if(pMPi) LT_PROBE_BAD("MapPreSave.mpClean", 'M', pMPi->mnId);
             continue;
+        }
 
         if(pMPi->GetObservations().size() == 0)
         {
@@ -373,6 +378,7 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
         {
             if(it->first->GetMap() != this || it->first->isBad())
             {
+                if(it->first->isBad()) LT_PROBE_BAD("MapPreSave.obsErase", 'K', it->first->mnId);
                 pMPi->EraseObservation(it->first);
             }
 
@@ -393,7 +399,10 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
     for(MapPoint* pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
+        {
+            if(pMPi) LT_PROBE_BAD("MapPreSave.mpBackup", 'M', pMPi->mnId);
             continue;
+        }
 
         mvpBackupMapPoints.push_back(pMPi);
         pMPi->PreSave(mspKeyFrames,mspMapPoints);
@@ -404,7 +413,10 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
     for(KeyFrame* pKFi : mspKeyFrames)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi) LT_PROBE_BAD("MapPreSave.kfBackup", 'K', pKFi->mnId);
             continue;
+        }
 
         mvpBackupKeyFrames.push_back(pKFi);
         pKFi->PreSave(mspKeyFrames,mspMapPoints, spCams);
@@ -433,7 +445,10 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     for(MapPoint* pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
+        {
+            if(pMPi) LT_PROBE_BAD("MapPostLoad.mp", 'M', pMPi->mnId);
             continue;
+        }
 
         pMPi->UpdateMap(this);
         mpMapPointId[pMPi->mnId] = pMPi;
@@ -443,7 +458,10 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     for(KeyFrame* pKFi : mspKeyFrames)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi) LT_PROBE_BAD("MapPostLoad.kf", 'K', pKFi->mnId);
             continue;
+        }
 
         pKFi->UpdateMap(this);
         pKFi->SetORBVocabulary(pORBVoc);
@@ -455,7 +473,10 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     for(MapPoint* pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
+        {
+            if(pMPi) LT_PROBE_BAD("MapPostLoad.mpRef", 'M', pMPi->mnId);
             continue;
+        }
 
         pMPi->PostLoad(mpKeyFrameId, mpMapPointId);
     }
@@ -463,7 +484,10 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     for(KeyFrame* pKFi : mspKeyFrames)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi) LT_PROBE_BAD("MapPostLoad.kfRef", 'K', pKFi->mnId);
             continue;
+        }
 
         pKFi->PostLoad(mpKeyFrameId, mpMapPointId, mpCams);
         pKFDB->add(pKFi);

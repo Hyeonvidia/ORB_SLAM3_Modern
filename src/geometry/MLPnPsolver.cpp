@@ -47,6 +47,7 @@
 ******************************************************************************/
 
 #include "geometry/MLPnPsolver.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 
 #include <Eigen/Sparse>
 
@@ -67,6 +68,7 @@ namespace ORB_SLAM3 {
             MapPoint* pMP = vpMapPointMatches[i];
 
             if(pMP){
+                if(pMP -> isBad()) LT_PROBE_BAD("MLPnP.match", 'M', pMP->mnId);
                 if(!pMP -> isBad()){
                     if(i >= F.mvKeysUn.size()) continue;
                     const cv::KeyPoint &kp = F.mvKeysUn[i];

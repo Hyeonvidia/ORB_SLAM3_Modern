@@ -17,6 +17,7 @@
 */
 
 #include "map/KeyFrame.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 #include "io/Converter.hpp"
 #include "backend/ImuTypes.hpp"
 #include<mutex>
@@ -669,6 +670,7 @@ void KeyFrame::SetBadFlag()
             mTcp = mTcw * mpParent->GetPoseInverse();
         }
         mbBad = true;
+        LT_STAMP_BAD('K', mnId);  // P12-L0-b
     }
 
 
