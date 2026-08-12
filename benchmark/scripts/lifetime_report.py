@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """P12-L0-b lifetime distribution report (docs/P12_L0_DESIGN.md).
 
-Aggregates lifetime_trace.csv (site,kind,id,seq_delta,ms_delta) into a
-per-site bad-then-read distribution — the per-site expiry-decision
-evidence:
+Aggregates lifetime traces into a per-site bad-then-read distribution —
+the per-site expiry-decision evidence:
 
   site                      n_events  n_objs  seq_delta(min/med/max)  ms_delta(min/med/max)
+
+Two trace formats are auto-detected by header:
+  v1  "site,kind,id,seq_delta,ms_delta"  — deltas precomputed in-process
+      (mutex-ledger era; the pilot_e4032eb captures)
+  v2  "type,site,kind,id,seq,ms"         — raw stamp('S')/probe('P')
+      records from the per-thread-ring ledger; the stamp->probe join and
+      delta computation happen here (kept off the instrumented threads)
 
 Sites absent from the trace produced ZERO bad-object reads in that run —
 list them via --expected <file> (one site label per line) to print the
@@ -22,6 +28,44 @@ import sys
 from collections import defaultdict
 
 
+def parse_v1(f, events, unknown):
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith(("site,", "#")):
+            continue
+        parts = line.split(",")
+        if len(parts) != 5:
+            continue
+        site, kind, oid, seq_d, ms_d = parts
+        if ms_d == "-1.000":
+            unknown[site] += 1
+            continue
+        events[site].append((int(seq_d), float(ms_d), kind + oid))
+
+
+def parse_v2(f, events, unknown):
+    stamps = {}   # (kind,id) -> (seq, ms); ids are never reused (nNextId++)
+    probes = []   # (site, kind, id, seq, ms)
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith(("type,", "#")):
+            continue
+        parts = line.split(",")
+        if len(parts) != 6:
+            continue
+        typ, site, kind, oid, seq, ms = parts
+        if typ == "S":
+            stamps[(kind, oid)] = (int(seq), float(ms))
+        elif typ == "P":
+            probes.append((site, kind, oid, int(seq), float(ms)))
+    for site, kind, oid, seq, ms in probes:
+        st = stamps.get((kind, oid))
+        if st is None:
+            unknown[site] += 1
+            continue
+        events[site].append((seq - st[0], ms - st[1], kind + oid))
+
+
 def main(argv):
     files, expected = [], None
     it = iter(argv[1:])
@@ -34,22 +78,16 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
 
-    events = defaultdict(list)   # site -> [(seq_delta, ms_delta, id)]
-    unknown = defaultdict(int)   # site -> count of pre-ledger (PostLoad) reads
+    events = defaultdict(list)   # site -> [(seq_delta, ms_delta, obj)]
+    unknown = defaultdict(int)   # site -> count of pre-ledger reads
     for path in files:
         with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith(("site,", "#")):
-                    continue
-                parts = line.split(",")
-                if len(parts) != 5:
-                    continue
-                site, kind, oid, seq_d, ms_d = parts
-                if ms_d == "-1.000":
-                    unknown[site] += 1
-                    continue
-                events[site].append((int(seq_d), float(ms_d), kind + oid))
+            head = f.readline()
+            f.seek(0)
+            if head.startswith("type,"):
+                parse_v2(f, events, unknown)
+            else:
+                parse_v1(f, events, unknown)
 
     def dist(vals):
         return f"{min(vals):.0f}/{statistics.median(vals):.0f}/{max(vals):.0f}"

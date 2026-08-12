@@ -13,94 +13,132 @@
 // code (md5-identical binaries are the inertness proof). This is the
 // TSAN/ASan diagnostic-tree policy, NOT a FixLevel runtime flag — the #20
 // same-binary rule governs behavior fixes in gate builds, which this is not.
+//
+// v2 (P12-L2 class-3 precondition): per-thread ring buffers, no shared
+// state on the record path. The v1 mutex-guarded ledger measurably delayed
+// LocalMapping — enough to systematically shift the T22 InitializeIMU
+// landing window (benchmark/lifetime/pilot_e4032eb/perturb.verdict). Now
+// StampBad and Probe are a thread-local ring append (single-writer, no
+// lock); the stamp->probe delta join moved into lifetime_report.py. The
+// only shared atomic is the op counter (relaxed fetch_add).
 
 #ifdef LIFETIME_TRACE
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <deque>
 #include <mutex>
-#include <unordered_map>
+#include <vector>
 
 namespace ORB_SLAM3
 {
 
-// Mutex-guarded global ledger. The design doc sketches per-thread ring
-// buffers; the pilot site classes (solver-local, shutdown path) are cold,
-// so one leaf mutex is contention-free there — revisit before probing the
-// hot Optimizer class (L2 stage 3). The ledger mutex is a leaf: never
-// held while acquiring any other lock (Stamp/Probe bodies only).
 class LifetimeLedger
 {
 public:
     static LifetimeLedger& I() { static LifetimeLedger g; return g; }
 
     // L0-D1: one global op counter — bumped at SetBadFlag and AddKeyFrame —
-    // so seq_delta reads as "map operations since this object died".
+    // so seq deltas read as "map operations since this object died".
     void Bump() { mSeq.fetch_add(1, std::memory_order_relaxed); }
 
     void StampBad(char kind, unsigned long id)
     {
         const unsigned long long s = mSeq.fetch_add(1, std::memory_order_relaxed) + 1;
-        std::lock_guard<std::mutex> l(mMx);
-        mBad[key(kind, id)] = Stamp{s, Clock::now()};
+        Tls().write(Rec{"", 'S', kind, id, s, NowMs()});
     }
 
-    // Record a read of a bad object at `site`.
+    // Record a read of a bad object at `site` (caller already checked isBad).
     void Probe(const char* site, char kind, unsigned long id)
     {
-        const unsigned long long now = mSeq.load(std::memory_order_relaxed);
-        const auto t = Clock::now();
-        std::lock_guard<std::mutex> l(mMx);
-        const auto it = mBad.find(key(kind, id));
-        Event e;
-        e.site = site; e.kind = kind; e.id = id;
-        if (it != mBad.end())
-        {
-            e.seqDelta = now - it->second.seq;
-            e.msDelta = std::chrono::duration<double, std::milli>(t - it->second.t).count();
-        }
-        else  // bad before the ledger saw it (e.g. PostLoad-restored map)
-        {
-            e.seqDelta = ~0ull; e.msDelta = -1.0;
-        }
-        if (mEvents.size() >= kCap) { mEvents.pop_front(); ++mDropped; }  // L0-D2 drop-oldest
-        mEvents.push_back(e);
+        Tls().write(Rec{site, 'P', kind, id,
+                        mSeq.load(std::memory_order_relaxed), NowMs()});
     }
 
     ~LifetimeLedger() { Flush(); }
 
 private:
     using Clock = std::chrono::steady_clock;
-    struct Stamp { unsigned long long seq; Clock::time_point t; };
-    struct Event { const char* site; char kind; unsigned long id;
-                   unsigned long long seqDelta; double msDelta; };
-    static constexpr size_t kCap = 1u << 20;
+    struct Rec { const char* site; char type; char kind; unsigned long id;
+                 unsigned long long seq; double ms; };
 
-    static unsigned long long key(char kind, unsigned long id)
-    { return (static_cast<unsigned long long>(kind) << 56) ^ id; }
+    // Stamps and probes separate per thread. Stamps are the JOIN KEYS for
+    // the report-side delta computation — dropping one silently orphans
+    // every later probe of that object (measured: L2's ~65k MP-culling
+    // stamps overflowed a shared 64k ring and orphaned 903 probe joins),
+    // so stamps go to a growable vector (bounded by objects created per
+    // run, ~MBs, diagnostic tree). Probes keep the L0-D2 drop-oldest ring;
+    // drops are counted and reported so truncation is never silent.
+    struct Ring
+    {
+        static constexpr size_t kCap = 1u << 16;
+        std::array<Rec, kCap> buf;
+        unsigned long long total = 0;
+        std::vector<Rec> stamps;
+        void write(const Rec& r)
+        {
+            if (r.type == 'S') { stamps.push_back(r); return; }
+            buf[total % kCap] = r; ++total;
+        }
+    };
+
+    // First touch per thread: allocate + register (one-time mutex; never on
+    // the steady-state record path). Rings leak deliberately — threads may
+    // outlive flush ordering, and this is a diagnostic tree.
+    Ring& Tls()
+    {
+        static thread_local Ring* tls = nullptr;
+        if (!tls)
+        {
+            tls = new Ring();
+            std::lock_guard<std::mutex> l(mMx);
+            mRings.push_back(tls);
+        }
+        return *tls;
+    }
+
+    double NowMs()
+    {
+        return std::chrono::duration<double, std::milli>(Clock::now() - mT0).count();
+    }
 
     void Flush()
     {
         const char* path = std::getenv("LIFETIME_TRACE_OUT");
         std::FILE* f = path ? std::fopen(path, "w") : stderr;
         if (!f) f = stderr;
-        std::fprintf(f, "site,kind,id,seq_delta,ms_delta\n");
-        for (const Event& e : mEvents)
-            std::fprintf(f, "%s,%c,%lu,%llu,%.3f\n",
-                         e.site, e.kind, e.id, e.seqDelta, e.msDelta);
-        std::fprintf(f, "# events=%zu dropped=%llu bad_stamped=%zu\n",
-                     mEvents.size(), (unsigned long long)mDropped, mBad.size());
+        std::fprintf(f, "type,site,kind,id,seq,ms\n");
+        std::lock_guard<std::mutex> l(mMx);
+        unsigned long long nOut = 0, nDropped = 0;
+        for (Ring* r : mRings)
+        {
+            for (const Rec& e : r->stamps)
+            {
+                std::fprintf(f, "%c,%s,%c,%lu,%llu,%.3f\n",
+                             e.type, e.site, e.kind, e.id, e.seq, e.ms);
+                ++nOut;
+            }
+            const unsigned long long lo = r->total > Ring::kCap ? r->total - Ring::kCap : 0;
+            nDropped += lo;
+            for (unsigned long long i = lo; i < r->total; ++i)
+            {
+                const Rec& e = r->buf[i % Ring::kCap];
+                std::fprintf(f, "%c,%s,%c,%lu,%llu,%.3f\n",
+                             e.type, e.site, e.kind, e.id, e.seq, e.ms);
+                ++nOut;
+            }
+        }
+        std::fprintf(f, "# records=%llu dropped=%llu threads=%zu\n",
+                     nOut, nDropped, mRings.size());
         if (path && f != stderr) std::fclose(f);
     }
 
     std::atomic<unsigned long long> mSeq{0};
-    std::mutex mMx;
-    std::unordered_map<unsigned long long, Stamp> mBad;
-    std::deque<Event> mEvents;
-    unsigned long long mDropped = 0;
+    const Clock::time_point mT0 = Clock::now();
+    std::mutex mMx;                // ring registry + flush only, never records
+    std::vector<Ring*> mRings;
 };
 
 }  // namespace ORB_SLAM3
