@@ -59,7 +59,11 @@ P12는 이 부재를 페이즈 첫 커밋들로 정면 해소를 시도한다:
    (benchmark/lifetime/pilot_e4032eb/L3.report). MLPnP는 미발화(정적 논거
    동형, 재국소화 시나리오 실측은 유보).
 2. **직렬화/셧다운 경로** (Map 8 + System 10) — P10-5 조인 사슬 이후 사실상
-   단일 스레드. 두 번째로 안전.
+   단일 스레드. 두 번째로 안전. **처분 완료 (2026-08-12)**: L4/L5 실측 —
+   PreSave 컨테이너 가드 3 + PostLoad 4는 구조적 도달 불능(0건, 만료-안전);
+   **MapPreSave.obsErase는 내력벽**(죽은 지 158s KF를 관측 맵 역참조로 청소
+   — KF↔MP 사이클 실측); System 궤적 walk는 L0-b에서 기 판정 내력벽.
+   부수 발견: SaveAtlasToFile의 "./" 강제(CWD 상대 전용) → S의 이식성 표적.
 3. **Optimizer 로컬 벡터** (62) — pin-set 패턴(진입 시 1회 lock, 내부 raw)
    으로 전환. 핫루프 refcount 비용이 여기 걸림 — 페어드 게이트 필수.
 4. **교차 스레드 잔여** (ORBmatcher/Tracking/LocalMapping/LoopClosing/뷰어)

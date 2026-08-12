@@ -8,6 +8,10 @@
 #   L3  kitti_stereo 00           -> loop closing: Sim3Solver candidate
 #                                    loops over possibly-culled MPs (the
 #                                    solver-local class evidence)
+#   L4  euroc_stereo MH01 + SaveAtlasToFile -> Map::PreSave probes fire at
+#                                    Shutdown (serialization class)
+#   L5  euroc_stereo MH01 + LoadAtlasFromFile (needs L4's .osa) ->
+#                                    Map::PostLoad probes fire at startup
 #
 # The run writes <rundir>/lifetime_trace.csv at shutdown (LifetimeLedger
 # flush; clean exit required — P10-5 join chain provides it). Feed the CSV
@@ -41,7 +45,27 @@ case "$SCEN" in
   L3)
     require "$KITTI/00/image_1"
     CMD=("$BIN/stereo_kitti" "$VOC" "$WS/Examples/Stereo/KITTI00-02.yaml" "$KITTI/00") ;;
-  *) echo "ERROR: unknown scenario '$SCEN' (L1|L2|L3)" >&2; exit 1 ;;
+  L4)
+    # NOTE: System::SaveAtlas hardcodes a "./" prefix (System.cpp:1475,
+    # upstream behavior, preserved) — the yaml value MUST be CWD-relative;
+    # the .osa lands in $OUT. Recorded as a P12-S portability finding.
+    require "$EUROC/MH01/mav0/cam0/data"
+    YAML="$OUT/EuRoC_save.yaml"
+    cp "$WS/Examples/Stereo/EuRoC.yaml" "$YAML"
+    printf '\nSystem.SaveAtlasToFile: "session"\n' >> "$YAML"
+    CMD=("$BIN/stereo_euroc" "$VOC" "$YAML" "$EUROC/MH01" "$WS/Examples/Stereo/EuRoC_TimeStamps/MH01.txt") ;;
+  L5)
+    # Loads the newest L4 .osa (same "./" prefix constraint: copy it into
+    # $OUT and reference it CWD-relative).
+    require "$EUROC/MH01/mav0/cam0/data"
+    ATLAS_SRC="$(ls -t /results/lifetime_L4_*/session.osa 2>/dev/null | head -1)"
+    [[ -n "$ATLAS_SRC" ]] || { echo "ERROR: no L4 session.osa found — run L4 first" >&2; exit 1; }
+    cp "$ATLAS_SRC" "$OUT/session.osa"
+    YAML="$OUT/EuRoC_load.yaml"
+    cp "$WS/Examples/Stereo/EuRoC.yaml" "$YAML"
+    printf '\nSystem.LoadAtlasFromFile: "session"\n' >> "$YAML"
+    CMD=("$BIN/stereo_euroc" "$VOC" "$YAML" "$EUROC/MH01" "$WS/Examples/Stereo/EuRoC_TimeStamps/MH01.txt") ;;
+  *) echo "ERROR: unknown scenario '$SCEN' (L1|L2|L3|L4|L5)" >&2; exit 1 ;;
 esac
 
 export LIFETIME_TRACE_OUT="$OUT/lifetime_trace.csv"

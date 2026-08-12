@@ -11,7 +11,9 @@
 |---|---|---|
 | **SysTrajEuRoC.walk** (부모 체인 워크) | L1: 죽은 KF 10개 × 333회, 사망 후 최대 190s · L2(리셋 스톰): **645개 × 2,772회, 중앙값 62s, 최대 146s** | **내력벽 실측 확정** — 셧다운 궤적 저장이 분 단위로 오래된 죽은 KF의 mTcp/mpParent를 읽는다. C-full 시 child→parent strong 필수(P11_RECON 차단 요인 4의 실증) |
 | 스킵 가드 10종 (SysKFTraj*.skip 등) | **0건** | GetAllKeyFrames/GetAllMapPoints가 bad를 이미 제외하므로 도달 불능 — 만료-안전 후보 (정적 도달성 논거로 승격 대기) |
-| Map::PreSave/PostLoad 8종 | 미발화 | 이 시나리오에 SaveAtlas/LoadAtlas 없음 — **미발화 ≠ 0건**, S 착수 전 save-enabled 시나리오로 별도 캡처 필요 |
+| **MapPreSave.obsErase** (L4 SaveAtlas 런, 2026-08-12) | 6건 × 2객체, ms 최대 **158s** | **내력벽** — PreSave가 살아있는 MP의 관측 맵 역참조로 오래 죽은 KF를 읽어 stale 백레퍼런스를 청소한다(비대칭 erase의 청소부; KF↔MP 사이클 = P11_RECON 차단 요인 6 실측). C-full 시 관측 맵의 죽은 KF 엔트리는 PreSave 청소까지 역참조 가능해야 함 |
+| PreSave 컨테이너 가드 3종 + PostLoad 4종 (L4/L5) | **0건** | 구조적 도달 불능 실측 확인 — Map::Erase*가 순회 대상 컨테이너에서 bad를 이미 제거하고, PreSave가 백업에서 bad를 제외하므로 PostLoad는 good만 본다. **만료-안전** (도달성 논거 + 실측 0) |
+| (부수 발견, L4 최초 실패) | — | System::SaveAtlas는 경로에 `./`를 강제(System.cpp:1475) — SaveAtlasToFile은 **CWD 상대만 가능**, 절대경로는 output stream error로 abort. 업스트림 보존, **P12-S 재설계의 이식성 표적에 추가** |
 | **Sim3Solver.match** (L3 kitti 00 추가 캡처, 2026-08-12) | 2건 × 2객체, **seq_delta 1~2, ms_delta ~0** | walk와 정반대 프로파일 — 루프 클로징이 읽는 bad MP는 "방금 죽은" 것뿐(LM culling과의 순간 경합 창). **처분: 진입부 pin으로 만료-안전** — 함수 스코프 수명 + pin-set 관례(OWNERSHIP)가 C-full에서 이 창을 닫는다. 솔버-로컬 클래스의 L2 파일럿 처분 완료 |
 | MLPnP.match | L3에서도 미발화 | 재국소화 시나리오 필요(추적 상실 유도) — 정적 논거는 Sim3Solver와 동형(함수 스코프 + 진입부 pin)이나 실측은 유보 |
 | SysTrajKITTI.walk | L3에서 0건 | 이 런의 저장 시점 참조 KF 전부 생존 — EuRoC walk의 하중과 대조적. 1런 관측이므로 "미발화"로만 기록 |
