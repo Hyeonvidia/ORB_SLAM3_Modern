@@ -66,6 +66,11 @@ P12는 이 부재를 페이즈 첫 커밋들로 정면 해소를 시도한다:
    부수 발견: SaveAtlasToFile의 "./" 강제(CWD 상대 전용) → S의 이식성 표적.
 3. **Optimizer 로컬 벡터** (62) — pin-set 패턴(진입 시 1회 lock, 내부 raw)
    으로 전환. 핫루프 refcount 비용이 여기 걸림 — 페어드 게이트 필수.
+   **진입 선행 조건 격상 (2026-08-12 섭동 게이트 결과)**: ① LifetimeLedger를
+   per-thread 링버퍼로 전환, ② 섭동 게이트 재통과. 근거 — 파일럿 스탬프만으로도
+   LM이 체계적으로 지연되어 T22 착지 창이 이동함이 실측됨(2/2 vs 0/2;
+   benchmark/lifetime/pilot_e4032eb/perturb.verdict). 게이트 자체는 T22
+   착지-상태 정규화(골든 트레이스 README가 선언한 비결정성) 하에 PASS.
 4. **교차 스레드 잔여** (ORBmatcher/Tracking/LocalMapping/LoopClosing/뷰어)
    — 최후, 사이트별 개별 판정.
 

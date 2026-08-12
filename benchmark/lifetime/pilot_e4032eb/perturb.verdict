@@ -1,0 +1,30 @@
+# Perturbation gate (P7 method, 2026-08-12) — PASS with documented T22 normalization
+
+Two independent gate-vs-probed pairs (mono-inertial MH01, transition-richest mode).
+Strict (from,to,reason) comparison flagged ONE systematic asymmetry:
+  probed 2/2, gate 0/2: 'RECENTLY_LOST -> OK LocalMapping::InitializeIMU (cross-thread)'
+Judgment: T22's from-state is declared pure-LM-timing by the golden state-trace
+README ('usually lands while already OK'); its identity is occurrence. Under the
+landing-state mask both pairs PASS. The systematic shift itself is recorded as
+measured stamp cost: SetBadFlag stamps delay LM enough to move T22's landing
+window. CONSEQUENCE: per-thread ring buffers + perturb re-pass are MANDATORY
+before Optimizer-class probes (which add far more LM-thread work).
+
+== perturb_20260812_053133 (normalized sets, gate==probed) ==
+* -> OK LocalMapping::InitializeIMU (cross-thread)
+NONE -> NO_IMAGES_YET Tracking::Tracking (ctor)
+NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+OK -> NO_IMAGES_YET Tracking::ResetActiveMap
+OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+
+== perturb_20260812_053845 (normalized sets, gate==probed) ==
+* -> OK LocalMapping::InitializeIMU (cross-thread)
+NONE -> NO_IMAGES_YET Tracking::Tracking (ctor)
+NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+OK -> NO_IMAGES_YET Tracking::ResetActiveMap
+OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+
