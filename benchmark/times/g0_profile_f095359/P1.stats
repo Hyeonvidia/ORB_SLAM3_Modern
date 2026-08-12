@@ -1,0 +1,79 @@
+ TIME STATS in ms (mean$\pm$std)
+OpenCV version: 4.5.4
+---------------------------
+Tracking
+
+ORB Extraction: 8.9278$\pm$0.77197
+Stereo Matching: 1.5705$\pm$0.37028
+Pose Prediction: 1.1282$\pm$0.27956
+LM Track: 2.4945$\pm$0.97618
+New KF decision: 0.034406$\pm$0.069416
+Total Tracking: 15.863$\pm$1.7426
+
+
+
+Local Mapping
+
+KF Insertion: 3.0842$\pm$0.5284
+MP Culling: 0.13463$\pm$0.071618
+MP Creation: 6.7479$\pm$2.6507
+LBA: 37.889$\pm$30.554
+KF Culling: 2.4587$\pm$1.8088
+Total Local Mapping: 49.845$\pm$34.768
+---------------------------
+
+LBA complexity (mean$\pm$std)
+LBA Edges: 10749$\pm$6945.6
+LBA KF optimized: 24.146$\pm$14.846
+LBA KF fixed: 38.178$\pm$33.644
+LBA MP: nan$\pm$nan
+
+LBA executions: 157
+LBA aborts: 2
+---------------------------
+
+Map complexity
+KFs in map: 150
+MPs in map: 8141
+---------------------------
+
+Place Recognition (mean$\pm$std)
+Database Query: 0.25614$\pm$0.17643
+SE3 estimation: 0.82746$\pm$1.3508
+Total Place Recognition: 1.0669$\pm$1.44
+
+
+Loop Closing (mean$\pm$std)
+Loop Fusion: nan$\pm$nan
+Essential Graph: nan$\pm$nan
+Total Loop Closing: nan$\pm$nan
+
+Num exec: 0
+
+Map Merging (mean$\pm$std)
+Merge Maps: nan$\pm$nan
+Welding BA: nan$\pm$nan
+Optimization Ess.: nan$\pm$nan
+Total Map Merging: nan$\pm$nan
+
+Num exec: 0
+Number of KFs: nan$\pm$nan
+Number of MPs: nan$\pm$nan
+
+Full GBA (mean$\pm$std)
+GBA: nan$\pm$nan
+Map Update: nan$\pm$nan
+Total Full GBA: nan$\pm$nan
+
+Num exec: 0
+Num abort: 0
+Number of KFs: nan$\pm$nan
+Number of MPs: nan$\pm$nan
+
+Saving trajectory to CameraTrajectory.txt ...
+There are 1 maps in the atlas
+  Map 0 has 150 KFs
+
+End of saving trajectory to CameraTrajectory.txt ...
+
+Saving keyframe trajectory to KeyFrameTrajectory.txt ...
