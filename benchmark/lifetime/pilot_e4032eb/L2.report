@@ -1,0 +1,23 @@
+site                           n_ev  n_obj    seq min/med/max         ms min/med/max
+SysTrajEuRoC.walk              2772    645      0/26849/93881       112/62215/145775
+
+# zero-event sites (expiry-safe candidates pending reachability argument):
+#   SysTrajTUM.walk
+#   SysKFTrajTUM.skip
+#   SysTrajEuRoCMap.walk1
+#   SysTrajEuRoCMap.walk2
+#   SysTrajEuRoCMap.skip
+#   SysKFTrajEuRoC.skip
+#   SysKFTrajEuRoCMap.skip
+#   SysKFTrajEuRoCMap.walk
+#   SysTrajKITTI.walk
+#   MapPreSave.mpClean
+#   MapPreSave.obsErase
+#   MapPreSave.mpBackup
+#   MapPreSave.kfBackup
+#   MapPostLoad.mp
+#   MapPostLoad.kf
+#   MapPostLoad.mpRef
+#   MapPostLoad.kfRef
+#   Sim3Solver.match
+#   MLPnP.match
