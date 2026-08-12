@@ -12,7 +12,9 @@
 | **SysTrajEuRoC.walk** (부모 체인 워크) | L1: 죽은 KF 10개 × 333회, 사망 후 최대 190s · L2(리셋 스톰): **645개 × 2,772회, 중앙값 62s, 최대 146s** | **내력벽 실측 확정** — 셧다운 궤적 저장이 분 단위로 오래된 죽은 KF의 mTcp/mpParent를 읽는다. C-full 시 child→parent strong 필수(P11_RECON 차단 요인 4의 실증) |
 | 스킵 가드 10종 (SysKFTraj*.skip 등) | **0건** | GetAllKeyFrames/GetAllMapPoints가 bad를 이미 제외하므로 도달 불능 — 만료-안전 후보 (정적 도달성 논거로 승격 대기) |
 | Map::PreSave/PostLoad 8종 | 미발화 | 이 시나리오에 SaveAtlas/LoadAtlas 없음 — **미발화 ≠ 0건**, S 착수 전 save-enabled 시나리오로 별도 캡처 필요 |
-| Sim3Solver/MLPnP.match | 미발화 | MH01에 루프/재국소화 미발생 — KITTI 00 시나리오로 별도 캡처 필요 (A3와 동일 시점) |
+| **Sim3Solver.match** (L3 kitti 00 추가 캡처, 2026-08-12) | 2건 × 2객체, **seq_delta 1~2, ms_delta ~0** | walk와 정반대 프로파일 — 루프 클로징이 읽는 bad MP는 "방금 죽은" 것뿐(LM culling과의 순간 경합 창). **처분: 진입부 pin으로 만료-안전** — 함수 스코프 수명 + pin-set 관례(OWNERSHIP)가 C-full에서 이 창을 닫는다. 솔버-로컬 클래스의 L2 파일럿 처분 완료 |
+| MLPnP.match | L3에서도 미발화 | 재국소화 시나리오 필요(추적 상실 유도) — 정적 논거는 Sim3Solver와 동형(함수 스코프 + 진입부 pin)이나 실측은 유보 |
+| SysTrajKITTI.walk | L3에서 0건 | 이 런의 저장 시점 참조 KF 전부 생존 — EuRoC walk의 하중과 대조적. 1런 관측이므로 "미발화"로만 기록 |
 
 ## 판정에 쓰는 법
 
