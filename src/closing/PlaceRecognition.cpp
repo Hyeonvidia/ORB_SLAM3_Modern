@@ -18,6 +18,7 @@
 
 
 #include "closing/PlaceRecognition.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include "closing/LoopClosing.hpp"       // host state via the friend grant (P8-4 pattern)
 #include "core/FixFlags.hpp"             // P11-F2: Fix.ScaleJacobian rides into OptimizeSim3
@@ -404,7 +405,10 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
     for(KeyFrame* pKFi : vpBowCand)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("PRDetectCommon.406", 'K', pKFi->mnId);
             continue;
+        }
 
         // Current KF against KF with covisibles version
         std::vector<KeyFrame*> vpCovKFi = pKFi->GetBestCovisibilityKeyFrames(nNumCovisibles);
@@ -449,7 +453,10 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
         for(int j=0; j<vpCovKFi.size(); ++j)
         {
             if(!vpCovKFi[j] || vpCovKFi[j]->isBad())
+            {
+                if(vpCovKFi[j] && vpCovKFi[j]->isBad()) LT_PROBE_BAD("PRDetectCommon.451", 'K', vpCovKFi[j]->mnId);
                 continue;
+            }
 
             int num = matcherBoW.SearchByBoW(mHost.mpCurrentKF, vpCovKFi[j], vvpMatchedMPs[j]);
             if (num > nMostBoWNumMatches)
@@ -464,7 +471,10 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
             {
                 MapPoint* pMPi_j = vvpMatchedMPs[j][k];
                 if(!pMPi_j || pMPi_j->isBad())
+                {
+                    if(pMPi_j && pMPi_j->isBad()) LT_PROBE_BAD("PRDetectCommon.466", 'M', pMPi_j->mnId);
                     continue;
+                }
 
                 if(spMatchedMPi.find(pMPi_j) == spMatchedMPi.end())
                 {
@@ -513,7 +523,10 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
                     for(MapPoint* pCovMPij : pCovKFi->GetMapPointMatches())
                     {
                         if(!pCovMPij || pCovMPij->isBad())
+                        {
+                            if(pCovMPij && pCovMPij->isBad()) LT_PROBE_BAD("PRDetectCommon.515", 'M', pCovMPij->mnId);
                             continue;
+                        }
 
                         if(spMapPoints.find(pCovMPij) == spMapPoints.end())
                         {
@@ -667,7 +680,10 @@ int PlaceRecognition::FindMatchesByProjection(KeyFrame* pCurrentKF, KeyFrame* pM
         for(MapPoint* pMPij : pKFi->GetMapPointMatches())
         {
             if(!pMPij || pMPij->isBad())
+            {
+                if(pMPij && pMPij->isBad()) LT_PROBE_BAD("PRFindMatchesB.669", 'M', pMPij->mnId);
                 continue;
+            }
 
             if(spMapPoints.find(pMPij) == spMapPoints.end())
             {

@@ -1,0 +1,15 @@
+# Perturbation-gate transition-type universe (P12-L2, 2026-08-12).
+# Sources: the four golden traces (1-run samples) + docs/P7_RECON.md §A transition
+# table for documented types the samples missed. AMENDMENT PROTOCOL: a new line
+# requires the P7_RECON T-number in a trailing comment — no T-number, no entry.
+# T22 landing states are masked to '*' (declared pure-LM-timing, see README).
+* -> OK LocalMapping::InitializeIMU (cross-thread)
+NONE -> NO_IMAGES_YET Tracking::Tracking (ctor)
+NOT_INITIALIZED -> OK CreateInitialMapMonocular: initial map created
+NOT_INITIALIZED -> OK StereoInitialization: initial map created
+NO_IMAGES_YET -> NOT_INITIALIZED Track: first image received
+OK -> NO_IMAGES_YET Tracking::ResetActiveMap
+OK -> RECENTLY_LOST Track: TrackLocalMap failed (inertial)
+RECENTLY_LOST -> NO_IMAGES_YET Tracking::ResetActiveMap
+RECENTLY_LOST -> LOST Track: RECENTLY_LOST timeout (inertial)  # T14
+LOST -> NO_IMAGES_YET CreateMapInAtlas: new map forked  # T16

@@ -18,6 +18,7 @@
 
 
 #include "mapping/LocalMapping.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 #include "closing/LoopClosing.hpp"
 #include "tracking/Tracking.hpp"  // P8-3: was transitive via LocalMapping.hpp
 #include "features/ORBmatcher.hpp"
@@ -393,6 +394,7 @@ void LocalMapping::ProcessNewKeyFrame()
         MapPoint* pMP = vpMapPointMatches[i];
         if(pMP)
         {
+            if(pMP->isBad()) LT_PROBE_BAD("LMProcessNewKe.396", 'M', pMP->mnId);
             if(!pMP->isBad())
             {
                 if(!pMP->IsInKeyFrame(mpCurrentKeyFrame.load(std::memory_order_relaxed)))
@@ -440,7 +442,10 @@ void LocalMapping::MapPointCulling()
         MapPoint* pMP = *lit;
 
         if(pMP->isBad())
+        {
+            LT_PROBE_BAD("LMMapPointCull.442", 'M', pMP->mnId);
             lit = mlpRecentAddedMapPoints.erase(lit);
+        }
         else if(pMP->GetFoundRatio()<0.25f)
         {
             pMP->SetBadFlag();
@@ -787,7 +792,10 @@ void LocalMapping::SearchInNeighbors()
     {
         KeyFrame* pKFi = *vit;
         if(pKFi->isBad() || sFuseTargets.count(pKFi))
+        {
+            if(pKFi->isBad()) LT_PROBE_BAD("LMSearchInNeig.789", 'K', pKFi->mnId);
             continue;
+        }
         vpTargetKFs.push_back(pKFi);
         sFuseTargets.insert(pKFi);
     }
@@ -801,7 +809,10 @@ void LocalMapping::SearchInNeighbors()
         {
             KeyFrame* pKFi2 = *vit2;
             if(pKFi2->isBad() || sFuseTargets.count(pKFi2) || pKFi2->mnId==mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId)
+            {
+                if(pKFi2->isBad()) LT_PROBE_BAD("LMSearchInNeig.803", 'K', pKFi2->mnId);
                 continue;
+            }
             vpTargetKFs.push_back(pKFi2);
             sFuseTargets.insert(pKFi2);
         }
@@ -817,6 +828,7 @@ void LocalMapping::SearchInNeighbors()
         {
             if(pKFi->isBad() || sFuseTargets.count(pKFi))
             {
+                if(pKFi->isBad()) LT_PROBE_BAD("LMSearchInNeig.818", 'K', pKFi->mnId);
                 pKFi = pKFi->mPrevKF;
                 continue;
             }
@@ -857,7 +869,10 @@ void LocalMapping::SearchInNeighbors()
             if(!pMP)
                 continue;
             if(pMP->isBad() || sFuseCandidates.count(pMP))
+            {
+                if(pMP->isBad()) LT_PROBE_BAD("LMSearchInNeig.859", 'M', pMP->mnId);
                 continue;
+            }
             sFuseCandidates.insert(pMP);
             vpFuseCandidates.push_back(pMP);
         }
@@ -874,6 +889,7 @@ void LocalMapping::SearchInNeighbors()
         MapPoint* pMP=vpMapPointMatches[i];
         if(pMP)
         {
+            if(pMP->isBad()) LT_PROBE_BAD("LMSearchInNeig.877", 'M', pMP->mnId);
             if(!pMP->isBad())
             {
                 pMP->ComputeDistinctiveDescriptors();
@@ -1062,7 +1078,10 @@ void LocalMapping::KeyFrameCulling()
         KeyFrame* pKF = *vit;
 
         if((pKF->mnId==pKF->GetMap()->GetInitKFid()) || pKF->isBad())
+        {
+            if(pKF->isBad()) LT_PROBE_BAD("LMKeyFrameCull.1064", 'K', pKF->mnId);
             continue;
+        }
         const vector<MapPoint*> vpMapPoints = pKF->GetMapPointMatches();
 
         int nObs = 3;
@@ -1074,6 +1093,7 @@ void LocalMapping::KeyFrameCulling()
             MapPoint* pMP = vpMapPoints[i];
             if(pMP)
             {
+                if(pMP->isBad()) LT_PROBE_BAD("LMKeyFrameCull.1077", 'M', pMP->mnId);
                 if(!pMP->isBad())
                 {
                     if(!mbMonocular)

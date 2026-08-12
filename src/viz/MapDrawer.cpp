@@ -17,6 +17,7 @@
 */
 
 #include "viz/MapDrawer.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 #include "map/MapPoint.hpp"
 #include "map/KeyFrame.hpp"
 #include <pangolin/pangolin.h>
@@ -63,7 +64,10 @@ void MapDrawer::DrawMapPoints()
     for(size_t i=0, iend=vpMPs.size(); i<iend;i++)
     {
         if(vpMPs[i]->isBad() || spRefMPs.count(vpMPs[i]))
+        {
+            if(vpMPs[i]->isBad()) LT_PROBE_BAD("MDDrawMapPoint.65", 'M', vpMPs[i]->mnId);
             continue;
+        }
         Eigen::Matrix<float,3,1> pos = vpMPs[i]->GetWorldPos();
         glVertex3f(pos(0),pos(1),pos(2));
     }
@@ -76,7 +80,10 @@ void MapDrawer::DrawMapPoints()
     for(set<MapPoint*>::iterator sit=spRefMPs.begin(), send=spRefMPs.end(); sit!=send; sit++)
     {
         if((*sit)->isBad())
+        {
+            LT_PROBE_BAD("MDDrawMapPoint.78", 'M', (*sit)->mnId);
             continue;
+        }
         Eigen::Matrix<float,3,1> pos = (*sit)->GetWorldPos();
         glVertex3f(pos(0),pos(1),pos(2));
 

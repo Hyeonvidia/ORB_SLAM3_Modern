@@ -18,6 +18,7 @@
 
 
 #include "features/ORBmatcher.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include<limits.h>
 
@@ -53,7 +54,10 @@ namespace ORB_SLAM3
                 continue;
 
             if(pMP->isBad())
+            {
+                LT_PROBE_BAD("OM?.55", 'M', pMP->mnId);
                 continue;
+            }
 
             if(pMP->mbTrackInView)
             {
@@ -255,7 +259,10 @@ namespace ORB_SLAM3
                         continue;
 
                     if(pMP->isBad())
+                    {
+                        LT_PROBE_BAD("OM?.257", 'M', pMP->mnId);
                         continue;
+                    }
 
                     const cv::Mat &dKF= pKF->mDescriptors.row(realIdxKF);
 
@@ -446,7 +453,10 @@ namespace ORB_SLAM3
 
             // Discard Bad MapPoints and already found
             if(pMP->isBad() || spAlreadyFound.count(pMP))
+            {
+                if(pMP->isBad()) LT_PROBE_BAD("OM?.448", 'M', pMP->mnId);
                 continue;
+            }
 
             // Get 3D Coords.
             Eigen::Vector3f p3Dw = pMP->GetWorldPos();
@@ -554,7 +564,10 @@ namespace ORB_SLAM3
 
             // Discard Bad MapPoints and already found
             if(pMP->isBad() || spAlreadyFound.count(pMP))
+            {
+                if(pMP->isBad()) LT_PROBE_BAD("OM?.556", 'M', pMP->mnId);
                 continue;
+            }
 
             // Get 3D Coords.
             Eigen::Vector3f p3Dw = pMP->GetWorldPos();
@@ -802,7 +815,10 @@ namespace ORB_SLAM3
                     if(!pMP1)
                         continue;
                     if(pMP1->isBad())
+                    {
+                        LT_PROBE_BAD("OM?.804", 'M', pMP1->mnId);
                         continue;
+                    }
 
                     const cv::Mat &d1 = Descriptors1.row(idx1);
 
@@ -824,7 +840,10 @@ namespace ORB_SLAM3
                             continue;
 
                         if(pMP2->isBad())
+                        {
+                            LT_PROBE_BAD("OM?.826", 'M', pMP2->mnId);
                             continue;
+                        }
 
                         const cv::Mat &d2 = Descriptors2.row(idx2);
 
@@ -1183,6 +1202,7 @@ namespace ORB_SLAM3
 
             if(pMP->isBad())
             {
+                LT_PROBE_BAD("OM?.1184", 'M', pMP->mnId);
                 count_bad++;
                 continue;
             }
@@ -1311,6 +1331,7 @@ namespace ORB_SLAM3
                 MapPoint* pMPinKF = pKF->GetMapPoint(bestIdx);
                 if(pMPinKF)
                 {
+                    if(pMPinKF->isBad()) LT_PROBE_BAD("OM?.1314", 'M', pMPinKF->mnId);
                     if(!pMPinKF->isBad())
                     {
                         if(pMPinKF->Observations()>pMP->Observations())
@@ -1360,7 +1381,10 @@ namespace ORB_SLAM3
 
             // Discard Bad MapPoints and already found
             if(pMP->isBad() || spAlreadyFound.count(pMP))
+            {
+                if(pMP->isBad()) LT_PROBE_BAD("OM?.1362", 'M', pMP->mnId);
                 continue;
+            }
 
             // Get 3D Coords.
             Eigen::Vector3f p3Dw = pMP->GetWorldPos();
@@ -1436,6 +1460,7 @@ namespace ORB_SLAM3
                 MapPoint* pMPinKF = pKF->GetMapPoint(bestIdx);
                 if(pMPinKF)
                 {
+                    if(pMPinKF->isBad()) LT_PROBE_BAD("OM?.1439", 'M', pMPinKF->mnId);
                     if(!pMPinKF->isBad())
                         vpReplacePoint[iMP] = pMPinKF;
                 }
@@ -1687,6 +1712,7 @@ namespace ORB_SLAM3
 
             if(pMP)
             {
+                if(pMP->isBad()) LT_PROBE_BAD("OM?.1690", 'M', pMP->mnId);
                 if(!pMP->isBad() && !sAlreadyFound.count(pMP))
                 {
                     //Project

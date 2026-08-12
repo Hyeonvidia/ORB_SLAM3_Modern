@@ -351,6 +351,7 @@ void MapPoint::ComputeDistinctiveDescriptors()
     {
         KeyFrame* pKF = mit->first;
 
+        if(pKF->isBad()) LT_PROBE_BAD("MPComputeDisti.354", 'K', pKF->mnId);
         if(!pKF->isBad()){
             tuple<int,int> indexes = mit -> second;
             int leftIndex = get<0>(indexes), rightIndex = get<1>(indexes);

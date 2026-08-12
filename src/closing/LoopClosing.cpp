@@ -18,6 +18,7 @@
 
 
 #include "closing/LoopClosing.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include "core/FixFlags.hpp"  // P11-F3: Fix.LoopStateHygiene (scale-abort arm) + Fix.LcResetWipe
 #include "core/System.hpp"   // P7-1b: System::eSensor enumerators; no longer transitive via Tracking.hpp
@@ -497,7 +498,10 @@ void LoopClosing::CorrectLoop()
                 if(!pMPi)
                     continue;
                 if(pMPi->isBad())
+                {
+                    LT_PROBE_BAD("LCCorrectLoop.499", 'M', pMPi->mnId);
                     continue;
+                }
                 if(mCorrectedRefs.count(pMPi))
                     continue;
 
@@ -728,6 +732,7 @@ void LoopClosing::MergeLocal()
             vector<KeyFrame*> vpKFiCov = pKFi->GetBestCovisibilityKeyFrames(numTemporalKFs/2);
             for(KeyFrame* pKFcov : vpKFiCov)
             {
+                if(pKFcov->isBad()) LT_PROBE_BAD("LCMergeLocal.731", 'K', pKFcov->mnId);
                 if(pKFcov && !pKFcov->isBad() && spLocalWindowKFs.find(pKFcov) == spLocalWindowKFs.end())
                 {
                     vpNewCovKFs.push_back(pKFcov);
@@ -743,7 +748,10 @@ void LoopClosing::MergeLocal()
     for(KeyFrame* pKFi : spLocalWindowKFs)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.745", 'K', pKFi->mnId);
             continue;
+        }
 
         set<MapPoint*> spMPs = pKFi->GetMapPoints();
         spLocalWindowMPs.insert(spMPs.begin(), spMPs.end());
@@ -785,6 +793,7 @@ void LoopClosing::MergeLocal()
             vector<KeyFrame*> vpKFiCov = pKFi->GetBestCovisibilityKeyFrames(numTemporalKFs/2);
             for(KeyFrame* pKFcov : vpKFiCov)
             {
+                if(pKFcov->isBad()) LT_PROBE_BAD("LCMergeLocal.788", 'K', pKFcov->mnId);
                 if(pKFcov && !pKFcov->isBad() && spMergeConnectedKFs.find(pKFcov) == spMergeConnectedKFs.end())
                 {
                     vpNewCovKFs.push_back(pKFcov);
@@ -832,6 +841,7 @@ void LoopClosing::MergeLocal()
     {
         if(!pKFi || pKFi->isBad())
         {
+            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.833", 'K', pKFi->mnId);
             Verbose::PrintMess("Bad KF in correction", Verbose::VERBOSITY_DEBUG);
             continue;
         }
@@ -880,6 +890,7 @@ void LoopClosing::MergeLocal()
         MapPoint* pMPi = *itMP;
         if(!pMPi || pMPi->isBad())
         {
+            if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.881", 'M', pMPi->mnId);
             itMP = spLocalWindowMPs.erase(itMP);
             continue;
         }
@@ -912,6 +923,7 @@ void LoopClosing::MergeLocal()
         {
             if(!pKFi || pKFi->isBad())
             {
+                if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.913", 'K', pKFi->mnId);
                 continue;
             }
 
@@ -935,7 +947,10 @@ void LoopClosing::MergeLocal()
         for(MapPoint* pMPi : spLocalWindowMPs)
         {
             if(!pMPi || pMPi->isBad())
+            {
+                if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.937", 'M', pMPi->mnId);
                 continue;
+            }
 
             pMPi->SetWorldPos(scratch.mps[pMPi].Pos);
             pMPi->SetNormalVector(scratch.mps[pMPi].Normal);
@@ -984,14 +999,20 @@ void LoopClosing::MergeLocal()
     for(KeyFrame* pKFi : spLocalWindowKFs)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.986", 'K', pKFi->mnId);
             continue;
+        }
 
         pKFi->UpdateConnections();
     }
     for(KeyFrame* pKFi : spMergeConnectedKFs)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.993", 'K', pKFi->mnId);
             continue;
+        }
 
         pKFi->UpdateConnections();
     }
@@ -1044,6 +1065,7 @@ void LoopClosing::MergeLocal()
             {
                 if(!pKFi || pKFi->isBad() || pKFi->GetMap() != pCurrentMap)
                 {
+                    if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.1045", 'K', pKFi->mnId);
                     continue;
                 }
 
@@ -1081,7 +1103,10 @@ void LoopClosing::MergeLocal()
             for(MapPoint* pMPi : vpCurrentMapMPs)
             {
                 if(!pMPi || pMPi->isBad()|| pMPi->GetMap() != pCurrentMap)
+                {
+                    if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.1083", 'M', pMPi->mnId);
                     continue;
+                }
 
                 KeyFrame* pKFref = pMPi->GetReferenceKeyFrame();
                 g2o::Sim3 g2oCorrectedSwi = vCorrectedSim3[pKFref].inverse();
@@ -1117,6 +1142,7 @@ void LoopClosing::MergeLocal()
             {
                 if(!pKFi || pKFi->isBad() || pKFi->GetMap() != pCurrentMap)
                 {
+                    if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.1118", 'K', pKFi->mnId);
                     continue;
                 }
 
@@ -1129,7 +1155,10 @@ void LoopClosing::MergeLocal()
             for(MapPoint* pMPi : vpCurrentMapMPs)
             {
                 if(!pMPi || pMPi->isBad())
+                {
+                    if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.1131", 'M', pMPi->mnId);
                     continue;
+                }
 
                 pMPi->UpdateMap(pMergeMap);
                 pMergeMap->AddMapPoint(pMPi);
@@ -1289,6 +1318,7 @@ void LoopClosing::MergeLocal2()
         {
             if(!pKFi || pKFi->isBad() || pKFi->GetMap() != pMergeMap)
             {
+                if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1290", 'K', pKFi->mnId);
                 continue;
             }
 
@@ -1301,7 +1331,10 @@ void LoopClosing::MergeLocal2()
         for(MapPoint* pMPi : vpMergeMapMPs)
         {
             if(!pMPi || pMPi->isBad() || pMPi->GetMap() != pMergeMap)
+            {
+                if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1303", 'M', pMPi->mnId);
                 continue;
+            }
 
             pMPi->UpdateMap(pCurrentMap);
             pCurrentMap->AddMapPoint(pMPi);
@@ -1365,14 +1398,20 @@ void LoopClosing::MergeLocal2()
     for(KeyFrame* pKFi : vpCurrentConnectedKFs)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1367", 'K', pKFi->mnId);
             continue;
+        }
 
         pKFi->UpdateConnections();
     }
     for(KeyFrame* pKFi : mvpMergeConnectedKFs)
     {
         if(!pKFi || pKFi->isBad())
+        {
+            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1374", 'K', pKFi->mnId);
             continue;
+        }
 
         pKFi->UpdateConnections();
     }
@@ -1683,7 +1722,10 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
                 {
                     KeyFrame* pChild = *sit;
                     if(!pChild || pChild->isBad())
+                    {
+                        if(pChild && pChild->isBad()) LT_PROBE_BAD("LCRunGlobalBun.1685", 'K', pChild->mnId);
                         continue;
+                    }
 
                     if(!gbaResult.kfs.count(pChild))
                     {
@@ -1729,7 +1771,10 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
                 MapPoint* pMP = vpMPs[i];
 
                 if(pMP->isBad())
+                {
+                    LT_PROBE_BAD("LCRunGlobalBun.1731", 'M', pMP->mnId);
                     continue;
+                }
 
                 std::map<MapPoint*, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
                 if(itMP != gbaResult.mps.end())

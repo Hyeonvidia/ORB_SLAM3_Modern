@@ -17,6 +17,7 @@
 */
 
 #include "mapping/ImuInitializer.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 #include "mapping/LocalMapping.hpp"
 #include "tracking/Tracking.hpp"
 #include "backend/IMappingOptimizer.hpp"
@@ -229,7 +230,10 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         {
             KeyFrame* pChild = *sit;
             if(!pChild || pChild->isBad())
+            {
+                if(pChild && pChild->isBad()) LT_PROBE_BAD("IIInitializeIM.231", 'K', pChild->mnId);
                 continue;
+            }
 
             if(!gbaResult.kfs.count(pChild))
             {
@@ -277,7 +281,10 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         MapPoint* pMP = vpMPs[i];
 
         if(pMP->isBad())
+        {
+            LT_PROBE_BAD("IIInitializeIM.279", 'M', pMP->mnId);
             continue;
+        }
 
         std::map<MapPoint*, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
         if(itMP != gbaResult.mps.end())

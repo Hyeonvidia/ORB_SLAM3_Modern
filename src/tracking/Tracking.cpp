@@ -18,6 +18,7 @@
 
 
 #include "tracking/Tracking.hpp"
+#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include "features/ORBmatcher.hpp"
 #include "viz/FrameDrawer.hpp"
@@ -2637,6 +2638,7 @@ void Tracking::SearchLocalPoints()
         {
             if(pMP->isBad())
             {
+                LT_PROBE_BAD("TrkSearchLocalP.2638", 'M', pMP->mnId);
                 *vit = static_cast<MapPoint*>(NULL);
             }
             else
@@ -2659,7 +2661,10 @@ void Tracking::SearchLocalPoints()
         if(pMP->mnLastFrameSeen == mCurrentFrame.mnId)
             continue;
         if(pMP->isBad())
+        {
+            LT_PROBE_BAD("TrkSearchLocalP.2661", 'M', pMP->mnId);
             continue;
+        }
         // Project (this fills MapPoint variables for matching)
         if(mCurrentFrame.isInFrustum(pMP,0.5))
         {
@@ -2730,6 +2735,7 @@ void Tracking::UpdateLocalPoints()
                 continue;
             if(pMP->mnTrackReferenceForFrame==mCurrentFrame.mnId)
                 continue;
+            if(pMP->isBad()) LT_PROBE_BAD("TrkUpdateLocalP.2733", 'M', pMP->mnId);
             if(!pMP->isBad())
             {
                 count_pts++;
@@ -2752,6 +2758,7 @@ void Tracking::UpdateLocalKeyFrames()
             MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
             if(pMP)
             {
+                if(pMP->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2755", 'M', pMP->mnId);
                 if(!pMP->isBad())
                 {
                     const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
@@ -2775,6 +2782,7 @@ void Tracking::UpdateLocalKeyFrames()
                 MapPoint* pMP = mLastFrame.mvpMapPoints[i];
                 if(!pMP)
                     continue;
+                if(pMP->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2778", 'M', pMP->mnId);
                 if(!pMP->isBad())
                 {
                     const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
@@ -2803,7 +2811,10 @@ void Tracking::UpdateLocalKeyFrames()
         KeyFrame* pKF = it->first;
 
         if(pKF->isBad())
+        {
+            LT_PROBE_BAD("TrkUpdateLocalK.2805", 'K', pKF->mnId);
             continue;
+        }
 
         if(it->second>max)
         {
@@ -2830,6 +2841,7 @@ void Tracking::UpdateLocalKeyFrames()
         for(vector<KeyFrame*>::const_iterator itNeighKF=vNeighs.begin(), itEndNeighKF=vNeighs.end(); itNeighKF!=itEndNeighKF; itNeighKF++)
         {
             KeyFrame* pNeighKF = *itNeighKF;
+            if(pNeighKF->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2833", 'K', pNeighKF->mnId);
             if(!pNeighKF->isBad())
             {
                 if(pNeighKF->mnTrackReferenceForFrame!=mCurrentFrame.mnId)
@@ -2845,6 +2857,7 @@ void Tracking::UpdateLocalKeyFrames()
         for(set<KeyFrame*>::const_iterator sit=spChilds.begin(), send=spChilds.end(); sit!=send; sit++)
         {
             KeyFrame* pChildKF = *sit;
+            if(pChildKF->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2848", 'K', pChildKF->mnId);
             if(!pChildKF->isBad())
             {
                 if(pChildKF->mnTrackReferenceForFrame!=mCurrentFrame.mnId)
@@ -2929,7 +2942,10 @@ bool Tracking::Relocalization()
     {
         KeyFrame* pKF = vpCandidateKFs[i];
         if(pKF->isBad())
+        {
+            LT_PROBE_BAD("TrkRelocalizati.2931", 'K', pKF->mnId);
             vbDiscarded[i] = true;
+        }
         else
         {
             int nmatches = matcher.SearchByBoW(pKF,mCurrentFrame,vvpMapPointMatches[i]);
@@ -3317,6 +3333,7 @@ void Tracking::UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurr
 
         while(pKF->isBad())
         {
+            LT_PROBE_BAD("TrkUpdateFrameI.3318", 'K', pKF->mnId);
             pKF = pKF->GetParent();
         }
 

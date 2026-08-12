@@ -74,10 +74,13 @@ fi
 # that matters is NO NOVEL BEHAVIOR: every observed type must be inside the
 # documented golden universe (benchmark/golden/state_traces/, T22 landing
 # masked). Same methodology family as gate v2.1/v2.2 power fixes.
-GOLDEN="$WS/benchmark/golden/state_traces/euroc_mono_inertial.trace"
-cut -d' ' -f2- "$GOLDEN" \
-  | sed -E 's/^[A-Z_]+ (-> [A-Z_]+ LocalMapping::InitializeIMU \(cross-thread\))$/* \1/' \
-  | sort -u > "$OUT/golden_types.txt"
+# Universe = documented transition types (universe.txt: golden samples +
+# P7_RECON-cited amendments; strip comments). A single golden run is a
+# SAMPLE, not the universe — measured 2026-08-12: the uninstrumented arm
+# exercised documented-but-unsampled T14/T16 (RECENTLY_LOST timeout,
+# Atlas map fork) and tripped a false FAIL.
+UNIVERSE="$WS/benchmark/golden/state_traces/universe.txt"
+grep -v '^#' "$UNIVERSE" | sed -E 's/  # T[0-9]+$//' | sort -u > "$OUT/golden_types.txt"
 NOVEL=0
 for ARM in gate probed; do
   N=$(comm -13 "$OUT/golden_types.txt" "$OUT/$ARM/types.txt" | tee "$OUT/$ARM/novel_types.txt" | wc -l)
