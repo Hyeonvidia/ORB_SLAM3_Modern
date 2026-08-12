@@ -1,0 +1,73 @@
+site                           n_ev  n_obj    seq min/med/max         ms min/med/max
+MDDrawMapPoint.78             64770  39038           0/53/667               0/47/111
+OM?.1184                      55939   1266            0/13/46                  0/2/8
+TrkUpdateLocalK.2805          36708    345      0/14048/79519         0/23900/126006
+TrkUpdateLocalP.2733           4317    108      0/58566/84561         0/76526/136657
+OM?.826                        3556      2  11235/23697/34162      13377/26846/36517
+KFUpdateBestCo.216             2670     37      0/16305/39887         46/44908/83218
+SysTrajEuRoC.walk              2321    567      0/27469/84635        83/63905/136794
+OptLIBA.2925                   2163     75      14/8014/82950        57/22051/134914
+OptLIBA.2690                   1561     75      14/9006/82950        54/24861/134911
+LMMapPointCull.442             1344   1344            1/36/93             41/104/324
+TrkUpdateLocalK.2778           1341   1336           0/11/521                0/32/57
+TrkUpdateFrameI.3318           1311    226      0/11386/34424          9/13034/36885
+MPComputeDisti.354              888     51       0/7062/82950        37/19677/134906
+KFUpdateConnec.405              837     51       0/7166/82950        38/20178/134907
+MDDrawMapPoint.65               766    766             0/4/35                  0/0/3
+LMKeyFrameCull.1077              97      2  77146/79617/84577   126786/132237/136693
+OM?.55                           97     97             0/6/21                  0/1/3
+TrkSearchLocalP.2661             54     54             0/6/21                  0/1/1
+LMSearchInNeig.859               37      2  77138/82098/83143   126672/129979/133302
+KFTrackedMapPo.350                1      1        173/173/173               55/55/55
+TrkUpdateLocalK.2755              1      1           24/24/24               38/38/38
+
+# zero-event sites (expiry-safe candidates pending reachability argument):
+#   IIInitializeIM.231
+#   IIInitializeIM.279
+#   KFDBDetectNBestC.228
+#   KFGetMapPoints.333
+#   KFSetBadFlag.625
+#   KFUpdateConnec.398
+#   LCCorrectLoop.499
+#   LCMergeLocal.1045
+#   LCMergeLocal.1083
+#   LCMergeLocal.1118
+#   LCMergeLocal.1131
+#   LCMergeLocal.731
+#   LCMergeLocal.745
+#   LCMergeLocal.788
+#   LCMergeLocal.833
+#   LCMergeLocal.881
+#   LCMergeLocal.913
+#   LCMergeLocal.937
+#   LCMergeLocal.986
+#   LCMergeLocal.993
+#   LCMergeLocal2.1290
+#   LCMergeLocal2.1303
+#   LCMergeLocal2.1367
+#   LCMergeLocal2.1374
+#   LCRunGlobalBun.1685
+#   LCRunGlobalBun.1731
+#   LMKeyFrameCull.1064
+#   LMProcessNewKe.396
+#   LMSearchInNeig.789
+#   LMSearchInNeig.803
+#   LMSearchInNeig.818
+#   LMSearchInNeig.877
+#   OM?.1314
+#   OM?.1362
+#   OM?.1439
+#   OM?.1690
+#   OM?.257
+#   OM?.448
+#   OM?.556
+#   OM?.804
+#   PRDetectCommon.406
+#   PRDetectCommon.451
+#   PRDetectCommon.466
+#   PRDetectCommon.515
+#   PRFindMatchesB.669
+#   TrkRelocalizati.2931
+#   TrkSearchLocalP.2638
+#   TrkUpdateLocalK.2833
+#   TrkUpdateLocalK.2848
