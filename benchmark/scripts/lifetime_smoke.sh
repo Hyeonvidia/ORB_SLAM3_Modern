@@ -12,6 +12,10 @@
 #                                    Shutdown (serialization class)
 #   L5  euroc_stereo MH01 + LoadAtlasFromFile (needs L4's .osa) ->
 #                                    Map::PostLoad probes fire at startup
+#   L6  euroc_stereo MH01 x2 (single session, num_seq=2 — the P11-F3
+#                                    multimap_smoke recipe) -> map fork +
+#                                    cross-map merge: the LoopClosing/
+#                                    PlaceRecognition site classes
 #
 # The run writes <rundir>/lifetime_trace.csv at shutdown (LifetimeLedger
 # flush; clean exit required — P10-5 join chain provides it). Feed the CSV
@@ -65,7 +69,10 @@ case "$SCEN" in
     cp "$WS/Examples/Stereo/EuRoC.yaml" "$YAML"
     printf '\nSystem.LoadAtlasFromFile: "session"\n' >> "$YAML"
     CMD=("$BIN/stereo_euroc" "$VOC" "$YAML" "$EUROC/MH01" "$WS/Examples/Stereo/EuRoC_TimeStamps/MH01.txt") ;;
-  *) echo "ERROR: unknown scenario '$SCEN' (L1|L2|L3|L4|L5)" >&2; exit 1 ;;
+  L6)
+    require "$EUROC/MH01/mav0/cam0/data"
+    CMD=("$BIN/stereo_euroc" "$VOC" "$WS/Examples/Stereo/EuRoC.yaml" "$EUROC/MH01" "$WS/Examples/Stereo/EuRoC_TimeStamps/MH01.txt" "$EUROC/MH01" "$WS/Examples/Stereo/EuRoC_TimeStamps/MH01.txt") ;;
+  *) echo "ERROR: unknown scenario '$SCEN' (L1|L2|L3|L4|L5|L6)" >&2; exit 1 ;;
 esac
 
 export LIFETIME_TRACE_OUT="$OUT/lifetime_trace.csv"
