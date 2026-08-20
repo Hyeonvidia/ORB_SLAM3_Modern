@@ -39,6 +39,26 @@ FixLevel 스위치, 수명 프로브)가 비대해져 제품이 되어버렸고,
 | **R5** | **g2o 사용부 재구성**: Optimizer.cpp(~5,000줄)를 기능군별 파일로 분해, 그래프 구축을 빌더/헬퍼로 추출 — "정점→엣지→풀기→회수" 골격이 한눈에 보이게 — **완료 2026-08-21**: ① 분해 — Optimizer.cpp(5,846줄) 삭제, 기능군 TU 6개 신설(src/backend/): OptimizerGlobal(766: GlobalBundleAdjustemnt·BundleAdjustment·FullInertialBA) / OptimizerPose(1,098: PoseOptimization·PoseInertialOptimizationLastKeyFrame/LastFrame) / OptimizerLocal(1,355: LocalBundleAdjustment·LocalInertialBA·용접 LocalBundleAdjustment) / OptimizerInertialInit(471: InertialOptimization ×3) / OptimizerSim3Graph(1,712: OptimizeSim3·OptimizeEssentialGraph ×2·OptimizeEssentialGraph4DoF·MergeInertialBA·sortByVal) / OptimizerCommon(.cpp 151: RunOptimization·ReportIfPoseGraphStalled[구 익명네임스페이스, 관측성 주석 블록 동반 이동]·Marginalize). include/backend/Optimizer.hpp 단일 선언 표면·G2oBackend 포워딩 17곳 무변경; 루트+backend_equiv CMakeLists 소스 목록 갱신. 순수 이동은 스크립트로 재조립 바이트 동일 검증 후 헬퍼 적용. ② 빌더 헬퍼(src/backend/OptimizerCommon.hpp 314줄, F1/F2 포크 패리티·핀-셋 관례 주석 이관): MakeLmOptimizerEigen&lt;BS&gt;(opt, λ?) 9사이트 / MakeLmOptimizerEigenLDLT&lt;BS&gt;(opt, λ) 2(본질그래프 #13 LDLT) / MakeLmOptimizerDense&lt;BS&gt; 2 / MakeGnOptimizerDense&lt;BS&gt; 2 / MakeGnOptimizerEigen&lt;BS&gt; 1 — 16개 솔버 사이트 전부, 각 사이트의 λ·솔버 구성은 인자/조건부 site-side로 보존(LocalInertialBA bLarge 분기, IO-full priorG 조건 등); BindAbortFlag(P10-1 섀도 브리지, 6사이트 — LocalInertialBA의 solve-후 결합 순서 쿼크 verbatim 보존+주석) / AddHuberKernel 32사이트 / AddSE3Vertex 5 / AddLandmarkVertex 6(id 산식은 사이트 유지) / AddInertialKFVertices 5. 비추상화(의도적): FullInertialBA 정점 루프(BAEpochs 고정+bInit 공유 바이어스), LocalInertialBA 시각 KF pose-only 블록(헬퍼면 IMU 정점 추가돼 동작 변화), LocalInertialBA 경계 관성엣지 커널(정보 1e-2 다운웨이트와 인터리브) 1건, EdgeInertial(GS) 8정점 배선·인라이어 재분류 루프·마지널라이즈/Hessian 조립 전부. 섹션 마커 `// ---- vertices/edges/solve/recover ----` 16함수 삽입. ③ 검증: 빌드+플래그스캔 OK(src/include/tests 경고 0, DBoW2 헤더 기지 경고 6), 유닛 6/6, bit 9/9, equiv modern 자기결정성 5/5+GT 게이트 전부 PASS — **modern 레코드 전부 pre-R5 아카이브와 바이트 동일**(수치 무변경 최강 증거), cross 4/5 EQUIVALENT(inertial_full 불일치는 run_equiv.sh 헤더의 R4a 기지 사항, 크기 일치 1.12e-5/4.6e-9), smoke 0.0301, kitti07 0.4424(루프 발화, R4b 0.439), kitti00 1.1947(루프 4회, 골든 중앙값 1.2074), MI MH01 0.0724(골든 [0.068,0.124], R4b 0.0805) | 빌드+스모크+kitti07 |
 | **R6** | **주석 처리 코드 전수 심사**: 업스트림 원본 기준 목록화 → 구현 가치 판정 → 구현(+영문 주석) 또는 근거 명기 후 제거 — **완료 2026-08-21**: src/·include/ 전수 census(업스트림 클론 대조): 실제 주석 처리 코드 197건, 전원 업스트림 유래(리팩토링 단계 추가분 0 — R-기 주석은 전부 산문). 판정: **IMPLEMENT 1** — Track() 초기화 분기의 `mpFrameDrawer->Update(this)` 활성화(FrameDrawer는 NOT_INITIALIZED 묘화 경로 보유, 추적 스레드의 수동적 상태 복사라 파이프라인 무영향 — 초기화 중에도 뷰어가 갱신됨, ORB-SLAM2에선 라이브였음). **REMOVE 193** — ① 디버그 잔해(cout/usleep/clock ~110건), ② 대체된 중복(System.cpp 구 SaveTrajectoryEuRoC·SaveKeyFrameTrajectoryEuRoC_old·구 KITTI 저장기 3함수 통주석, cv::Mat 시절 잔재, 후행 옛-조건 주석 — isLost RECENTLY_LOST·bRecInit 인자·c1b 트레일 등), ③ 방치 실험(ORBextractor 열별 FAST 임계 2블록, KB8 uncertainty2 거리 휴리스틱, NeedNewKF 의사-단안 thRefRatio 블록, MLPnP rank 임계, OptimizeEssentialGraph sLoopEdges 조건 — sInsertedEdges 중복제거가 대체), ④ 미구현/사멸 선언(SaveMap/LoadMap TODO, Atlas Erase*, mbHasHessian, mMutexTracks, 옛 Set(cv::Mat), serializeDiagonalMatrix, //#linearizeOplus 3건은 "수치 야코비안 사용" 산문으로 대체); Atlas의 맵 delete 루프 2건은 raw `Map*` UAF 위험으로 은퇴 확정+영문 근거 주석, 직렬화 `//ar&` 군(MapPoint 18·KeyFrame 1·Map 2·Atlas 1)은 "의도적 비직렬화" 산문 1줄로 대체 — .osa 레이아웃 무변경. **KEEP 4**(플래그) — Settings.hpp `//#define REGISTER_TIMES`(살아있는 컴파일 토글), Tracking `mImuPer=0.001`의 `1/mImuFreq` 대안식(업스트림 TODO 미해결 — 전 관성 모드 경계 보간에 영향, 검증 불가 도박 회피), LocalInertialBA `// Originally to 2` 이력 주석, LoopClosing RunGBA의 post-GBA `UpdateFrameIMU` 주석 호출(업스트림 자체 TODO 미해결 — ImuUpdateMsg 기계를 타는 실제 행동 변화라 검증 불가, 사이트에 영문 근거 주석). 순삭 −489줄(−527/+38). **커밋 전 9-감사자 적대 diff 검증**(슬라이스별 삭제줄 감사 7 + 활성화 의미 검증 + 완전성 스윕): 블로커 1건 발견·수정 — Update 활성화가 단안 초기화 실패 경로의 스테일 `mvIniMatches`(이전 후보 프레임 인덱스)를 뷰어에 노출, 소키포인트 프레임에서 `vCurrentKeys[vMatches[i]]` OOB 가능(R6 이전엔 도달 불가 경로) → 두 실패 return에 `fill(-1)` 스크럽 + FrameDrawer 양 묘화 경로에 경계 가드(심층 방어). 부수: Frame.hpp 스테일 상호참조 문구 수정. 검증(픽스 후 재실행): 빌드 OK(src/include/tests 경고 0, DBoW2 헤더·Examples 기지 경고만), 유닛 6/6, bit 9/9 해시 무변경(Update 활성화는 관찰자 — 예상대로 특징 계층 불변), smoke PASS(bound 0.0758), kitti07 0.4869+루프 4회 발화(역대 R2−R5 0.439−0.486 스펙트럼 내), MI MH01 0.0768(골든 [0.068,0.124]) | 빌드+스모크 |
 
+## 종결 대역 검증 (2026-08-21, R-시리즈 완결 판정)
+
+R1–R6 전체(5b282f8)를 원본 골든 중앙값 대비 −15% 바닥으로 판정. 5모드 × N=3(3라운드 순환, caffeinate 분리 러너, 야간 유휴 머신):
+
+| 모드 | NEW 중앙값 | 골든(원본) | 델타 | 판정 |
+|---|---|---|---|---|
+| euroc_mono_inertial | 0.0534 | 0.0773 | **−31%** | PASS |
+| euroc_stereo_inertial | 0.0379 | 0.0394 | **−3.8%** | PASS |
+| kitti00 | 1.1796 (루프 발화 3/3라운드) | 1.2074 | **−2.3%** | PASS |
+| euroc_mono | 0.0235 | 0.0199 | +17.7% | 교차로 선예화 → PASS |
+| euroc_stereo | 0.0469 | 0.0379 | +23.8% | 교차로 선예화 → PASS |
+
+mono/stereo의 초과분은 P1 방법론대로 **동야간 ORIG/NEW 교차(interleaved) 4쌍**으로 선예화:
+stereo NEW −0.9%(동급, 쌍별 2-2), mono NEW +13.6%(바닥 이내, 쌍별 2-2 무방향).
+같은 바이너리의 stereo가 1시간 간격으로 0.0469→0.0349로 복귀했고 동야간 ORIG도 골든 위로
+부풀어(mono +8.5%) — 대역 검증 시간대의 머신 상태 교란으로 확정, 코드 회귀 아님.
+(관성 2모드+kitti00이 원본보다 우수한 점이 계열 전체의 수치 건전성을 뒷받침.)
+
+**R-시리즈 전 스텝 완결.**
+
 ## 유지되는 자산
 
 - 모듈 디렉터리 구조(P2), 캡슐화/추출물(ImuInitializer·PlaceRecognition·DetectionChannel),
