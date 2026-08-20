@@ -18,3 +18,4 @@ CMakeCache.txt
 cmake_install.cmake
 CMakeFiles/
 tests/backend_equiv/out/
+debug.txt
