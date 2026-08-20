@@ -1,10 +1,14 @@
 # syntax=docker/dockerfile:1
-# Dev/build image for ORB_SLAM3_Modern (ubuntu:22.04, arm64-native on M-series).
+# Dev/build image for ORB_SLAM3_Modern (ubuntu:24.04, arm64-native on M-series).
+# R1 toolchain bump (2026-08-20): 22.04 -> 24.04 = gcc-13.2 default, OpenCV
+# 4.6.0, Boost 1.83, Eigen 3.4. All package names below are unchanged in
+# noble; feature-layer bit hashes were re-baselined for OpenCV 4.6 (see
+# benchmark/golden/bit_hashes_env.txt).
 # Pangolin is baked from the pinned third_party/Pangolin submodule (build
 # context "pangolinsrc"); the repository itself is bind-mounted at /workspace
 # and built into the /build named volume by docker/scripts/container_build.sh.
 
-FROM ubuntu:22.04 AS base
+FROM ubuntu:24.04 AS base
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake ninja-build git pkg-config ccache ca-certificates \

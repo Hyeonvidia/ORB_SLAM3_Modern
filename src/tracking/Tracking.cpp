@@ -1197,7 +1197,7 @@ void Tracking::Track()
     else
     {
         // System is initialized. Track Frame.
-        bool bOK;
+        bool bOK = false;  // R1: not every state-machine branch assigns it (gcc-13 -Wmaybe-uninitialized); false = "not tracked" is the safe default
 
 #ifdef REGISTER_TIMES
         std::chrono::steady_clock::time_point time_StartPosePred = std::chrono::steady_clock::now();

@@ -32,8 +32,10 @@ KeyFrame::KeyFrame():
         mfGridElementWidthInv(0), mfGridElementHeightInv(0),
         mnTrackReferenceForFrame(0),
         fx(0), fy(0), cx(0), cy(0), invfx(0), invfy(0),
-        mbf(0), mb(0), mThDepth(0), N(0), mvKeys(static_cast<vector<cv::KeyPoint> >(NULL)), mvKeysUn(static_cast<vector<cv::KeyPoint> >(NULL)),
-        mvuRight(static_cast<vector<float> >(NULL)), mvDepth(static_cast<vector<float> >(NULL)), mnScaleLevels(0), mfScaleFactor(0),
+        // R1: the vectors were "initialized" by casting NULL to the vector's
+        // size_type (gcc-13 -Wconversion-null); plain value-init is identical.
+        mbf(0), mb(0), mThDepth(0), N(0), mvKeys(), mvKeysUn(),
+        mvuRight(), mvDepth(), mnScaleLevels(0), mfScaleFactor(0),
         mfLogScaleFactor(0), mvScaleFactors(0), mvLevelSigma2(0), mvInvLevelSigma2(0), mnMinX(0), mnMinY(0), mnMaxX(0),
         mnMaxY(0), mPrevKF(static_cast<KeyFrame*>(NULL)), mNextKF(static_cast<KeyFrame*>(NULL)), mbFirstConnection(true), mpParent(NULL), mbNotErase(false),
         mbToBeErased(false), mbBad(false), mHalfBaseline(0),

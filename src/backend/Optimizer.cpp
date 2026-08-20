@@ -574,7 +574,7 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
     int nNonFixed = 0;
 
     // Set KeyFrame vertices
-    KeyFrame* pIncKF;
+    KeyFrame* pIncKF = nullptr;  // R1: stays null if every KF is skipped (mnId>maxKFid); was read uninitialized in the bInit branch (gcc-13 -Wmaybe-uninitialized)
     for(size_t i=0; i<vpKFs.size(); i++)
     {
         KeyFrame* pKFi = vpKFs[i];
@@ -4379,8 +4379,12 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std
             // Using epochs.mpLocalForKF we avoid redundance here, one MP can not be added several times to lLocalMapPoints
             MapPoint* pMP = *vit;
             if(pMP && pMP->isBad()) LT_PROBE_BAD("OptMIBA.4255", 'M', pMP->mnId);
+            // R1: braces added around the nested ifs (gcc-13 -Wdangling-else);
+            // the else already bound to the innermost if — behavior unchanged.
             if(pMP)
+            {
                 if(!pMP->isBad())
+                {
                     if(BAEpochs::get(epochs.mpLocalForKF,pMP)!=pCurrKF->mnId)
                     {
                         mLocalObs[pMP]=1;
@@ -4390,6 +4394,8 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std
                     else {
                         mLocalObs[pMP]++;
                     }
+                }
+            }
         }
     }
 
@@ -5642,7 +5648,8 @@ void Optimizer::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFram
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
                                        const map<KeyFrame *, set<KeyFrame *> > &LoopConnections)
 {
-    typedef g2o::BlockSolver< g2o::BlockSolverTraits<4, 4> > BlockSolver_4_4;
+    // R1: removed upstream's unused BlockSolver_4_4 typedef (gcc-13
+    // -Wunused-local-typedefs) — the function builds on BlockSolverX below.
 
     // Setup optimizer
     g2o::SparseOptimizer optimizer;

@@ -147,7 +147,10 @@ namespace ORB_SLAM3 {
         double y = xyz_trans[1];
         double z = xyz_trans[2];
 
-        auto projectJac = -pCamera->projectJac(xyz_trans);
+        // R1: materialize into a concrete matrix — `auto` captured an Eigen
+        // expression template referencing the destroyed temporary returned by
+        // projectJac() (dangling read, flagged by gcc-13 -Wuninitialized).
+        Eigen::Matrix<double,2,3> projectJac = -pCamera->projectJac(xyz_trans);
 
         _jacobianOplusXi =  projectJac * T.rotation().toRotationMatrix();
 

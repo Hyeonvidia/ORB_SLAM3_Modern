@@ -4,7 +4,9 @@ project(ORB_SLAM3_Modern VERSION 0.1.0 LANGUAGES C CXX)
 # =============================================================================
 # Modern CMake replacement for the upstream flat build (Phase 1).
 # Behavior parity with the golden baseline (benchmark/golden/BASELINE.md):
-#   -O3, -std=c++17, NO -march=native anywhere, BOOST_BIND_GLOBAL_PLACEHOLDERS.
+#   -O3, NO -march=native anywhere, BOOST_BIND_GLOBAL_PLACEHOLDERS.
+# R1 (2026-08-20): our targets moved to C++20 on the gcc-13 / Ubuntu 24.04
+# toolchain (docs/REFACTOR_PLAN.md); ATE re-validated by the 6-mode band check.
 # P6-2: the backend now builds against the pinned upstream g2o submodule
 # (third_party/g2o @ 20241228_git); DBoW2/Sophus remain vendored Thirdparty.
 # The vendored Thirdparty/g2o stays in-tree only for the frozen reference
@@ -16,11 +18,11 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-# C++ standard is applied PER TARGET below, not globally: the golden baseline
-# built Thirdparty (DBoW2/g2o) as standalone projects with the compiler
-# default (gnu++17), and forcing strict c++17 (__STRICT_ANSI__) onto libg2o
-# measurably degrades stereo-inertial ATE (P1 gate finding, p=0.017 —
-# the same flag-sensitivity class as the Remastered mono-inertial regression).
+# C++ standard is applied PER TARGET below, not globally: Thirdparty
+# (DBoW2) and third_party/g2o keep their own project defaults — historically,
+# forcing strict c++17 (__STRICT_ANSI__) onto libg2o measurably degraded
+# stereo-inertial ATE (P1 gate finding, p=0.017). Our targets are C++20
+# since R1.
 
 option(BUILD_EXAMPLES "Build dataset example executables" ON)
 option(BUILD_TESTS "Build bit-identity test harness" ON)
@@ -94,7 +96,7 @@ add_library(orbslam3_core SHARED
 add_library(ORB_SLAM3::core ALIAS orbslam3_core)
 set_target_properties(orbslam3_core PROPERTIES
   OUTPUT_NAME orbslam3
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
 target_include_directories(orbslam3_core PUBLIC
   ${PROJECT_SOURCE_DIR}                    # "Thirdparty/..." relative includes
@@ -110,8 +112,8 @@ target_compile_definitions(orbslam3_core PUBLIC
 
 # Upstream g2o targets export their include dirs (submodule root + generated
 # config.h dir) PUBLIC, so no extra include wiring is needed for "g2o/..."
-# includes. core self-manages cxx_std_17 PUBLIC (compatible with the
-# gnu++17-for-thirdparty note above — the feature is a floor, not a dialect).
+# includes. core self-manages its C++20 standard per target (compatible with
+# the thirdparty-defaults note above — the feature is a floor, not a dialect).
 target_link_libraries(orbslam3_core PUBLIC
   DBoW2
   core stuff solver_eigen solver_dense types_sba types_sim3 types_slam3d
@@ -137,7 +139,7 @@ if(BUILD_EXAMPLES)
   foreach(tgt mono_euroc mono_kitti stereo_euroc stereo_kitti mono_inertial_euroc stereo_inertial_euroc)
     target_link_libraries(${tgt} PRIVATE ORB_SLAM3::core)
     set_target_properties(${tgt} PROPERTIES
-      CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+      CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
   endforeach()
 endif()
 
@@ -147,7 +149,7 @@ if(BUILD_TESTS)
   target_link_libraries(extract_hash PRIVATE ORB_SLAM3::core OpenSSL::Crypto)
   set_target_properties(extract_hash PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
   # ---- threading protocol checks (P10-4) ------------------------------------
   # Dependency-free assert-style binary (extract_hash mold): bounded-wait
@@ -158,7 +160,7 @@ if(BUILD_TESTS)
   target_link_libraries(threading_checks PRIVATE Threads::Threads)
   set_target_properties(threading_checks PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
   # ---- vocabulary binary-cache round trip (P11-V) ---------------------------
   # extract_hash mold: text load -> saveToBinaryFile -> loadFromBinaryFile
@@ -169,7 +171,7 @@ if(BUILD_TESTS)
   target_link_libraries(vocab_roundtrip PRIVATE DBoW2)
   set_target_properties(vocab_roundtrip PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
   # ---- FixLevel flag parse/preset checks (P11-F0) ---------------------------
   # extract_hash mold: asserts the all-false level-0 default (the permanent
@@ -180,7 +182,7 @@ if(BUILD_TESTS)
   target_link_libraries(fixflags_checks PRIVATE ORB_SLAM3::core)
   set_target_properties(fixflags_checks PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
   # ---- FL-9 scale-convergence property test (P11-F1) ------------------------
   # extract_hash mold; reuses the backend_equiv imu_chain fixture (with the
@@ -198,7 +200,7 @@ if(BUILD_TESTS)
   target_link_libraries(fl9_scale_convergence PRIVATE ORB_SLAM3::core)
   set_target_properties(fl9_scale_convergence PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
   # ---- P11-F3..F5 fix-level checks -----------------------------------------
   foreach(tgt detection_machine_checks fl13_ldlt_posegraph fl5_stereo_mb_checks)
@@ -206,6 +208,6 @@ if(BUILD_TESTS)
     target_link_libraries(${tgt} PRIVATE ORB_SLAM3::core)
     set_target_properties(${tgt} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-      CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+      CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
   endforeach()
 endif()

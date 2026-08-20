@@ -142,8 +142,16 @@ add_executable(equiv_runner
   ${EQUIV_SHARED_SOURCES}
 )
 
-set_target_properties(equiv_runner PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+# R1: the modern variant follows the core's C++20 bump; the vendored variant
+# stays C++17 — it compiles the byte-frozen reference_backend snapshot against
+# the vendored (pre-migration) g2o fork, whose contract predates the bump.
+if(EQUIV_BACKEND STREQUAL "modern")
+  set_target_properties(equiv_runner PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+else()
+  set_target_properties(equiv_runner PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+endif()
 
 # BEFORE: the backend snapshot headers MUST win over ${REPO_ROOT}/include
 # (vendored variant only; the modern variant sets no shadow dir).

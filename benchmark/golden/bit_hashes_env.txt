@@ -1,2 +1,6 @@
-dev image digest: sha256:fbee3fbc0be62db4527a0a2f90d899510ef8cb84f4d7ad45a480b5d473ad352f
-opencv: Version: 4.5.4+dfsg-9ubuntu4
+dev image digest: sha256:ddf6a548b0f612776e1222a9e674de014e1afca4ebd6256b3b7bb1af4d51eaa9
+opencv: Version: 4.6.0+dfsg-13.1ubuntu1
+note (2026-08-20, R1 toolchain bump): hashes recorded under the 22.04 image
+(digest sha256:fbee3fbc0be62db4527a0a2f90d899510ef8cb84f4d7ad45a480b5d473ad352f,
+OpenCV 4.5.4+dfsg-9ubuntu4) verified BIT-IDENTICAL under the 24.04/gcc-13/
+OpenCV 4.6.0 image — no re-baseline was needed; bit_hashes.txt is unchanged.

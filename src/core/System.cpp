@@ -26,7 +26,7 @@
 #include <thread>
 #include <pangolin/pangolin.h>
 #include <iomanip>
-#include <openssl/md5.h>
+#include <openssl/evp.h>  // R1: EVP digest API replaces the MD5_* API deprecated since OpenSSL 3.0
 #include <boost/serialization/base_object.hpp>
 #include <boost/serialization/string.hpp>
 #include <boost/archive/text_iarchive.hpp>
@@ -736,7 +736,7 @@ void System::SaveTrajectoryEuRoC(const string &filename)
 
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
     int numMaxKFs = 0;
-    Map* pBiggerMap;
+    Map* pBiggerMap = nullptr;  // R1: was read uninitialized when every map is empty (gcc-13 -Wmaybe-uninitialized)
     std::cout << "There are " << std::to_string(vpMaps.size()) << " maps in the atlas" << std::endl;
     for(Map* pMap :vpMaps)
     {
@@ -746,6 +746,12 @@ void System::SaveTrajectoryEuRoC(const string &filename)
             numMaxKFs = pMap->GetAllKeyFrames().size();
             pBiggerMap = pMap;
         }
+    }
+
+    if(!pBiggerMap)  // R1: guard the dereference below (mirrors SaveKeyFrameTrajectoryEuRoC)
+    {
+        std::cout << "There is not a map!!" << std::endl;
+        return;
     }
 
     vector<KeyFrame*> vpKFs = pBiggerMap->GetAllKeyFrames();
@@ -1130,7 +1136,7 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
     cout << endl << "Saving keyframe trajectory to " << filename << " ..." << endl;
 
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
-    Map* pBiggerMap;
+    Map* pBiggerMap = nullptr;  // R1: the !pBiggerMap guard below read it uninitialized (gcc-13 -Wmaybe-uninitialized)
     int numMaxKFs = 0;
     for(Map* pMap :vpMaps)
     {
@@ -1573,7 +1579,11 @@ string System::CalculateCheckSum(string filename, int type)
 {
     string checksum = "";
 
-    unsigned char c[MD5_DIGEST_LENGTH];
+    // R1: same MD5 digest through the EVP interface — the low-level MD5_*
+    // functions are deprecated since OpenSSL 3.0. Checksum output (and the
+    // .osa session-file compatibility that depends on it) is unchanged.
+    unsigned char c[EVP_MAX_MD_SIZE];
+    unsigned int digestLen = 0;
 
     std::ios_base::openmode flags = std::ios::in;
     if(type == BINARY_FILE) // Binary file
@@ -1586,20 +1596,21 @@ string System::CalculateCheckSum(string filename, int type)
         return checksum;
     }
 
-    MD5_CTX md5Context;
+    EVP_MD_CTX* md5Context = EVP_MD_CTX_new();
     char buffer[1024];
 
-    MD5_Init (&md5Context);
+    EVP_DigestInit_ex(md5Context, EVP_md5(), nullptr);
     while ( int count = f.readsome(buffer, sizeof(buffer)))
     {
-        MD5_Update(&md5Context, buffer, count);
+        EVP_DigestUpdate(md5Context, buffer, count);
     }
 
     f.close();
 
-    MD5_Final(c, &md5Context );
+    EVP_DigestFinal_ex(md5Context, c, &digestLen);
+    EVP_MD_CTX_free(md5Context);
 
-    for(int i = 0; i < MD5_DIGEST_LENGTH; i++)
+    for(unsigned int i = 0; i < digestLen; i++)
     {
         char aux[10];
         sprintf(aux,"%02x", c[i]);

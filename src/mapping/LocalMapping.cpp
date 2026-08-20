@@ -1057,7 +1057,9 @@ void LocalMapping::KeyFrameCulling()
     int count=0;
 
     // Compoute last KF from optimizable window:
-    unsigned int last_ID;
+    // R1: initialized — only assigned on the mbInertial path; the read below is
+    // short-circuit-guarded by bInitImu but gcc-13 flags it (-Wmaybe-uninitialized).
+    unsigned int last_ID = 0;
     if (mbInertial)
     {
         int count = 0;
