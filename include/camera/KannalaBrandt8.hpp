@@ -43,19 +43,20 @@ namespace ORB_SLAM3 {
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
         }
-        KannalaBrandt8(const std::vector<float> _vParameters) : GeometricCamera(_vParameters), precision(1e-6), mvLappingArea(2,0) {
+        KannalaBrandt8(const std::vector<float> _vParameters) : GeometricCamera(_vParameters), mvLappingArea(2,0), precision(1e-6) {
             assert(mvParameters.size() == 8);
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
         }
 
         KannalaBrandt8(const std::vector<float> _vParameters, const float _precision) : GeometricCamera(_vParameters),
-                                                                                        precision(_precision), mvLappingArea(2,0) {
+                                                                                        mvLappingArea(2,0), precision(_precision) {
             assert(mvParameters.size() == 8);
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
         }
-        KannalaBrandt8(KannalaBrandt8* pKannala) : GeometricCamera(pKannala->mvParameters), precision(pKannala->precision), mvLappingArea(2,0) {
+        // R4c: explicit — a pointer must never silently convert to a camera value.
+        explicit KannalaBrandt8(KannalaBrandt8* pKannala) : GeometricCamera(pKannala->mvParameters), mvLappingArea(2,0), precision(pKannala->precision) {
             assert(mvParameters.size() == 8);
             mnId=nNextId++;
             mnType = CAM_FISHEYE;
@@ -91,7 +92,7 @@ namespace ORB_SLAM3 {
         friend std::ostream& operator<<(std::ostream& os, const KannalaBrandt8& kb);
         friend std::istream& operator>>(std::istream& is, KannalaBrandt8& kb);
 
-        float GetPrecision(){ return precision;}
+        float GetPrecision() const { return precision; }
 
         bool IsEqual(GeometricCamera* pCam);
     private:

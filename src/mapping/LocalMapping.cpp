@@ -34,10 +34,6 @@
 #include<cstdio>
 #include<cstdlib>
 
-// R3: this TU used to inherit a global `using namespace std;` from the vendored
-// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
-using namespace std;
-
 namespace ORB_SLAM3
 {
 
@@ -93,7 +89,7 @@ void LocalMapping::Run()
     {
         // P10-2 (R-a): the entry write raced isFinished readers; now under
         // the owning mutex (NOT atomic -- SetFinish couples it with mbStopped).
-        unique_lock<mutex> lock(mMutexFinish);
+        std::unique_lock<std::mutex> lock(mMutexFinish);
         mbFinished = false;
     }
 
@@ -150,7 +146,8 @@ void LocalMapping::Run()
             vdMPCreation_ms.push_back(timeMPCreation);
 #endif
 
-            bool b_doneLBA = false;
+            // Consumed only by the REGISTER_TIMES accounting below.
+            [[maybe_unused]] bool b_doneLBA = false;
             int num_FixedKF_BA = 0;
             int num_OptKF_BA = 0;
             int num_MPs_BA = 0;
@@ -172,8 +169,8 @@ void LocalMapping::Run()
                         {
                             if((mTinit<10.f) && (dist<0.02))
                             {
-                                cout << "Not enough motion for initializing. Reseting..." << endl;
-                                unique_lock<mutex> lock(mMutexReset);
+                                std::cout << "Not enough motion for initializing. Reseting..." << std::endl;
+                                std::unique_lock<std::mutex> lock(mMutexReset);
                                 mbResetRequestedActiveMap.store(true, std::memory_order_relaxed);
                                 mpMapToReset = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap();
                                 mbBadImu.store(true, std::memory_order_relaxed);
@@ -239,18 +236,18 @@ void LocalMapping::Run()
                         if(!mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->GetIniertialBA1()){
                             if (mTinit>5.0f)
                             {
-                                cout << "start VIBA 1" << endl;
+                                std::cout << "start VIBA 1" << std::endl;
                                 mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->SetIniertialBA1();
                                 mImuInit.InitializeIMU(1.f, 1e5, true);
-                                cout << "end VIBA 1" << endl;
+                                std::cout << "end VIBA 1" << std::endl;
                             }
                         }
                         else if(!mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->GetIniertialBA2()){
                             if (mTinit>15.0f){
-                                cout << "start VIBA 2" << endl;
+                                std::cout << "start VIBA 2" << std::endl;
                                 mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->SetIniertialBA2();
                                 mImuInit.InitializeIMU(0.f, 0.f, true);
-                                cout << "end VIBA 2" << endl;
+                                std::cout << "end VIBA 2" << std::endl;
                             }
                         }
 
@@ -297,7 +294,7 @@ void LocalMapping::Run()
             // Invariant 4 preserved: the mbBadImu quirk skips this branch
             // via the same enclosing condition as before.
             {
-                unique_lock<mutex> lock(mMutexStop);
+                std::unique_lock<std::mutex> lock(mMutexStop);
                 mCondStop.wait(lock, [&]{
                     return !mbStopped ||
                            mbFinishRequested.load(std::memory_order_relaxed);
@@ -334,7 +331,7 @@ void LocalMapping::Run()
         // jump can only stretch or clip one 3ms net (harmless -- the
         // predicate re-check handles it). Do not "modernize" this back.
         {
-            unique_lock<mutex> lock(mMutexNewKFs);
+            std::unique_lock<std::mutex> lock(mMutexNewKFs);
             mCondNewKFs.wait_until(lock,
                                    std::chrono::system_clock::now() + std::chrono::milliseconds(3),
                                    [&]{ return !mlNewKeyFrames.empty(); });
@@ -347,7 +344,7 @@ void LocalMapping::Run()
 void LocalMapping::InsertKeyFrame(KeyFramePtr pKF)
 {
     {
-        unique_lock<mutex> lock(mMutexNewKFs);
+        std::unique_lock<std::mutex> lock(mMutexNewKFs);
         mlNewKeyFrames.push_back(pKF);
         mbAbortBA.store(true, std::memory_order_relaxed);
         if(TraceQueueOn())  // P10-0: enqueue stamp, same lock as the queue
@@ -365,14 +362,14 @@ void LocalMapping::InsertKeyFrame(KeyFramePtr pKF)
 
 bool LocalMapping::CheckNewKeyFrames()
 {
-    unique_lock<mutex> lock(mMutexNewKFs);
+    std::unique_lock<std::mutex> lock(mMutexNewKFs);
     return(!mlNewKeyFrames.empty());
 }
 
 void LocalMapping::ProcessNewKeyFrame()
 {
     {
-        unique_lock<mutex> lock(mMutexNewKFs);
+        std::unique_lock<std::mutex> lock(mMutexNewKFs);
         // P10-2 (R5): store-release -- with the mMutexNewKFs handoff this
         // makes the Tracking-thread KF construction visible to the
         // lock-free load-acquire in GetCurrKFTime.
@@ -380,8 +377,8 @@ void LocalMapping::ProcessNewKeyFrame()
         mlNewKeyFrames.pop_front();
         if(TraceQueueOn() && !mdqTraceEnqueueTs.empty())  // P10-0 dequeue
         {
-            mvTraceDequeueUs.push_back((long)std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - mdqTraceEnqueueTs.front()).count());
+            mvTraceDequeueUs.push_back(static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - mdqTraceEnqueueTs.front()).count()));
             mdqTraceEnqueueTs.pop_front();
         }
     }
@@ -390,7 +387,7 @@ void LocalMapping::ProcessNewKeyFrame()
     mpCurrentKeyFrame.load(std::memory_order_relaxed)->ComputeBoW();
 
     // Associate MapPoints to the new keyframe and update normal and descriptor
-    const vector<MapPointPtr> vpMapPointMatches = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMapPointMatches();
+    const std::vector<MapPointPtr> vpMapPointMatches = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMapPointMatches();
 
     for(size_t i=0; i<vpMapPointMatches.size(); i++)
     {
@@ -429,7 +426,7 @@ void LocalMapping::EmptyQueue()
 void LocalMapping::MapPointCulling()
 {
     // Check Recent Added MapPoints
-    list<MapPointPtr>::iterator lit = mlpRecentAddedMapPoints.begin();
+    std::list<MapPointPtr>::iterator lit = mlpRecentAddedMapPoints.begin();
     const unsigned long int nCurrentKFid = mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId;
 
     int nThObs;
@@ -452,12 +449,12 @@ void LocalMapping::MapPointCulling()
             pMP->SetBadFlag();
             lit = mlpRecentAddedMapPoints.erase(lit);
         }
-        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=2 && pMP->Observations()<=cnThObs)
+        else if((static_cast<int>(nCurrentKFid)-static_cast<int>(pMP->mnFirstKFid))>=2 && pMP->Observations()<=cnThObs)
         {
             pMP->SetBadFlag();
             lit = mlpRecentAddedMapPoints.erase(lit);
         }
-        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=3)
+        else if((static_cast<int>(nCurrentKFid)-static_cast<int>(pMP->mnFirstKFid))>=3)
             lit = mlpRecentAddedMapPoints.erase(lit);
         else
         {
@@ -474,15 +471,15 @@ void LocalMapping::CreateNewMapPoints()
     // For stereo inertial case
     if(mbMonocular)
         nn=30;
-    vector<KeyFramePtr> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
+    std::vector<KeyFramePtr> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
 
     if (mbInertial)
     {
         KeyFramePtr pKF = mpCurrentKeyFrame.load(std::memory_order_relaxed);
         int count=0;
-        while((vpNeighKFs.size()<=nn)&&(pKF->mPrevKF)&&(count++<nn))
+        while((vpNeighKFs.size()<=static_cast<size_t>(nn))&&(pKF->mPrevKF)&&(count++<nn))
         {
-            vector<KeyFramePtr>::iterator it = std::find(vpNeighKFs.begin(), vpNeighKFs.end(), pKF->mPrevKF);
+            std::vector<KeyFramePtr>::iterator it = std::find(vpNeighKFs.begin(), vpNeighKFs.end(), pKF->mPrevKF);
             if(it==vpNeighKFs.end())
                 vpNeighKFs.push_back(pKF->mPrevKF);
             pKF = pKF->mPrevKF;
@@ -504,8 +501,6 @@ void LocalMapping::CreateNewMapPoints()
     const float &fy1 = mpCurrentKeyFrame.load(std::memory_order_relaxed)->fy;
     const float &cx1 = mpCurrentKeyFrame.load(std::memory_order_relaxed)->cx;
     const float &cy1 = mpCurrentKeyFrame.load(std::memory_order_relaxed)->cy;
-    const float &invfx1 = mpCurrentKeyFrame.load(std::memory_order_relaxed)->invfx;
-    const float &invfy1 = mpCurrentKeyFrame.load(std::memory_order_relaxed)->invfy;
 
     const float ratioFactor = 1.5f*mpCurrentKeyFrame.load(std::memory_order_relaxed)->mfScaleFactor;
     // Search matches with epipolar restriction and triangulate
@@ -538,7 +533,7 @@ void LocalMapping::CreateNewMapPoints()
         }
 
         // Search matches that fullfil epipolar constraint
-        vector<pair<size_t,size_t> > vMatchedIndices;
+        std::vector<std::pair<size_t,size_t> > vMatchedIndices;
         bool bCoarse = mbInertial && mpTracker->GetState()==Tracking::RECENTLY_LOST && mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->GetIniertialBA2();
 
         matcher.SearchForTriangulation(mpCurrentKeyFrame.load(std::memory_order_relaxed),pKF2,vMatchedIndices,false,bCoarse);
@@ -553,8 +548,6 @@ void LocalMapping::CreateNewMapPoints()
         const float &fy2 = pKF2->fy;
         const float &cx2 = pKF2->cx;
         const float &cy2 = pKF2->cy;
-        const float &invfx2 = pKF2->invfx;
-        const float &invfy2 = pKF2->invfy;
 
         // Triangulate each match
         const int nmatches = vMatchedIndices.size();
@@ -649,7 +642,7 @@ void LocalMapping::CreateNewMapPoints()
             else if(bStereo2)
                 cosParallaxStereo2 = cos(2*atan2(pKF2->mb/2,pKF2->mvDepth[idx2]));
 
-            cosParallaxStereo = min(cosParallaxStereo1,cosParallaxStereo2);
+            cosParallaxStereo = std::min(cosParallaxStereo1,cosParallaxStereo2);
 
             Eigen::Vector3f x3D;
 
@@ -781,17 +774,16 @@ void LocalMapping::SearchInNeighbors()
 {
     // P5-2: per-call dedup scratch, externalized from KeyFrame::mnFuseTargetForKF
     // and MapPoint::mnFuseCandidateForKF (their lifetime was one call anyway).
-    set<KeyFramePtr> sFuseTargets;
-    set<MapPointPtr> sFuseCandidates;
+    std::set<KeyFramePtr> sFuseTargets;
+    std::set<MapPointPtr> sFuseCandidates;
     // Retrieve neighbor keyframes
     int nn = 10;
     if(mbMonocular)
         nn=30;
-    const vector<KeyFramePtr> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
-    vector<KeyFramePtr> vpTargetKFs;
-    for(vector<KeyFramePtr>::const_iterator vit=vpNeighKFs.begin(), vend=vpNeighKFs.end(); vit!=vend; vit++)
+    const std::vector<KeyFramePtr> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
+    std::vector<KeyFramePtr> vpTargetKFs;
+    for(KeyFramePtr pKFi : vpNeighKFs)
     {
-        KeyFramePtr pKFi = *vit;
         if(pKFi->isBad() || sFuseTargets.count(pKFi))
         {
             continue;
@@ -804,10 +796,9 @@ void LocalMapping::SearchInNeighbors()
     // Extend to some second neighbors if abort is not requested
     for(int i=0, imax=vpTargetKFs.size(); i<imax; i++)
     {
-        const vector<KeyFramePtr> vpSecondNeighKFs = vpTargetKFs[i]->GetBestCovisibilityKeyFrames(20);
-        for(vector<KeyFramePtr>::const_iterator vit2=vpSecondNeighKFs.begin(), vend2=vpSecondNeighKFs.end(); vit2!=vend2; vit2++)
+        const std::vector<KeyFramePtr> vpSecondNeighKFs = vpTargetKFs[i]->GetBestCovisibilityKeyFrames(20);
+        for(KeyFramePtr pKFi2 : vpSecondNeighKFs)
         {
-            KeyFramePtr pKFi2 = *vit2;
             if(pKFi2->isBad() || sFuseTargets.count(pKFi2) || pKFi2->mnId==mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId)
             {
                 continue;
@@ -838,10 +829,9 @@ void LocalMapping::SearchInNeighbors()
 
     // Search matches by projection from current KF in target KFs
     ORBmatcher matcher;
-    vector<MapPointPtr> vpMapPointMatches = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMapPointMatches();
-    for(vector<KeyFramePtr>::iterator vit=vpTargetKFs.begin(), vend=vpTargetKFs.end(); vit!=vend; vit++)
+    std::vector<MapPointPtr> vpMapPointMatches = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMapPointMatches();
+    for(KeyFramePtr pKFi : vpTargetKFs)
     {
-        KeyFramePtr pKFi = *vit;
 
         matcher.Fuse(pKFi,vpMapPointMatches);
         if(pKFi->NLeft != -1) matcher.Fuse(pKFi,vpMapPointMatches,true);
@@ -852,16 +842,15 @@ void LocalMapping::SearchInNeighbors()
         return;
 
     // Search matches by projection from target KFs in current KF
-    vector<MapPointPtr> vpFuseCandidates;
+    std::vector<MapPointPtr> vpFuseCandidates;
     vpFuseCandidates.reserve(vpTargetKFs.size()*vpMapPointMatches.size());
 
-    for(vector<KeyFramePtr>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
+    for(KeyFramePtr pKFi : vpTargetKFs)
     {
-        KeyFramePtr pKFi = *vitKF;
 
-        vector<MapPointPtr> vpMapPointsKFi = pKFi->GetMapPointMatches();
+        std::vector<MapPointPtr> vpMapPointsKFi = pKFi->GetMapPointMatches();
 
-        for(vector<MapPointPtr>::iterator vitMP=vpMapPointsKFi.begin(), vendMP=vpMapPointsKFi.end(); vitMP!=vendMP; vitMP++)
+        for(std::vector<MapPointPtr>::iterator vitMP=vpMapPointsKFi.begin(), vendMP=vpMapPointsKFi.end(); vitMP!=vendMP; vitMP++)
         {
             MapPointPtr pMP = *vitMP;
             if(!pMP)
@@ -900,7 +889,7 @@ void LocalMapping::SearchInNeighbors()
 
 void LocalMapping::RequestStop()
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     mbStopRequested = true;
     // P10-1: the mMutexNewKFs nest existed only to guard this write; with
     // mbAbortBA atomic it is gone — which also removes the codebase's only
@@ -910,11 +899,11 @@ void LocalMapping::RequestStop()
 
 bool LocalMapping::Stop()
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     if(mbStopRequested && !mbNotStop)
     {
         mbStopped = true;
-        cout << "Local Mapping STOP" << endl;
+        std::cout << "Local Mapping STOP" << std::endl;
         // P10-4: wake WaitUntilStopped() waiters (LoopClosing windows, GBA,
         // System localization-mode). mbStopped is written under mMutexStop,
         // so notifying under the same lock cannot lose a wakeup.
@@ -927,7 +916,7 @@ bool LocalMapping::Stop()
 
 bool LocalMapping::isStopped()
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     return mbStopped;
 }
 
@@ -940,13 +929,13 @@ void LocalMapping::WaitUntilStopped()
     // where SetFinish made isStopped() true). Invariant 4 preserved: with
     // mbBadImu, Stop() still sets mbStopped and notifies while Run() keeps
     // looping -- external waiters proceed exactly as under the old spin.
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     mCondStop.wait(lock, [&]{ return mbStopped; });
 }
 
 bool LocalMapping::stopRequested()
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     return mbStopRequested;
 }
 
@@ -956,8 +945,8 @@ void LocalMapping::Release()
         // P10-2 (R6): Finish -> Stop, matching SetFinish. The old Stop -> Finish
         // order was an ABBA deadlock against a concurrent SetFinish (found in
         // the P10 recon; canonical order documented in LocalMapping.hpp).
-        unique_lock<mutex> lock(mMutexFinish);
-        unique_lock<mutex> lock2(mMutexStop);
+        std::unique_lock<std::mutex> lock(mMutexFinish);
+        std::unique_lock<std::mutex> lock2(mMutexStop);
         if(mbFinished)
             return;
         mbStopped = false;
@@ -979,8 +968,8 @@ void LocalMapping::Release()
             // SetBadFlag under mMutexNewKFs is safe:
             // it takes only KeyFrame/Map/KFDB-layer mutexes, and no path
             // acquires mMutexNewKFs while holding those (P10-2 R3 precedent).
-            unique_lock<mutex> lock3(mMutexNewKFs);
-            for(list<KeyFramePtr>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
+            std::unique_lock<std::mutex> lock3(mMutexNewKFs);
+            for(std::list<KeyFramePtr>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
             {
                 (*lit)->SetBadFlag();
             }
@@ -994,24 +983,24 @@ void LocalMapping::Release()
     // after unlock; mbStopped was cleared under mMutexStop above.
     mCondStop.notify_all();
 
-    cout << "Local Mapping RELEASE" << endl;
+    std::cout << "Local Mapping RELEASE" << std::endl;
 }
 
 bool LocalMapping::AcceptKeyFrames()
 {
-    unique_lock<mutex> lock(mMutexAccept);
+    std::unique_lock<std::mutex> lock(mMutexAccept);
     return mbAcceptKeyFrames;
 }
 
 void LocalMapping::SetAcceptKeyFrames(bool flag)
 {
-    unique_lock<mutex> lock(mMutexAccept);
+    std::unique_lock<std::mutex> lock(mMutexAccept);
     mbAcceptKeyFrames=flag;
 }
 
 bool LocalMapping::SetNotStop(bool flag)
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
 
     if(flag && mbStopped)
         return false;
@@ -1034,7 +1023,7 @@ void LocalMapping::KeyFrameCulling()
     // We only consider close stereo points
     const int Nd = 21;
     mpCurrentKeyFrame.load(std::memory_order_relaxed)->UpdateBestCovisibles();
-    vector<KeyFramePtr> vpLocalKeyFrames = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetVectorCovisibleKeyFrames();
+    std::vector<KeyFramePtr> vpLocalKeyFrames = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetVectorCovisibleKeyFrames();
 
     float redundant_th;
     if(!mbInertial)
@@ -1065,7 +1054,7 @@ void LocalMapping::KeyFrameCulling()
 
 
 
-    for(vector<KeyFramePtr>::iterator vit=vpLocalKeyFrames.begin(), vend=vpLocalKeyFrames.end(); vit!=vend; vit++)
+    for(std::vector<KeyFramePtr>::iterator vit=vpLocalKeyFrames.begin(), vend=vpLocalKeyFrames.end(); vit!=vend; vit++)
     {
         count++;
         KeyFramePtr pKF = *vit;
@@ -1074,7 +1063,7 @@ void LocalMapping::KeyFrameCulling()
         {
             continue;
         }
-        const vector<MapPointPtr> vpMapPoints = pKF->GetMapPointMatches();
+        const std::vector<MapPointPtr> vpMapPoints = pKF->GetMapPointMatches();
 
         int nObs = 3;
         const int thObs=nObs;
@@ -1097,17 +1086,17 @@ void LocalMapping::KeyFrameCulling()
                     if(pMP->Observations()>thObs)
                     {
                         const int &scaleLevel = (pKF -> NLeft == -1) ? pKF->mvKeysUn[i].octave
-                                                                     : (i < pKF -> NLeft) ? pKF -> mvKeys[i].octave
+                                                                     : (i < static_cast<size_t>(pKF -> NLeft)) ? pKF -> mvKeys[i].octave
                                                                                           : pKF -> mvKeysRight[i].octave;
-                        const map<KeyFramePtr, tuple<int,int>> observations = pMP->GetObservations();
+                        const std::map<KeyFramePtr, std::tuple<int,int>> observations = pMP->GetObservations();
                         int nObs=0;
-                        for(map<KeyFramePtr, tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+                        for(std::map<KeyFramePtr, std::tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
                         {
                             KeyFramePtr pKFi = mit->first;
                             if(pKFi==pKF)
                                 continue;
-                            tuple<int,int> indexes = mit->second;
-                            int leftIndex = get<0>(indexes), rightIndex = get<1>(indexes);
+                            std::tuple<int,int> indexes = mit->second;
+                            int leftIndex = std::get<0>(indexes), rightIndex = get<1>(indexes);
                             int scaleLeveli = -1;
                             if(pKFi -> NLeft == -1)
                                 scaleLeveli = pKFi->mvKeysUn[leftIndex].octave;
@@ -1161,7 +1150,7 @@ void LocalMapping::KeyFrameCulling()
                         pNextKF->mPrevKF = pKF->mPrevKF;
                         pKF->mPrevKF->mNextKF = pNextKF;
                         pKF->mNextKF.reset();
-                        pKF->mPrevKF = NULL;
+                        pKF->mPrevKF = nullptr;
                         pKF->SetBadFlag();
                     }
                     else if(!mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->GetIniertialBA2() && ((pKF->GetImuPosition()-pKF->mPrevKF->GetImuPosition()).norm()<0.02) && (t<3))
@@ -1170,7 +1159,7 @@ void LocalMapping::KeyFrameCulling()
                         pNextKF->mPrevKF = pKF->mPrevKF;
                         pKF->mPrevKF->mNextKF = pNextKF;
                         pKF->mNextKF.reset();
-                        pKF->mPrevKF = NULL;
+                        pKF->mPrevKF = nullptr;
                         pKF->SetBadFlag();
                     }
                 }
@@ -1190,11 +1179,11 @@ void LocalMapping::KeyFrameCulling()
 void LocalMapping::RequestReset()
 {
     {
-        unique_lock<mutex> lock(mMutexReset);
-        cout << "LM: Map reset recieved" << endl;
+        std::unique_lock<std::mutex> lock(mMutexReset);
+        std::cout << "LM: Map reset recieved" << std::endl;
         mbResetRequested.store(true, std::memory_order_relaxed);
     }
-    cout << "LM: Map reset, waiting..." << endl;
+    std::cout << "LM: Map reset, waiting..." << std::endl;
 
     // P10-4: CV handshake (was a 3ms spin). ResetIfRequested notifies
     // mCondReset after clearing the flag. Preserved upstream quirks, on
@@ -1205,52 +1194,52 @@ void LocalMapping::RequestReset()
     //     nothing services the flag -- upstream behavior, documented; do
     //     NOT add a finished-escape, that would change observable protocol).
     {
-        unique_lock<mutex> lock(mMutexReset);
+        std::unique_lock<std::mutex> lock(mMutexReset);
         mCondReset.wait(lock, [&]{
             return !mbResetRequested.load(std::memory_order_relaxed);
         });
     }
-    cout << "LM: Map reset, Done!!!" << endl;
+    std::cout << "LM: Map reset, Done!!!" << std::endl;
 }
 
 void LocalMapping::RequestResetActiveMap(Map* pMap)
 {
     {
-        unique_lock<mutex> lock(mMutexReset);
-        cout << "LM: Active map reset recieved" << endl;
+        std::unique_lock<std::mutex> lock(mMutexReset);
+        std::cout << "LM: Active map reset recieved" << std::endl;
         mbResetRequestedActiveMap.store(true, std::memory_order_relaxed);
         mpMapToReset = pMap;
     }
-    cout << "LM: Active map reset, waiting..." << endl;
+    std::cout << "LM: Active map reset, waiting..." << std::endl;
 
     // P10-4: CV handshake (was a 3ms spin); same preserved quirks as
     // RequestReset above (park blocks until Release; after SetFinish this
     // never returns -- upstream, documented, no finished-escape).
     {
-        unique_lock<mutex> lock(mMutexReset);
+        std::unique_lock<std::mutex> lock(mMutexReset);
         mCondReset.wait(lock, [&]{
             return !mbResetRequestedActiveMap.load(std::memory_order_relaxed);
         });
     }
-    cout << "LM: Active map reset, Done!!!" << endl;
+    std::cout << "LM: Active map reset, Done!!!" << std::endl;
 }
 
 void LocalMapping::ResetIfRequested()
 {
     bool executed_reset = false;
     {
-        unique_lock<mutex> lock(mMutexReset);
+        std::unique_lock<std::mutex> lock(mMutexReset);
         if(mbResetRequested.load(std::memory_order_relaxed))
         {
             executed_reset = true;
 
-            cout << "LM: Reseting Atlas in Local Mapping..." << endl;
+            std::cout << "LM: Reseting Atlas in Local Mapping..." << std::endl;
             {
                 // P10-2: queue clear closed under mMutexNewKFs (inner to
                 // mMutexReset; was protocol-protected by the requester spin
                 // -- closed for uniformity while in the area). Trace deque
                 // cleared under the same lock (P10-0 shadow-deque contract).
-                unique_lock<mutex> lockQueue(mMutexNewKFs);
+                std::unique_lock<std::mutex> lockQueue(mMutexNewKFs);
                 mlNewKeyFrames.clear();
                 if(TraceQueueOn())
                     mdqTraceEnqueueTs.clear();
@@ -1263,15 +1252,15 @@ void LocalMapping::ResetIfRequested()
             mTinit = 0.f;
             mbBadImu.store(false, std::memory_order_relaxed);
 
-            cout << "LM: End reseting Local Mapping..." << endl;
+            std::cout << "LM: End reseting Local Mapping..." << std::endl;
         }
 
         if(mbResetRequestedActiveMap.load(std::memory_order_relaxed)) {
             executed_reset = true;
-            cout << "LM: Reseting current map in Local Mapping..." << endl;
+            std::cout << "LM: Reseting current map in Local Mapping..." << std::endl;
             {
                 // P10-2: same closure as the full-reset branch above.
-                unique_lock<mutex> lockQueue(mMutexNewKFs);
+                std::unique_lock<std::mutex> lockQueue(mMutexNewKFs);
                 mlNewKeyFrames.clear();
                 if(TraceQueueOn())
                     mdqTraceEnqueueTs.clear();
@@ -1284,12 +1273,12 @@ void LocalMapping::ResetIfRequested()
 
             mbResetRequested.store(false, std::memory_order_relaxed);
             mbResetRequestedActiveMap.store(false, std::memory_order_relaxed);
-            cout << "LM: End reseting Local Mapping..." << endl;
+            std::cout << "LM: End reseting Local Mapping..." << std::endl;
         }
     }
     if(executed_reset)
     {
-        cout << "LM: Reset free the mutex" << endl;
+        std::cout << "LM: Reset free the mutex" << std::endl;
         // P10-4: wake the RequestReset/RequestResetActiveMap handshake
         // waiters. The flags were cleared under mMutexReset above; notify
         // after unlock.
@@ -1303,7 +1292,7 @@ void LocalMapping::RequestFinish()
     {
         // P10-2: the store keeps the lock (it still orders against the
         // mbFinished handshake); readers are lock-free.
-        unique_lock<mutex> lock(mMutexFinish);
+        std::unique_lock<std::mutex> lock(mMutexFinish);
         mbFinishRequested.store(true, std::memory_order_relaxed);
     }
     // P10-4: wake a parked Run() (park predicate reads the atomic finish
@@ -1313,7 +1302,7 @@ void LocalMapping::RequestFinish()
     // window between the waiter's predicate evaluation and its block
     // (lost wakeup, and the park wait has no timeout). Lock order is
     // canonical (mMutexFinish released before mMutexStop is taken).
-    { unique_lock<mutex> lock(mMutexStop); }
+    { std::unique_lock<std::mutex> lock(mMutexStop); }
     mCondStop.notify_all();
 }
 
@@ -1329,7 +1318,7 @@ void LocalMapping::SetFinish()
     {
         std::size_t nMaxDepth;
         {
-            unique_lock<mutex> lock(mMutexNewKFs);
+            std::unique_lock<std::mutex> lock(mMutexNewKFs);
             nMaxDepth = mnTraceMaxDepth;
         }
         std::vector<long> v = mvTraceDequeueUs;
@@ -1341,9 +1330,9 @@ void LocalMapping::SetFinish()
             nMaxDepth, mnTraceIters, mnTraceEmptyIters);
     }
     {
-        unique_lock<mutex> lock(mMutexFinish);
+        std::unique_lock<std::mutex> lock(mMutexFinish);
         mbFinished = true;
-        unique_lock<mutex> lock2(mMutexStop);
+        std::unique_lock<std::mutex> lock2(mMutexStop);
         mbStopped = true;
     }
     // P10-4: SetFinish sets mbStopped, so external WaitUntilStopped()
@@ -1354,7 +1343,7 @@ void LocalMapping::SetFinish()
 
 bool LocalMapping::isFinished()
 {
-    unique_lock<mutex> lock(mMutexFinish);
+    std::unique_lock<std::mutex> lock(mMutexFinish);
     return mbFinished;
 }
 
@@ -1366,8 +1355,8 @@ void LocalMapping::PurgeNewKeyFramesAfterInertialInit()
     // is safe: it takes only KeyFrame/Map/KFDB-layer mutexes, and no code
     // path acquires mMutexNewKFs while holding those. Trace deque cleared
     // under the same lock (P10-0 shadow-deque contract).
-    unique_lock<mutex> lock(mMutexNewKFs);
-    for(list<KeyFramePtr>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
+    std::unique_lock<std::mutex> lock(mMutexNewKFs);
+    for(std::list<KeyFramePtr>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
     {
         // DIVERGENCES #19 guarded a raw delete here; R4b slice 2 retires it:
         // disposal is SetBadFlag + dropping the strong queue reference. A

@@ -22,6 +22,8 @@
 
 #include <opencv2/core/core.hpp>
 #include "map/MapTypes.hpp"  // R4b: MapPointPtr
+#include "core/SensorType.hpp"      // R4c: Sensor
+#include "tracking/TrackingState.hpp"  // R4c: TrackingState
 #include <opencv2/features2d/features2d.hpp>
 
 // P7-1b: this header no longer includes core/System.hpp (Tracking now holds
@@ -74,10 +76,14 @@ public:
     // ITrackingOptimizer/BAEpochs). System passes itself; Tracking can only
     // request a deferred active-map reset through it.
     Tracking(IResetRequester* pResetRequester, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Atlas* pAtlas,
-             KeyFrameDatabase* pKFDB, const std::string &strSettingPath, const int sensor, Settings* settings,
+             KeyFrameDatabase* pKFDB, const std::string &strSettingPath, const Sensor sensor, Settings* settings,
              ITrackingOptimizer* pOptimizer, const std::string &_nameSeq=std::string());
 
     ~Tracking();
+
+    // R4c: noncopyable by design (thread-owned state machine).
+    Tracking(const Tracking&) = delete;
+    Tracking& operator=(const Tracking&) = delete;
 
     // Parse the config file
 
@@ -184,16 +190,11 @@ public:
 
 public:
 
-    // Tracking states
-    enum eTrackingState{
-        SYSTEM_NOT_READY=-1,
-        NO_IMAGES_YET=0,
-        NOT_INITIALIZED=1,
-        OK=2,
-        RECENTLY_LOST=3,
-        LOST=4,
-        OK_KLT=5
-    };
+    // Tracking states (R4c: scoped enum at namespace scope — see
+    // tracking/TrackingState.hpp; the re-exports keep Tracking::OK and
+    // Tracking::eTrackingState valid at every external site).
+    using eTrackingState = TrackingState;
+    using enum TrackingState;
 
 private:
 
@@ -265,8 +266,8 @@ public:
     // Human-readable enumerator name, used by the transition trace.
     static const char* StateName(eTrackingState s);
 
-    // Input sensor
-    int mSensor;
+    // Input sensor (R4c: scoped Sensor enum, core/SensorType.hpp; was int)
+    Sensor mSensor;
 
     // Current Frame
     Frame mCurrentFrame;

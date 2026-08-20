@@ -82,6 +82,10 @@ public:
     Map(int initKFid);
     ~Map();
 
+    // R4c: noncopyable (owning KF/MP sets plus mutexes; copying is nonsensical).
+    Map(const Map&) = delete;
+    Map& operator=(const Map&) = delete;
+
     void AddKeyFrame(const KeyFramePtr& pKF);
     void AddMapPoint(const MapPointPtr& pMP);
     void EraseMapPoint(const MapPointPtr& pMP);

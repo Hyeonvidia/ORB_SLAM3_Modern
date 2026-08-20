@@ -113,6 +113,10 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     MapPoint();
 
+    // R4c: noncopyable (identity node with per-instance mutexes; same as KeyFrame).
+    MapPoint(const MapPoint&) = delete;
+    MapPoint& operator=(const MapPoint&) = delete;
+
     MapPoint(const Eigen::Vector3f &Pos, const KeyFramePtr& pRefKF, Map* pMap);
     MapPoint(const double invDepth, cv::Point2f uv_init, const KeyFramePtr& pRefKF, const KeyFramePtr& pHostKF, Map* pMap);
     MapPoint(const Eigen::Vector3f &Pos,  Map* pMap, Frame* pFrame, const int &idxF);

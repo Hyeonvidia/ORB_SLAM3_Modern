@@ -86,6 +86,10 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     LocalMapping(Atlas* pAtlas, bool bMonocular, bool bInertial, BAEpochs* pBAEpochs, IMappingOptimizer* pOptimizer);
 
+    // R4c: noncopyable by design (thread body with queue/CV protocol state).
+    LocalMapping(const LocalMapping&) = delete;
+    LocalMapping& operator=(const LocalMapping&) = delete;
+
     void SetLoopCloser(LoopClosing* pLoopCloser);
 
     void SetTracker(Tracking* pTracker);

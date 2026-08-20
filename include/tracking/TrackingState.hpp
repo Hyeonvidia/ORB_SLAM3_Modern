@@ -16,46 +16,28 @@
 * If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef ORB_SLAM3_VERBOSE_HPP
-#define ORB_SLAM3_VERBOSE_HPP
-
-#include <iostream>
-#include <string>
+#ifndef ORB_SLAM3_TRACKINGSTATE_HPP
+#define ORB_SLAM3_TRACKINGSTATE_HPP
 
 namespace ORB_SLAM3
 {
 
-// Global log-level gate (extracted from System.hpp in P2-3; semantics
-// unchanged — System's constructor still forces VERBOSITY_QUIET, an
-// upstream hardcode kept for behavior parity).
-class Verbose
-{
-public:
-    enum class eLevel
-    {
-        VERBOSITY_QUIET=0,
-        VERBOSITY_NORMAL=1,
-        VERBOSITY_VERBOSE=2,
-        VERBOSITY_VERY_VERBOSE=3,
-        VERBOSITY_DEBUG=4
-    };
-    // R4c: scoped enum; the re-export keeps Verbose::VERBOSITY_* sites intact.
-    using enum eLevel;
-
-    static eLevel th;
-
-    static void PrintMess(const std::string& str, eLevel lev)
-    {
-        if(lev <= th)
-            std::cout << str << std::endl;
-    }
-
-    static void SetTh(eLevel _th)
-    {
-        th = _th;
-    }
+// R4c: Tracking::eTrackingState promoted to a scoped enum at namespace scope
+// so FrameDrawer can name the TYPE despite the Tracking.hpp <-> FrameDrawer.hpp
+// include cycle (a class-nested enum cannot be forward-declared). Tracking
+// re-exports the old spelling (`using eTrackingState = TrackingState;` plus
+// `using enum`), so every Tracking::OK / Tracking::eTrackingState site is
+// unchanged.
+enum class TrackingState : int {
+    SYSTEM_NOT_READY = -1,
+    NO_IMAGES_YET = 0,
+    NOT_INITIALIZED = 1,
+    OK = 2,
+    RECENTLY_LOST = 3,
+    LOST = 4,
+    OK_KLT = 5
 };
 
 }
 
-#endif // ORB_SLAM3_VERBOSE_HPP
+#endif // ORB_SLAM3_TRACKINGSTATE_HPP

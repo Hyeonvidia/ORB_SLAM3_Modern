@@ -44,12 +44,14 @@ class ORBextractor
 {
 public:
     
-    enum {HARRIS_SCORE=0, FAST_SCORE=1 };
+    // R4c: scoped + named (was an anonymous unscoped enum); no in-tree user —
+    // kept for API parity with upstream's OpenCV-style score selector.
+    enum class ScoreType {HARRIS_SCORE=0, FAST_SCORE=1};
 
     ORBextractor(int nfeatures, float scaleFactor, int nlevels,
                  int iniThFAST, int minThFAST);
 
-    ~ORBextractor(){}
+    ~ORBextractor() = default;
 
     // Compute the ORB features and descriptors on an image.
     // ORB are dispersed on the image using an octree.

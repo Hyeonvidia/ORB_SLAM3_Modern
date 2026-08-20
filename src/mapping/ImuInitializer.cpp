@@ -26,10 +26,6 @@
 
 #include <mutex>
 
-// R3: this TU used to inherit a global `using namespace std;` from the vendored
-// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
-using namespace std;
-
 namespace ORB_SLAM3
 {
 
@@ -57,11 +53,11 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     }
 
 
-    if(mHost.mpAtlas->KeyFramesInMap()<nMinKF)
+    if(mHost.mpAtlas->KeyFramesInMap()<static_cast<size_t>(nMinKF))
         return;
 
     // Retrieve all keyframe in temporal order
-    list<KeyFramePtr> lpKF;
+    std::list<KeyFramePtr> lpKF;
     KeyFramePtr pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
     while(pKF->mPrevKF)
     {
@@ -69,9 +65,9 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         pKF = pKF->mPrevKF;
     }
     lpKF.push_front(pKF);
-    vector<KeyFramePtr> vpKF(lpKF.begin(),lpKF.end());
+    std::vector<KeyFramePtr> vpKF(lpKF.begin(),lpKF.end());
 
-    if(vpKF.size()<nMinKF)
+    if(vpKF.size()<static_cast<size_t>(nMinKF))
         return;
 
     mHost.mFirstTs.store(vpKF.front()->mTimeStamp, std::memory_order_relaxed);
@@ -95,7 +91,7 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         Eigen::Matrix3f Rwg;
         Eigen::Vector3f dirG;
         dirG.setZero();
-        for(vector<KeyFramePtr>::iterator itKF = vpKF.begin(); itKF!=vpKF.end(); itKF++)
+        for(std::vector<KeyFramePtr>::iterator itKF = vpKF.begin(); itKF!=vpKF.end(); itKF++)
         {
             if (!(*itKF)->mpImuPreintegrated)
                 continue;
@@ -135,14 +131,14 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
     if (mScale<1e-1)
     {
-        cout << "scale too small" << endl;
+        std::cout << "scale too small" << std::endl;
         mHost.bInitializing.store(false, std::memory_order_relaxed);
         return;
     }
 
     // Before this line we are not changing the map
     {
-        unique_lock<mutex> lock(mHost.mpAtlas->GetCurrentMap()->mMutexMapUpdate);
+        std::unique_lock<std::mutex> lock(mHost.mpAtlas->GetCurrentMap()->mMutexMapUpdate);
         if ((fabs(mScale - 1.f) > 0.00001) || !mHost.mbMonocular) {
             Sophus::SE3f Twg(mRwg.cast<float>().transpose(), Eigen::Vector3f::Zero());
             mHost.mpAtlas->GetCurrentMap()->ApplyScaledRotation(Twg, mScale, true);
@@ -198,15 +194,15 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     if (bFIBA)
     {
         if (priorA!=0.f)
-            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId, NULL, true, priorG, priorA, NULL, NULL, &gbaResult, *mHost.mpBAEpochs);
+            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId, nullptr, true, priorG, priorA, nullptr, nullptr, &gbaResult, *mHost.mpBAEpochs);
         else
-            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId, NULL, false, 1e2, 1e6, NULL, NULL, &gbaResult, *mHost.mpBAEpochs);
+            mHost.mpOptimizer->FullInertialBA(mHost.mpAtlas->GetCurrentMap(), 100, false, mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId, nullptr, false, 1e2, 1e6, nullptr, nullptr, &gbaResult, *mHost.mpBAEpochs);
     }
 
     Verbose::PrintMess("Global Bundle Adjustment finished\nUpdating map ...", Verbose::VERBOSITY_NORMAL);
 
     // Get Map Mutex
-    unique_lock<mutex> lock(mHost.mpAtlas->GetCurrentMap()->mMutexMapUpdate);
+    std::unique_lock<std::mutex> lock(mHost.mpAtlas->GetCurrentMap()->mMutexMapUpdate);
 
     // Process keyframes in the queue
     while(mHost.CheckNewKeyFrames())
@@ -217,7 +213,7 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     }
 
     // Correct keyframes starting at map first keyframe
-    list<KeyFramePtr> lpKFtoCheck(mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.begin(),mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.end());
+    std::list<KeyFramePtr> lpKFtoCheck(mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.begin(),mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.end());
 
     // Pre-correction pose of every keyframe updated in this pass
     // (was KeyFrame::mTcwBefGBA), read below to re-anchor map points
@@ -226,10 +222,10 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     while(!lpKFtoCheck.empty())
     {
         KeyFramePtr pKF = lpKFtoCheck.front();
-        const set<KeyFramePtr> sChilds = pKF->GetChilds();
+        const std::set<KeyFramePtr> sChilds = pKF->GetChilds();
         Sophus::SE3f Twc = pKF->GetPoseInverse();
         KeyFrameGBAResult& rKF = gbaResult.kfs[pKF];
-        for(set<KeyFramePtr>::const_iterator sit=sChilds.begin();sit!=sChilds.end();sit++)
+        for(std::set<KeyFramePtr>::const_iterator sit=sChilds.begin();sit!=sChilds.end();sit++)
         {
             KeyFramePtr pChild = *sit;
             if(!pChild || pChild->isBad())
@@ -269,14 +265,14 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
             if(rKF.hasBias)
                 pKF->SetNewBias(rKF.Bias);
         } else {
-            cout << "KF " << pKF->mnId << " not set to inertial!! \n";
+            std::cout << "KF " << pKF->mnId << " not set to inertial!! \n";
         }
 
         lpKFtoCheck.pop_front();
     }
 
     // Correct MapPoints
-    const vector<MapPointPtr> vpMPs = mHost.mpAtlas->GetCurrentMap()->GetAllMapPoints();
+    const std::vector<MapPointPtr> vpMPs = mHost.mpAtlas->GetCurrentMap()->GetAllMapPoints();
 
     for(size_t i=0; i<vpMPs.size(); i++)
     {
@@ -335,7 +331,7 @@ void ImuInitializer::ScaleRefinement()
         return;
 
     // Retrieve all keyframes in temporal order
-    list<KeyFramePtr> lpKF;
+    std::list<KeyFramePtr> lpKF;
     KeyFramePtr pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
     while(pKF->mPrevKF)
     {
@@ -343,7 +339,7 @@ void ImuInitializer::ScaleRefinement()
         pKF = pKF->mPrevKF;
     }
     lpKF.push_front(pKF);
-    vector<KeyFramePtr> vpKF(lpKF.begin(),lpKF.end());
+    std::vector<KeyFramePtr> vpKF(lpKF.begin(),lpKF.end());
 
     while(mHost.CheckNewKeyFrames())
     {
@@ -359,13 +355,13 @@ void ImuInitializer::ScaleRefinement()
 
     if (mScale<1e-1) // 1e-1
     {
-        cout << "scale too small" << endl;
+        std::cout << "scale too small" << std::endl;
         mHost.bInitializing.store(false, std::memory_order_relaxed);
         return;
     }
 
     // Before this line we are not changing the map
-    unique_lock<mutex> lock(mHost.mpAtlas->GetCurrentMap()->mMutexMapUpdate);
+    std::unique_lock<std::mutex> lock(mHost.mpAtlas->GetCurrentMap()->mMutexMapUpdate);
     if ((fabs(mScale-1.f)>0.002)||!mHost.mbMonocular)
     {
         Sophus::SE3f Tgw(mRwg.cast<float>().transpose(),Eigen::Vector3f::Zero());

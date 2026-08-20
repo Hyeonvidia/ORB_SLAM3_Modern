@@ -26,7 +26,7 @@ void Random::SeedRand(){
     // seconds since epoch, matching the old Timestamp::getFloatTime() seed
     const double now = std::chrono::duration<double>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    srand((unsigned)now);
+    srand(static_cast<unsigned>(now));
 }
 
 void Random::SeedRandOnce()
@@ -54,7 +54,7 @@ void Random::SeedRandOnce(int seed)
 
 int Random::RandomInt(int min, int max){
     int d = max - min + 1;
-    return int(((double)rand()/((double)RAND_MAX + 1.0)) * d) + min;
+    return int((static_cast<double>(rand())/(static_cast<double>(RAND_MAX) + 1.0)) * d) + min;
 }
 
 } // namespace DUtils

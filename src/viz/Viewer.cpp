@@ -22,14 +22,10 @@
 
 #include <mutex>
 
-// R3: this TU used to inherit a global `using namespace std;` from the vendored
-// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
-using namespace std;
-
 namespace ORB_SLAM3
 {
 
-Viewer::Viewer(IViewerHost* pHost, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath, Settings* settings, bool bNonInertialSensor):
+Viewer::Viewer(IViewerHost* pHost, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const std::string &strSettingPath, Settings* settings, bool bNonInertialSensor):
     both(false), mpHost(pHost), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking),
     mbNonInertialSensor(bNonInertialSensor),
     mbFinishRequested(false), mbFinished(true), mbStopped(true), mbStopRequested(false)
@@ -65,11 +61,11 @@ void Viewer::Run()
     // their owning mutexes. mbFinished stays a plain guarded bool (NOT
     // atomic — SetFinish couples it with the finish handshake).
     {
-        unique_lock<mutex> lock(mMutexFinish);
+        std::unique_lock<std::mutex> lock(mMutexFinish);
         mbFinished = false;
     }
     {
-        unique_lock<mutex> lock(mMutexStop);
+        std::unique_lock<std::mutex> lock(mMutexStop);
         mbStopped = false;
     }
 
@@ -129,7 +125,7 @@ void Viewer::Run()
 
     float trackedImageScale = mpTracker->GetImageScale();
 
-    cout << "Starting the Viewer" << endl;
+    std::cout << "Starting the Viewer" << std::endl;
     while(1)
     {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -292,7 +288,7 @@ void Viewer::Run()
             // (mMutexFinish here would nest Stop->Finish). UNTIMED wait:
             // pthread_cond_wait is TSAN-intercepted (the P10-4 clockwait
             // gap applies only to timed waits — no system_clock net needed).
-            unique_lock<mutex> lock(mMutexStop);
+            std::unique_lock<std::mutex> lock(mMutexStop);
             mCondStop.wait(lock, [&]{
                 return !mbStopped ||
                        mbFinishRequested.load(std::memory_order_relaxed);
@@ -312,7 +308,7 @@ void Viewer::RequestFinish()
         // P10-6: the store keeps the lock (it still orders against the
         // mbFinished handshake); readers are lock-free. Same discipline as
         // LocalMapping::RequestFinish (P10-2/P10-4).
-        unique_lock<mutex> lock(mMutexFinish);
+        std::unique_lock<std::mutex> lock(mMutexFinish);
         mbFinishRequested.store(true, std::memory_order_relaxed);
     }
     // P10-6: wake a parked Run() (park predicate reads the atomic finish
@@ -321,7 +317,7 @@ void Viewer::RequestFinish()
     // wait's predicate check — without it the notify could land in the
     // window between the waiter's predicate evaluation and its block
     // (lost wakeup, and the park wait has no timeout).
-    { unique_lock<mutex> lock(mMutexStop); }
+    { std::unique_lock<std::mutex> lock(mMutexStop); }
     mCondStop.notify_all();
 }
 
@@ -333,26 +329,26 @@ bool Viewer::CheckFinish()
 
 void Viewer::SetFinish()
 {
-    unique_lock<mutex> lock(mMutexFinish);
+    std::unique_lock<std::mutex> lock(mMutexFinish);
     mbFinished = true;
 }
 
 bool Viewer::isFinished()
 {
-    unique_lock<mutex> lock(mMutexFinish);
+    std::unique_lock<std::mutex> lock(mMutexFinish);
     return mbFinished;
 }
 
 void Viewer::RequestStop()
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     if(!mbStopped)
         mbStopRequested = true;
 }
 
 bool Viewer::isStopped()
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     return mbStopped;
 }
 
@@ -364,13 +360,13 @@ void Viewer::WaitUntilStopped()
     // upstream quirk (recon W6) is preserved verbatim: if the viewer is
     // finish-requested, Stop() returns false without setting mbStopped and
     // the old poll never terminated either.
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
     mCondStop.wait(lock, [&]{ return mbStopped; });
 }
 
 bool Viewer::Stop()
 {
-    unique_lock<mutex> lock(mMutexStop);
+    std::unique_lock<std::mutex> lock(mMutexStop);
 
     // P10-6: the finish read is the atomic (was a second lock of
     // mMutexFinish — the Viewer's only Stop->Finish nesting, gone with it).
@@ -394,7 +390,7 @@ bool Viewer::Stop()
 void Viewer::Release()
 {
     {
-        unique_lock<mutex> lock(mMutexStop);
+        std::unique_lock<std::mutex> lock(mMutexStop);
         mbStopped = false;
     }
     // P10-6: wake the parked Run() (park predicate: !mbStopped). Notify

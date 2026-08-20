@@ -182,6 +182,11 @@ class KeyFrame : public std::enable_shared_from_this<KeyFrame>
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     KeyFrame();
+
+    // R4c: noncopyable (identity node in the covisibility graph; per-instance
+    // mutexes already forbade copies implicitly — now documented).
+    KeyFrame(const KeyFrame&) = delete;
+    KeyFrame& operator=(const KeyFrame&) = delete;
     KeyFrame(Frame &F, Map* pMap, KeyFrameDatabase* pKFDB);
 
     // Pose functions
@@ -385,7 +390,7 @@ public:
     // Frame's pointer; Tracking then re-points its member without delete).
     // Never freed — KeyFrames are tombstoned, not deleted (docs/OWNERSHIP.md).
     // Mutated in place by LocalMapping/Optimizer (Reintegrate/SetNewBias/
-    // MergePrevious). May be NULL if PreintegrateIMU early-exited (hazard B6).
+    // MergePrevious). May be nullptr if PreintegrateIMU early-exited (hazard B6).
     IMU::Preintegrated* mpImuPreintegrated;
     IMU::Calib mImuCalib;
 

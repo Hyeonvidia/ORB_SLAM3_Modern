@@ -22,15 +22,11 @@
 #include <pangolin/pangolin.h>
 #include <mutex>
 
-// R3: this TU used to inherit a global `using namespace std;` from the vendored
-// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
-using namespace std;
-
 namespace ORB_SLAM3
 {
 
 
-MapDrawer::MapDrawer(Atlas* pAtlas, const string &strSettingPath, Settings* settings):mpAtlas(pAtlas)
+MapDrawer::MapDrawer(Atlas* pAtlas, const std::string &strSettingPath, Settings* settings):mpAtlas(pAtlas)
 {
     // P2-2: Settings is the single parsing path (never null).
     newParameterLoader(settings);
@@ -52,10 +48,10 @@ void MapDrawer::DrawMapPoints()
     if(!pActiveMap)
         return;
 
-    const vector<MapPointPtr> &vpMPs = pActiveMap->GetAllMapPoints();
-    const vector<MapPointPtr> &vpRefMPs = pActiveMap->GetReferenceMapPoints();
+    const std::vector<MapPointPtr> &vpMPs = pActiveMap->GetAllMapPoints();
+    const std::vector<MapPointPtr> &vpRefMPs = pActiveMap->GetReferenceMapPoints();
 
-    set<MapPointPtr> spRefMPs(vpRefMPs.begin(), vpRefMPs.end());
+    std::set<MapPointPtr> spRefMPs(vpRefMPs.begin(), vpRefMPs.end());
 
     if(vpMPs.empty())
         return;
@@ -79,7 +75,7 @@ void MapDrawer::DrawMapPoints()
     glBegin(GL_POINTS);
     glColor3f(1.0,0.0,0.0);
 
-    for(set<MapPointPtr>::iterator sit=spRefMPs.begin(), send=spRefMPs.end(); sit!=send; sit++)
+    for(std::set<MapPointPtr>::iterator sit=spRefMPs.begin(), send=spRefMPs.end(); sit!=send; sit++)
     {
         if((*sit)->isBad())
         {
@@ -107,7 +103,7 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const b
     if(!pActiveMap)
         return;
 
-    const vector<KeyFramePtr> vpKFs = pActiveMap->GetAllKeyFrames();
+    const std::vector<KeyFramePtr> vpKFs = pActiveMap->GetAllKeyFrames();
 
     if(bDrawKF)
     {
@@ -115,7 +111,6 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const b
         {
             KeyFramePtr pKF = vpKFs[i];
             Eigen::Matrix4f Twc = pKF->GetPoseInverse().matrix();
-            unsigned int index_color = pKF->mnOriginMapId;
 
             glPushMatrix();
 
@@ -190,11 +185,11 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const b
         for(size_t i=0; i<vpKFs.size(); i++)
         {
             // Covisibility Graph
-            const vector<KeyFramePtr> vCovKFs = vpKFs[i]->GetCovisiblesByWeight(100);
+            const std::vector<KeyFramePtr> vCovKFs = vpKFs[i]->GetCovisiblesByWeight(100);
             Eigen::Vector3f Ow = vpKFs[i]->GetCameraCenter();
             if(!vCovKFs.empty())
             {
-                for(vector<KeyFramePtr>::const_iterator vit=vCovKFs.begin(), vend=vCovKFs.end(); vit!=vend; vit++)
+                for(std::vector<KeyFramePtr>::const_iterator vit=vCovKFs.begin(), vend=vCovKFs.end(); vit!=vend; vit++)
                 {
                     if((*vit)->mnId<vpKFs[i]->mnId)
                         continue;
@@ -214,8 +209,8 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const b
             }
 
             // Loops
-            set<KeyFramePtr> sLoopKFs = vpKFs[i]->GetLoopEdges();
-            for(set<KeyFramePtr>::iterator sit=sLoopKFs.begin(), send=sLoopKFs.end(); sit!=send; sit++)
+            std::set<KeyFramePtr> sLoopKFs = vpKFs[i]->GetLoopEdges();
+            for(std::set<KeyFramePtr>::iterator sit=sLoopKFs.begin(), send=sLoopKFs.end(); sit!=send; sit++)
             {
                 if((*sit)->mnId<vpKFs[i]->mnId)
                     continue;
@@ -251,7 +246,7 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const b
         glEnd();
     }
 
-    vector<Map*> vpMaps = mpAtlas->GetAllMaps();
+    std::vector<Map*> vpMaps = mpAtlas->GetAllMaps();
 
     if(bDrawKF)
     {
@@ -260,7 +255,7 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph, const b
             if(pMap == pActiveMap)
                 continue;
 
-            vector<KeyFramePtr> vpKFs = pMap->GetAllKeyFrames();
+            std::vector<KeyFramePtr> vpKFs = pMap->GetAllKeyFrames();
 
             for(size_t i=0; i<vpKFs.size(); i++)
             {
@@ -358,7 +353,7 @@ void MapDrawer::DrawCurrentCamera(pangolin::OpenGlMatrix &Twc)
 
 void MapDrawer::SetCurrentCameraPose(const Sophus::SE3f &Tcw)
 {
-    unique_lock<mutex> lock(mMutexCamera);
+    std::unique_lock<std::mutex> lock(mMutexCamera);
     mCameraPose = Tcw.inverse();
 }
 
@@ -366,7 +361,7 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M, pangolin
 {
     Eigen::Matrix4f Twc;
     {
-        unique_lock<mutex> lock(mMutexCamera);
+        std::unique_lock<std::mutex> lock(mMutexCamera);
         Twc = mCameraPose.matrix();
     }
 

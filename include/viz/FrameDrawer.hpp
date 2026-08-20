@@ -21,6 +21,7 @@
 #define FRAMEDRAWER_H
 
 #include "tracking/Tracking.hpp"
+#include "tracking/TrackingState.hpp"  // R4c
 #include "map/MapPoint.hpp"
 #include "map/Atlas.hpp"
 
@@ -54,7 +55,7 @@ public:
 
 protected:
 
-    void DrawTextInfo(cv::Mat &im, int nState, cv::Mat &imText);
+    void DrawTextInfo(cv::Mat &im, TrackingState nState, cv::Mat &imText);
 
     // Info of the frame to be drawn
     cv::Mat mIm, mImRight;
@@ -65,7 +66,7 @@ protected:
     int mnTracked, mnTrackedVO;
     std::vector<cv::KeyPoint> mvIniKeys;
     std::vector<int> mvIniMatches;
-    int mState;
+    TrackingState mState;  // R4c: was int
     std::vector<float> mvCurrentDepth;
     float mThDepth;
 

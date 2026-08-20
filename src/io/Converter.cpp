@@ -122,7 +122,7 @@ Sophus::SE3<float> Converter::toSophus(const cv::Mat &T) {
 }
 
 Sophus::Sim3f Converter::toSophus(const g2o::Sim3& S) {
-    return Sophus::Sim3f(Sophus::RxSO3d((float)S.scale(), S.rotation().matrix()).cast<float>() ,
+    return Sophus::Sim3f(Sophus::RxSO3d(static_cast<float>(S.scale()), S.rotation().matrix()).cast<float>() ,
                          S.translation().cast<float>());
 }
 

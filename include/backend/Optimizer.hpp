@@ -54,17 +54,17 @@ public:
 
     // pResult (owned by the caller that later propagates the GBA correction)
     // receives the optimized poses/velocities/biases/positions when nLoopKF
-    // identifies a deferred update; with pResult==NULL those results are
+    // identifies a deferred update; with pResult==nullptr those results are
     // dropped (no caller reads them afterwards).
     // pbStopFlag is const std::atomic<bool>* since P10-1 (cross-thread abort
     // request; g2o's bool* polling goes through the OrbLevenberg shadow
     // bridge — see include/backend/OrbLevenberg.hpp).
     void static BundleAdjustment(const std::vector<KeyFramePtr> &vpKF, const std::vector<MapPointPtr> &vpMP,
-                                 int nIterations = 5, const std::atomic<bool> *pbStopFlag=NULL, const unsigned long nLoopKF=0,
-                                 const bool bRobust = true, GBAResult *pResult=NULL);
-    void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, const std::atomic<bool> *pbStopFlag=NULL,
+                                 int nIterations = 5, const std::atomic<bool> *pbStopFlag=nullptr, const unsigned long nLoopKF=0,
+                                 const bool bRobust = true, GBAResult *pResult=nullptr);
+    void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, const std::atomic<bool> *pbStopFlag=nullptr,
                                        const unsigned long nLoopKF=0, const bool bRobust = true,
-                                       GBAResult *pResult=NULL);
+                                       GBAResult *pResult=nullptr);
     // epochs (P5-C, see include/backend/BAEpochs.hpp): persistent local-BA
     // epoch marks. With bFixLocal=true, FullInertialBA reads marks left by a
     // previous LocalInertialBA/MergeInertialBA call to fix those vertices.

@@ -47,7 +47,8 @@ namespace ORB_SLAM3 {
             mnType = CAM_PINHOLE;
         }
 
-        Pinhole(Pinhole* pPinhole) : GeometricCamera(pPinhole->mvParameters) {
+        // R4c: explicit — a pointer must never silently convert to a camera value.
+        explicit Pinhole(Pinhole* pPinhole) : GeometricCamera(pPinhole->mvParameters) {
             assert(mvParameters.size() == 4);
             mnId=nNextId++;
             mnType = CAM_PINHOLE;

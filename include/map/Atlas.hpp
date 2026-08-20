@@ -81,6 +81,10 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     Atlas();
+
+    // R4c: noncopyable (owns the map set and camera registry).
+    Atlas(const Atlas&) = delete;
+    Atlas& operator=(const Atlas&) = delete;
     Atlas(int initKFid); // When its initialization the first map is created
     ~Atlas();
 

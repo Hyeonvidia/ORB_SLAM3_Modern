@@ -63,7 +63,6 @@
 
 
 using namespace cv;
-using namespace std;
 
 namespace ORB_SLAM3
 {
@@ -73,7 +72,7 @@ namespace ORB_SLAM3
     const int EDGE_THRESHOLD = 19;
 
 
-    static float IC_Angle(const Mat& image, Point2f pt,  const vector<int> & u_max)
+    static float IC_Angle(const Mat& image, Point2f pt,  const std::vector<int> & u_max)
     {
         int m_01 = 0, m_10 = 0;
 
@@ -84,7 +83,7 @@ namespace ORB_SLAM3
             m_10 += u * center[u];
 
         // Go line by line in the circuI853lar patch
-        int step = (int)image.step1();
+        int step = static_cast<int>(image.step1());
         for (int v = 1; v <= HALF_PATCH_SIZE; ++v)
         {
             // Proceed over the two lines
@@ -99,20 +98,20 @@ namespace ORB_SLAM3
             m_01 += v * v_sum;
         }
 
-        return fastAtan2((float)m_01, (float)m_10);
+        return fastAtan2(static_cast<float>(m_01), static_cast<float>(m_10));
     }
 
 
-    const float factorPI = (float)(CV_PI/180.f);
+    const float factorPI = static_cast<float>((CV_PI/180.f));
     static void computeOrbDescriptor(const KeyPoint& kpt,
                                      const Mat& img, const Point* pattern,
                                      uchar* desc)
     {
-        float angle = (float)kpt.angle*factorPI;
-        float a = (float)cos(angle), b = (float)sin(angle);
+        float angle = static_cast<float>(kpt.angle)*factorPI;
+        float a = static_cast<float>(cos(angle)), b = static_cast<float>(sin(angle));
 
         const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));
-        const int step = (int)img.step;
+        const int step = static_cast<int>(img.step);
 
 #define GET_VALUE(idx) \
         center[cvRound(pattern[idx].x*b + pattern[idx].y*a)*step + \
@@ -139,7 +138,7 @@ namespace ORB_SLAM3
             t0 = GET_VALUE(14); t1 = GET_VALUE(15);
             val |= (t0 < t1) << 7;
 
-            desc[i] = (uchar)val;
+            desc[i] = static_cast<uchar>(val);
         }
 
 #undef GET_VALUE
@@ -433,7 +432,7 @@ namespace ORB_SLAM3
 
         mnFeaturesPerLevel.resize(nlevels);
         float factor = 1.0f / scaleFactor;
-        float nDesiredFeaturesPerScale = nfeatures*(1 - factor)/(1 - (float)pow((double)factor, (double)nlevels));
+        float nDesiredFeaturesPerScale = nfeatures*(1 - factor)/(1 - static_cast<float>(pow(static_cast<double>(factor), static_cast<double>(nlevels))));
 
         int sumFeatures = 0;
         for( int level = 0; level < nlevels-1; level++ )
@@ -468,9 +467,9 @@ namespace ORB_SLAM3
         }
     }
 
-    static void computeOrientation(const Mat& image, vector<KeyPoint>& keypoints, const vector<int>& umax)
+    static void computeOrientation(const Mat& image, std::vector<KeyPoint>& keypoints, const std::vector<int>& umax)
     {
-        for (vector<KeyPoint>::iterator keypoint = keypoints.begin(),
+        for (std::vector<KeyPoint>::iterator keypoint = keypoints.begin(),
                      keypointEnd = keypoints.end(); keypoint != keypointEnd; ++keypoint)
         {
             keypoint->angle = IC_Angle(image, keypoint->pt, umax);
@@ -535,7 +534,7 @@ namespace ORB_SLAM3
 
     }
 
-    static bool compareNodes(pair<int,ExtractorNode*>& e1, pair<int,ExtractorNode*>& e2){
+    static bool compareNodes(std::pair<int,ExtractorNode*>& e1, std::pair<int,ExtractorNode*>& e2){
         if(e1.first < e2.first){
             return true;
         }
@@ -552,7 +551,7 @@ namespace ORB_SLAM3
         }
     }
 
-    vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
+    std::vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const std::vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
                                                          const int &maxX, const int &minY, const int &maxY, const int &N, const int &level)
     {
         // Compute how many initial nodes
@@ -560,9 +559,9 @@ namespace ORB_SLAM3
 
         const float hX = static_cast<float>(maxX-minX)/nIni;
 
-        list<ExtractorNode> lNodes;
+        std::list<ExtractorNode> lNodes;
 
-        vector<ExtractorNode*> vpIniNodes;
+        std::vector<ExtractorNode*> vpIniNodes;
         vpIniNodes.resize(nIni);
 
         for(int i=0; i<nIni; i++)
@@ -585,7 +584,7 @@ namespace ORB_SLAM3
             vpIniNodes[kp.pt.x/hX]->vKeys.push_back(kp);
         }
 
-        list<ExtractorNode>::iterator lit = lNodes.begin();
+        std::list<ExtractorNode>::iterator lit = lNodes.begin();
 
         while(lit!=lNodes.end())
         {
@@ -604,7 +603,7 @@ namespace ORB_SLAM3
 
         int iteration = 0;
 
-        vector<pair<int,ExtractorNode*> > vSizeAndPointerToNode;
+        std::vector<std::pair<int,ExtractorNode*> > vSizeAndPointerToNode;
         vSizeAndPointerToNode.reserve(lNodes.size()*4);
 
         while(!bFinish)
@@ -640,7 +639,7 @@ namespace ORB_SLAM3
                         if(n1.vKeys.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n1.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.emplace_back(n1.vKeys.size(),&lNodes.front());
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
@@ -650,7 +649,7 @@ namespace ORB_SLAM3
                         if(n2.vKeys.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n2.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.emplace_back(n2.vKeys.size(),&lNodes.front());
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
@@ -660,7 +659,7 @@ namespace ORB_SLAM3
                         if(n3.vKeys.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n3.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.emplace_back(n3.vKeys.size(),&lNodes.front());
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
@@ -670,7 +669,7 @@ namespace ORB_SLAM3
                         if(n4.vKeys.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n4.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.emplace_back(n4.vKeys.size(),&lNodes.front());
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
@@ -682,11 +681,11 @@ namespace ORB_SLAM3
 
             // Finish if there are more nodes than required features
             // or all nodes contain just one point
-            if((int)lNodes.size()>=N || (int)lNodes.size()==prevSize)
+            if(static_cast<int>(lNodes.size())>=N || static_cast<int>(lNodes.size())==prevSize)
             {
                 bFinish = true;
             }
-            else if(((int)lNodes.size()+nToExpand*3)>N)
+            else if((static_cast<int>(lNodes.size())+nToExpand*3)>N)
             {
 
                 while(!bFinish)
@@ -694,7 +693,7 @@ namespace ORB_SLAM3
 
                     prevSize = lNodes.size();
 
-                    vector<pair<int,ExtractorNode*> > vPrevSizeAndPointerToNode = vSizeAndPointerToNode;
+                    std::vector<std::pair<int,ExtractorNode*> > vPrevSizeAndPointerToNode = vSizeAndPointerToNode;
                     vSizeAndPointerToNode.clear();
 
                     sort(vPrevSizeAndPointerToNode.begin(),vPrevSizeAndPointerToNode.end(),compareNodes);
@@ -709,7 +708,7 @@ namespace ORB_SLAM3
                             lNodes.push_front(n1);
                             if(n1.vKeys.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n1.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.emplace_back(n1.vKeys.size(),&lNodes.front());
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
@@ -718,7 +717,7 @@ namespace ORB_SLAM3
                             lNodes.push_front(n2);
                             if(n2.vKeys.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n2.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.emplace_back(n2.vKeys.size(),&lNodes.front());
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
@@ -727,7 +726,7 @@ namespace ORB_SLAM3
                             lNodes.push_front(n3);
                             if(n3.vKeys.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n3.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.emplace_back(n3.vKeys.size(),&lNodes.front());
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
@@ -736,18 +735,18 @@ namespace ORB_SLAM3
                             lNodes.push_front(n4);
                             if(n4.vKeys.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n4.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.emplace_back(n4.vKeys.size(),&lNodes.front());
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
 
                         lNodes.erase(vPrevSizeAndPointerToNode[j].second->lit);
 
-                        if((int)lNodes.size()>=N)
+                        if(static_cast<int>(lNodes.size())>=N)
                             break;
                     }
 
-                    if((int)lNodes.size()>=N || (int)lNodes.size()==prevSize)
+                    if(static_cast<int>(lNodes.size())>=N || static_cast<int>(lNodes.size())==prevSize)
                         bFinish = true;
 
                 }
@@ -755,11 +754,11 @@ namespace ORB_SLAM3
         }
 
         // Retain the best point in each node
-        vector<cv::KeyPoint> vResultKeys;
+        std::vector<cv::KeyPoint> vResultKeys;
         vResultKeys.reserve(nfeatures);
-        for(list<ExtractorNode>::iterator lit=lNodes.begin(); lit!=lNodes.end(); lit++)
+        for(std::list<ExtractorNode>::iterator lit=lNodes.begin(); lit!=lNodes.end(); lit++)
         {
-            vector<cv::KeyPoint> &vNodeKeys = lit->vKeys;
+            std::vector<cv::KeyPoint> &vNodeKeys = lit->vKeys;
             cv::KeyPoint* pKP = &vNodeKeys[0];
             float maxResponse = pKP->response;
 
@@ -778,7 +777,7 @@ namespace ORB_SLAM3
         return vResultKeys;
     }
 
-    void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoints)
+    void ORBextractor::ComputeKeyPointsOctTree(std::vector<std::vector<KeyPoint> >& allKeypoints)
     {
         allKeypoints.resize(nlevels);
 
@@ -791,7 +790,7 @@ namespace ORB_SLAM3
             const int maxBorderX = mvImagePyramid[level].cols-EDGE_THRESHOLD+3;
             const int maxBorderY = mvImagePyramid[level].rows-EDGE_THRESHOLD+3;
 
-            vector<cv::KeyPoint> vToDistributeKeys;
+            std::vector<cv::KeyPoint> vToDistributeKeys;
             vToDistributeKeys.reserve(nfeatures*10);
 
             const float width = (maxBorderX-minBorderX);
@@ -821,7 +820,7 @@ namespace ORB_SLAM3
                     if(maxX>maxBorderX)
                         maxX = maxBorderX;
 
-                    vector<cv::KeyPoint> vKeysCell;
+                    std::vector<cv::KeyPoint> vKeysCell;
 
                     FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                          vKeysCell,iniThFAST,true);
@@ -860,7 +859,7 @@ namespace ORB_SLAM3
 
                     if(!vKeysCell.empty())
                     {
-                        for(vector<cv::KeyPoint>::iterator vit=vKeysCell.begin(); vit!=vKeysCell.end();vit++)
+                        for(std::vector<cv::KeyPoint>::iterator vit=vKeysCell.begin(); vit!=vKeysCell.end();vit++)
                         {
                             (*vit).pt.x+=j*wCell;
                             (*vit).pt.y+=i*hCell;
@@ -871,7 +870,7 @@ namespace ORB_SLAM3
                 }
             }
 
-            vector<KeyPoint> & keypoints = allKeypoints[level];
+            std::vector<KeyPoint> & keypoints = allKeypoints[level];
             keypoints.reserve(nfeatures);
 
             keypoints = DistributeOctTree(vToDistributeKeys, minBorderX, maxBorderX,
@@ -897,16 +896,16 @@ namespace ORB_SLAM3
 
 
 
-    static void computeDescriptors(const Mat& image, vector<KeyPoint>& keypoints, Mat& descriptors,
-                                   const vector<Point>& pattern)
+    static void computeDescriptors(const Mat& image, std::vector<KeyPoint>& keypoints, Mat& descriptors,
+                                   const std::vector<Point>& pattern)
     {
-        descriptors = Mat::zeros((int)keypoints.size(), 32, CV_8UC1);
+        descriptors = Mat::zeros(static_cast<int>(keypoints.size()), 32, CV_8UC1);
 
         for (size_t i = 0; i < keypoints.size(); i++)
-            computeOrbDescriptor(keypoints[i], image, &pattern[0], descriptors.ptr((int)i));
+            computeOrbDescriptor(keypoints[i], image, &pattern[0], descriptors.ptr(static_cast<int>(i)));
     }
 
-    int ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
+    int ORBextractor::operator()( InputArray _image, InputArray _mask, std::vector<KeyPoint>& _keypoints,
                                   OutputArray _descriptors, std::vector<int> &vLappingArea)
     {
         //cout << "[ORBextractor]: Max Features: " << nfeatures << endl;
@@ -919,14 +918,14 @@ namespace ORB_SLAM3
         // Pre-compute the scale pyramid
         ComputePyramid(image);
 
-        vector < vector<KeyPoint> > allKeypoints;
+        std::vector < std::vector<KeyPoint> > allKeypoints;
         ComputeKeyPointsOctTree(allKeypoints);
 
         Mat descriptors;
 
         int nkeypoints = 0;
         for (int level = 0; level < nlevels; ++level)
-            nkeypoints += (int)allKeypoints[level].size();
+            nkeypoints += static_cast<int>(allKeypoints[level].size());
         if( nkeypoints == 0 )
             _descriptors.release();
         else
@@ -937,15 +936,15 @@ namespace ORB_SLAM3
 
         //_keypoints.clear();
         //_keypoints.reserve(nkeypoints);
-        _keypoints = vector<cv::KeyPoint>(nkeypoints);
+        _keypoints = std::vector<cv::KeyPoint>(nkeypoints);
 
         int offset = 0;
         //Modified for speeding up stereo fisheye matching
         int monoIndex = 0, stereoIndex = nkeypoints-1;
         for (int level = 0; level < nlevels; ++level)
         {
-            vector<KeyPoint>& keypoints = allKeypoints[level];
-            int nkeypointsLevel = (int)keypoints.size();
+            std::vector<KeyPoint>& keypoints = allKeypoints[level];
+            int nkeypointsLevel = static_cast<int>(keypoints.size());
 
             if(nkeypointsLevel==0)
                 continue;
@@ -964,7 +963,7 @@ namespace ORB_SLAM3
 
             float scale = mvScaleFactor[level]; //getScale(level, firstLevel, scaleFactor);
             int i = 0;
-            for (vector<KeyPoint>::iterator keypoint = keypoints.begin(),
+            for (std::vector<KeyPoint>::iterator keypoint = keypoints.begin(),
                          keypointEnd = keypoints.end(); keypoint != keypointEnd; ++keypoint){
 
                 // Scale keypoint coordinates
@@ -994,7 +993,7 @@ namespace ORB_SLAM3
         for (int level = 0; level < nlevels; ++level)
         {
             float scale = mvInvScaleFactor[level];
-            Size sz(cvRound((float)image.cols*scale), cvRound((float)image.rows*scale));
+            Size sz(cvRound(static_cast<float>(image.cols)*scale), cvRound(static_cast<float>(image.rows)*scale));
             Size wholeSize(sz.width + EDGE_THRESHOLD*2, sz.height + EDGE_THRESHOLD*2);
             Mat temp(wholeSize, image.type()), masktemp;
             mvImagePyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));

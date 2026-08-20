@@ -52,12 +52,15 @@ class LoopClosing
 {
 public:
 
-    typedef std::map<KeyFramePtr,g2o::Sim3,std::less<KeyFramePtr>,
-        Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3> > > KeyFrameAndPose;
+    using KeyFrameAndPose = std::map<KeyFramePtr,g2o::Sim3,std::less<KeyFramePtr>, Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3> > >;
 
 public:
 
     LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, const bool bFixScale, const bool bActiveLC, BAEpochs* pBAEpochs, ILoopOptimizer* pOptimizer);
+
+    // R4c: noncopyable by design (thread body owning the GBA thread custody).
+    LoopClosing(const LoopClosing&) = delete;
+    LoopClosing& operator=(const LoopClosing&) = delete;
 
     void SetTracker(Tracking* pTracker);
 

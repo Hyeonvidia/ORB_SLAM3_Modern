@@ -60,10 +60,10 @@ class ILoopOptimizer
 {
 public:
     // Same underlying type as LoopClosing::KeyFrameAndPose (a class-nested
-    // typedef cannot be forward-declared; redeclaring the identical std::map
+    // alias cannot be forward-declared; redeclaring the identical std::map
     // instantiation keeps this header outside the LoopClosing.hpp cycle).
-    typedef std::map<KeyFramePtr, g2o::Sim3, std::less<KeyFramePtr>,
-        Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3> > > KeyFrameAndPose;
+    using KeyFrameAndPose = std::map<KeyFramePtr, g2o::Sim3, std::less<KeyFramePtr>,
+        Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3>>>;
 
     virtual ~ILoopOptimizer() = default;
 

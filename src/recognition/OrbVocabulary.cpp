@@ -91,10 +91,10 @@ bool OrbVocabulary::loadFromTextFile(const std::string &filename)
 
     // nodes
     int expected_nodes =
-    (int)((std::pow((double)m_k, (double)m_L + 1) - 1)/(m_k - 1));
+    static_cast<int>(((std::pow(static_cast<double>(m_k), static_cast<double>(m_L) + 1) - 1)/(m_k - 1)));
     m_nodes.reserve(expected_nodes);
 
-    m_words.reserve(std::pow((double)m_k, (double)m_L + 1));
+    m_words.reserve(std::pow(static_cast<double>(m_k), static_cast<double>(m_L) + 1));
 
     m_nodes.resize(1);
     m_nodes[0].id = 0;
@@ -165,7 +165,7 @@ void OrbVocabulary::saveToTextFile(const std::string &filename) const
         else
             f << 0 << " ";
 
-        f << FORB::toString(node.descriptor) << " " << (double)node.weight << std::endl;
+        f << FORB::toString(node.descriptor) << " " << static_cast<double>(node.weight) << std::endl;
     }
 
     f.close();
@@ -246,7 +246,7 @@ bool OrbVocabulary::saveToBinaryFile(const std::string &filename) const
             std::memcpy(p, node.descriptor.ptr<unsigned char>(), FORB::L);
         p += FORB::L;
 
-        const double w = (double)node.weight;
+        const double w = static_cast<double>(node.weight);
         std::memcpy(p, &w, 8);
 
         f.write(&record[0], record.size());
@@ -295,7 +295,7 @@ bool OrbVocabulary::loadFromBinaryFile(const std::string &filename)
 
     // the file must be exactly header + count fixed-size records; this
     // also rejects absurd counts before any allocation happens
-    const size_t record_size = 13 + (size_t)FORB::L;
+    const size_t record_size = 13 + static_cast<size_t>(FORB::L);
     if(count == 0 || file_size != 40 + count * (uint64_t)record_size)
         return false;
 
@@ -309,10 +309,10 @@ bool OrbVocabulary::loadFromBinaryFile(const std::string &filename)
     m_nodes.clear();
 
     // one buffered read of all fixed-size records, then a linear fill
-    const size_t total = (size_t)count * record_size;
+    const size_t total = static_cast<size_t>(count) * record_size;
     std::vector<char> buf(total);
     f.read(&buf[0], total);
-    if((size_t)f.gcount() != total)
+    if(static_cast<size_t>(f.gcount()) != total)
         return false;
 
     // exact reserve: m_words stores pointers into m_nodes, so m_nodes
@@ -326,7 +326,7 @@ bool OrbVocabulary::loadFromBinaryFile(const std::string &filename)
     const char *p = &buf[0];
     for(uint64_t i=0; i<count; i++)
     {
-        const int nid = (int)m_nodes.size();
+        const int nid = static_cast<int>(m_nodes.size());
         m_nodes.resize(m_nodes.size()+1);
         m_nodes[nid].id = nid;
 
@@ -350,7 +350,7 @@ bool OrbVocabulary::loadFromBinaryFile(const std::string &filename)
 
         if(isWord)
         {
-            const int wid = (int)m_words.size();
+            const int wid = static_cast<int>(m_words.size());
             m_words.resize(wid+1);
             m_nodes[nid].word_id = wid;
             m_words[wid] = &m_nodes[nid];

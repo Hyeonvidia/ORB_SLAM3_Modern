@@ -27,6 +27,7 @@
 #include<pangolin/pangolin.h>
 
 #include<mutex>
+#include<array>
 
 namespace ORB_SLAM3
 {
@@ -63,12 +64,13 @@ private:
 
     std::mutex mMutexCamera;
 
-    float mfFrameColors[6][3] = {{0.0f, 0.0f, 1.0f},
-                                {0.8f, 0.4f, 1.0f},
-                                {1.0f, 0.2f, 0.4f},
-                                {0.6f, 0.0f, 1.0f},
-                                {1.0f, 1.0f, 0.0f},
-                                {0.0f, 1.0f, 1.0f}};
+    static constexpr std::array<std::array<float, 3>, 6> mfFrameColors{{
+        {0.0f, 0.0f, 1.0f},
+        {0.8f, 0.4f, 1.0f},
+        {1.0f, 0.2f, 0.4f},
+        {0.6f, 0.0f, 1.0f},
+        {1.0f, 1.0f, 0.0f},
+        {0.0f, 1.0f, 1.0f}}};
 
 };
 

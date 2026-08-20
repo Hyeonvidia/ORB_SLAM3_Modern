@@ -54,12 +54,8 @@
 #include <Eigen/Sparse>
 
 
-// R3: this TU used to inherit a global `using namespace std;` from the vendored
-// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
-using namespace std;
-
 namespace ORB_SLAM3 {
-    MLPnPsolver::MLPnPsolver(const Frame &F, const vector<MapPointPtr> &vpMapPointMatches):
+    MLPnPsolver::MLPnPsolver(const Frame &F, const std::vector<MapPointPtr> &vpMapPointMatches):
             mnInliersi(0), mnIterations(0), mnBestInliers(0), N(0), mpCamera(F.mpCamera){
         mvpMapPointMatches = vpMapPointMatches;
         mvBearingVecs.reserve(F.mvpMapPoints.size());
@@ -104,7 +100,7 @@ namespace ORB_SLAM3 {
     }
 
     //RANSAC methods
-    bool MLPnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInliers, int &nInliers, Eigen::Matrix4f &Tout){
+    bool MLPnPsolver::iterate(int nIterations, bool &bNoMore, std::vector<bool> &vbInliers, int &nInliers, Eigen::Matrix4f &Tout){
         Tout.setIdentity();
         bNoMore = false;
 	    vbInliers.clear();
@@ -116,7 +112,7 @@ namespace ORB_SLAM3 {
 	        return false;
 	    }
 
-	    vector<size_t> vAvailableIndices;
+	    std::vector<size_t> vAvailableIndices;
 
 	    int nCurrentIterations = 0;
 	    while(mnIterations<mRansacMaxIts || nCurrentIterations<nIterations)
@@ -129,7 +125,7 @@ namespace ORB_SLAM3 {
             //Bearing vectors and 3D points used for this ransac iteration
             bearingVectors_t bearingVecs(mRansacMinSet);
             points_t p3DS(mRansacMinSet);
-            vector<int> indexes(mRansacMinSet);
+            std::vector<int> indexes(mRansacMinSet);
 
 	        // Get min set of points
 	        for(short i = 0; i < mRansacMinSet; ++i)
@@ -196,7 +192,7 @@ namespace ORB_SLAM3 {
 	            if(Refine())
 	            {
 	                nInliers = mnRefinedInliers;
-	                vbInliers = vector<bool>(mvpMapPointMatches.size(),false);
+	                vbInliers = std::vector<bool>(mvpMapPointMatches.size(),false);
 	                for(int i=0; i<N; i++)
 	                {
 	                    if(mvbRefinedInliers[i])
@@ -215,7 +211,7 @@ namespace ORB_SLAM3 {
 	        if(mnBestInliers>=mRansacMinInliers)
 	        {
 	            nInliers=mnBestInliers;
-	            vbInliers = vector<bool>(mvpMapPointMatches.size(),false);
+	            vbInliers = std::vector<bool>(mvpMapPointMatches.size(),false);
 	            for(int i=0; i<N; i++)
 	            {
 	                if(mvbBestInliers[i])
@@ -248,8 +244,8 @@ namespace ORB_SLAM3 {
 	        nMinInliers=minSet;
 	    mRansacMinInliers = nMinInliers;
 
-	    if(mRansacEpsilon<(float)mRansacMinInliers/N)
-	        mRansacEpsilon=(float)mRansacMinInliers/N;
+	    if(mRansacEpsilon<static_cast<float>(mRansacMinInliers)/N)
+	        mRansacEpsilon=static_cast<float>(mRansacMinInliers)/N;
 
 	    // Set RANSAC iterations according to probability, epsilon, and max iterations
 	    int nIterations;
@@ -259,7 +255,7 @@ namespace ORB_SLAM3 {
 	    else
 	        nIterations = ceil(log(1-mRansacProb)/log(1-pow(mRansacEpsilon,3)));
 
-	    mRansacMaxIts = max(1,min(nIterations,mRansacMaxIts));
+	    mRansacMaxIts = std::max(1,std::min(nIterations,mRansacMaxIts));
 
 	    mvMaxError.resize(mvSigma2.size());
 	    for(size_t i=0; i<mvSigma2.size(); i++)
@@ -300,7 +296,7 @@ namespace ORB_SLAM3 {
     }
 
     bool MLPnPsolver::Refine(){
-        vector<int> vIndices;
+        std::vector<int> vIndices;
         vIndices.reserve(mvbBestInliers.size());
 
         for(size_t i=0; i<mvbBestInliers.size(); i++)
@@ -314,7 +310,7 @@ namespace ORB_SLAM3 {
         //Bearing vectors and 3D points used for this ransac iteration
         bearingVectors_t bearingVecs;
         points_t p3DS;
-        vector<int> indexes;
+        std::vector<int> indexes;
 
         for(size_t i=0; i<vIndices.size(); i++)
         {
@@ -572,7 +568,7 @@ namespace ORB_SLAM3 {
             R2.col(1) = -Rout1.col(1);
             R2.col(2) = Rout1.col(2);
 
-            vector<transformation_t, Eigen::aligned_allocator<transformation_t>> Ts(4);
+            std::vector<transformation_t, Eigen::aligned_allocator<transformation_t>> Ts(4);
             Ts[0].block<3, 3>(0, 0) = R1;
             Ts[0].block<3, 1>(0, 3) = t;
             Ts[1].block<3, 3>(0, 0) = R1;
@@ -582,7 +578,7 @@ namespace ORB_SLAM3 {
             Ts[3].block<3, 3>(0, 0) = R2;
             Ts[3].block<3, 1>(0, 3) = -t;
 
-            vector<double> normVal(4);
+            std::vector<double> normVal(4);
             for (int i = 0; i < 4; ++i) {
                 point_t reproPt;
                 double norms = 0.0;
@@ -618,8 +614,8 @@ namespace ORB_SLAM3 {
             tout = Rout * (scale * translation_t(result1(9, 0), result1(10, 0), result1(11, 0)));
 
             // find correct direction in terms of reprojection error, just take the first 6 correspondences
-            vector<double> error(2);
-            vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>> Ts(2);
+            std::vector<double> error(2);
+            std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d>> Ts(2);
             for (int s = 0; s < 2; ++s) {
                 error[s] = 0.0;
                 Ts[s] = Eigen::Matrix4d::Identity();
@@ -775,7 +771,7 @@ namespace ORB_SLAM3 {
 
         Eigen::MatrixXd jacs(2, 6);
 
-        for (int i = 0; i < pts.size(); ++i)
+        for (int i = 0; i < static_cast<int>(pts.size()); ++i)
         {
             Eigen::Vector3d ptCam = R*pts[i] + T;
             ptCam /= ptCam.norm();

@@ -179,7 +179,7 @@ public:
     Preintegrated(const Bias &b_, const Calib &calib);
     Preintegrated(Preintegrated* pImuPre);
     Preintegrated() {}
-    ~Preintegrated() {}
+    ~Preintegrated() = default;
     void CopyFrom(Preintegrated* pImuPre);
     void Initialize(const Bias &b_);
     void IntegrateNewMeasurement(const Eigen::Vector3f &acceleration, const Eigen::Vector3f &angVel, const float &dt);
@@ -207,7 +207,7 @@ public:
 
     void printMeasurements() const {
         std::cout << "pint meas:\n";
-        for(int i=0; i<mvMeasurements.size(); i++){
+        for(size_t i=0; i<mvMeasurements.size(); i++){
             std::cout << "meas " << mvMeasurements[i].t << std::endl;
         }
         std::cout << "end pint meas:\n";

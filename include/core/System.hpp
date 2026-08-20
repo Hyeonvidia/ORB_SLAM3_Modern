@@ -22,6 +22,7 @@
 
 
 #include <unistd.h>
+#include "core/SensorType.hpp"
 #include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include<stdio.h>
 #include<stdlib.h>
@@ -76,21 +77,17 @@ class Settings;
 class System : public IResetRequester, public IViewerHost
 {
 public:
-    // Input sensor
-    enum eSensor{
-        MONOCULAR=0,
-        STEREO=1,
-        RGBD=2,
-        IMU_MONOCULAR=3,
-        IMU_STEREO=4,
-        IMU_RGBD=5,
-    };
+    // Input sensor (R4c: scoped enum at namespace scope — core/SensorType.hpp;
+    // the re-exports below keep System::eSensor / System::MONOCULAR working).
+    using eSensor = Sensor;
+    using enum Sensor;
 
     // File type
-    enum FileType{
+    enum class FileType{
         TEXT_FILE=0,
         BINARY_FILE=1,
     };
+    using enum FileType;
 
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -105,6 +102,10 @@ public:
     // a System destroyed without any Shutdown() call. A joinable
     // std::thread value member would otherwise std::terminate here.
     ~System();
+
+    // R4c: noncopyable by design (owns threads, mutexes, module graph).
+    System(const System&) = delete;
+    System& operator=(const System&) = delete;
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
@@ -220,10 +221,10 @@ private:
     // compatibility.
     bool LoadVocabulary(const std::string &strVocFile);
 
-    void SaveAtlas(int type);
-    bool LoadAtlas(int type);
+    void SaveAtlas(FileType type);
+    bool LoadAtlas(FileType type);
 
-    std::string CalculateCheckSum(std::string filename, int type);
+    std::string CalculateCheckSum(std::string filename, FileType type);
 
     // Input sensor
     eSensor mSensor;

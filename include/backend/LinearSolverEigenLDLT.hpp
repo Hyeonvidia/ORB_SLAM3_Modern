@@ -84,10 +84,9 @@ namespace g2o {
 template <typename MatrixType>
 class LinearSolverEigenLDLT : public LinearSolverCCS<MatrixType> {
  public:
-  typedef Eigen::SparseMatrix<double, Eigen::ColMajor> SparseMatrix;
-  typedef Eigen::Triplet<double> Triplet;
-  typedef Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic>
-      PermutationMatrix;
+  using SparseMatrix = Eigen::SparseMatrix<double, Eigen::ColMajor>;
+  using Triplet = Eigen::Triplet<double>;
+  using PermutationMatrix = Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic>;
 
   using CholeskyDecompositionBase =
       Eigen::SimplicialLDLT<SparseMatrix, Eigen::Upper>;
@@ -218,10 +217,9 @@ class LinearSolverEigenLDLT : public LinearSolverCCS<MatrixType> {
     }
     this->initMatrixStructure(A);
     _sparseMatrix.resizeNonZeros(A.nonZeros());
-    int nz = this->_ccsMatrix->fillCCS(_sparseMatrix.outerIndexPtr(),
+    [[maybe_unused]] int nz = this->_ccsMatrix->fillCCS(_sparseMatrix.outerIndexPtr(),
                                        _sparseMatrix.innerIndexPtr(),
                                        _sparseMatrix.valuePtr(), true);
-    (void)nz;
     assert(nz <= static_cast<int>(_sparseMatrix.data().size()));
   }
 

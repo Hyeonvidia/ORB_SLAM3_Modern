@@ -30,10 +30,6 @@
 #include<cstdio>   // P9-4: TraceChannel
 
 
-// R3: this TU used to inherit a global `using namespace std;` from the vendored
-// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
-using namespace std;
-
 namespace ORB_SLAM3
 {
 
@@ -88,7 +84,7 @@ bool PlaceRecognition::NewDetectCommonRegions()
         g2o::Sim3 gScl(mTcl.unit_quaternion(),mTcl.translation(),1.0);
         g2o::Sim3 gScw = gScl * mLoopCh.slw;
         int numProjMatches = 0;
-        vector<MapPointPtr> vpMatchedMPs;
+        std::vector<MapPointPtr> vpMatchedMPs;
         bool bCommonRegion = DetectAndReffineSim3FromLastKF(mHost.mpCurrentKF, mLoopCh.matchedKF, gScw, numProjMatches, mLoopCh.mps, vpMatchedMPs);
         if(bCommonRegion)
         {
@@ -100,7 +96,7 @@ bool PlaceRecognition::NewDetectCommonRegions()
 
             if(!mLoopCh.detected)
             {
-                cout << "PR: Loop detected with Reffine Sim3" << endl;
+                std::cout << "PR: Loop detected with Reffine Sim3" << std::endl;
             }
         }
         else
@@ -125,7 +121,7 @@ bool PlaceRecognition::NewDetectCommonRegions()
         g2o::Sim3 gScl(mTcl.unit_quaternion(), mTcl.translation(), 1.0);
         g2o::Sim3 gScw = gScl * mMergeCh.slw;
         int numProjMatches = 0;
-        vector<MapPointPtr> vpMatchedMPs;
+        std::vector<MapPointPtr> vpMatchedMPs;
         bool bCommonRegion = DetectAndReffineSim3FromLastKF(mHost.mpCurrentKF, mMergeCh.matchedKF, gScw, numProjMatches, mMergeCh.mps, vpMatchedMPs);
         if(bCommonRegion)
         {
@@ -159,7 +155,7 @@ bool PlaceRecognition::NewDetectCommonRegions()
     }
 
     // Extract candidates from the bag of words
-    vector<KeyFramePtr> vpMergeBowCand, vpLoopBowCand;
+    std::vector<KeyFramePtr> vpMergeBowCand, vpLoopBowCand;
     if(!bMergeDetectedInKF || !bLoopDetectedInKF)
     {
         // Search in BoW
@@ -228,7 +224,7 @@ void PlaceRecognition::TraceChannel(const char* ch, const char* event, const Det
 {
     fprintf(stderr, "[loopclosing] %s %s cnt=%d notFound=%d detected=%d kf=%ld %s\n",
             ch, event, c.numCoincidences, c.numNotFound, c.detected ? 1 : 0,
-            mHost.mpCurrentKF ? (long)mHost.mpCurrentKF->mnId : -1, extra);
+            mHost.mpCurrentKF ? static_cast<long>(mHost.mpCurrentKF->mnId) : -1, extra);
 }
 
 // Reffine success block (upstream Run-loop LC:389-408 / merge twin :439-450).
@@ -340,7 +336,7 @@ bool PlaceRecognition::ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFr
 bool PlaceRecognition::DetectAndReffineSim3FromLastKF(KeyFramePtr pCurrentKF, KeyFramePtr pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
                                                  std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs)
 {
-    set<MapPointPtr> spAlreadyMatchedMPs;
+    std::set<MapPointPtr> spAlreadyMatchedMPs;
     nNumProjMatches = FindMatchesByProjection(pCurrentKF, pMatchedKF, gScw, spAlreadyMatchedMPs, vpMPs, vpMatchedMPs);
 
     int nProjMatches = 30;
@@ -383,7 +379,7 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
     int nProjMatches = 50;
     int nProjOptMatches = 80;
 
-    set<KeyFramePtr> spConnectedKeyFrames = mHost.mpCurrentKF->GetConnectedKeyFrames();
+    std::set<KeyFramePtr> spConnectedKeyFrames = mHost.mpCurrentKF->GetConnectedKeyFrames();
 
     int nNumCovisibles = 10;
 
@@ -420,7 +416,7 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
 
 
         bool bAbortByNearKF = false;
-        for(int j=0; j<vpCovKFi.size(); ++j)
+        for(size_t j=0; j<vpCovKFi.size(); ++j)
         {
             if(spConnectedKeyFrames.find(vpCovKFi[j]) != spConnectedKeyFrames.end())
             {
@@ -445,7 +441,7 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
         std::vector<MapPointPtr> vpMatchedPoints = std::vector<MapPointPtr>(mHost.mpCurrentKF->GetMapPointMatches().size(), nullptr);
         std::vector<KeyFramePtr> vpKeyFrameMatchedMP = std::vector<KeyFramePtr>(mHost.mpCurrentKF->GetMapPointMatches().size(), nullptr);
 
-        for(int j=0; j<vpCovKFi.size(); ++j)
+        for(size_t j=0; j<vpCovKFi.size(); ++j)
         {
             if(!vpCovKFi[j] || vpCovKFi[j]->isBad())
             {
@@ -459,9 +455,9 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
             }
         }
 
-        for(int j=0; j<vpCovKFi.size(); ++j)
+        for(size_t j=0; j<vpCovKFi.size(); ++j)
         {
-            for(int k=0; k < vvpMatchedMPs[j].size(); ++k)
+            for(size_t k=0; k < vvpMatchedMPs[j].size(); ++k)
             {
                 MapPointPtr pMPi_j = vvpMatchedMPs[j][k];
                 if(!pMPi_j || pMPi_j->isBad())
@@ -491,7 +487,7 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
             solver.SetRansacParameters(0.99, nBoWInliers, 300); // at least 15 inliers
 
             bool bNoMore = false;
-            vector<bool> vbInliers;
+            std::vector<bool> vbInliers;
             int nInliers;
             bool bConverge = false;
             Eigen::Matrix4f mTcm;
@@ -508,9 +504,9 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
                 vpCovKFi = pMostBoWMatchesKF->GetBestCovisibilityKeyFrames(nNumCovisibles);
                 vpCovKFi.push_back(pMostBoWMatchesKF);
 
-                set<MapPointPtr> spMapPoints;
-                vector<MapPointPtr> vpMapPoints;
-                vector<KeyFramePtr> vpKeyFrames;
+                std::set<MapPointPtr> spMapPoints;
+                std::vector<MapPointPtr> vpMapPoints;
+                std::vector<KeyFramePtr> vpKeyFrames;
                 for(KeyFramePtr pCovKFi : vpCovKFi)
                 {
                     for(const MapPointPtr& pCovMPij : pCovKFi->GetMapPointMatches())
@@ -530,14 +526,14 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
                 }
 
 
-                g2o::Sim3 gScm(solver.GetEstimatedRotation().cast<double>(),solver.GetEstimatedTranslation().cast<double>(), (double) solver.GetEstimatedScale());
+                g2o::Sim3 gScm(solver.GetEstimatedRotation().cast<double>(),solver.GetEstimatedTranslation().cast<double>(), static_cast<double>(solver.GetEstimatedScale()));
                 g2o::Sim3 gSmw(pMostBoWMatchesKF->GetRotation().cast<double>(),pMostBoWMatchesKF->GetTranslation().cast<double>(),1.0);
                 g2o::Sim3 gScw = gScm*gSmw; // Similarity matrix of current from the world position
                 Sophus::Sim3f mScw = Converter::toSophus(gScw);
 
-                vector<MapPointPtr> vpMatchedMP;
+                std::vector<MapPointPtr> vpMatchedMP;
                 vpMatchedMP.resize(mHost.mpCurrentKF->GetMapPointMatches().size(), nullptr);
-                vector<KeyFramePtr> vpMatchedKF;
+                std::vector<KeyFramePtr> vpMatchedKF;
                 vpMatchedKF.resize(mHost.mpCurrentKF->GetMapPointMatches().size(), nullptr);
                 int numProjMatches = matcher.SearchByProjection(mHost.mpCurrentKF, mScw, vpMapPoints, vpKeyFrames, vpMatchedMP, vpMatchedKF, 8, 1.5);
 
@@ -559,7 +555,7 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
                         g2o::Sim3 gScw = gScm*gSmw; // Similarity matrix of current from the world position
                         Sophus::Sim3f mScw = Converter::toSophus(gScw);
 
-                        vector<MapPointPtr> vpMatchedMP;
+                        std::vector<MapPointPtr> vpMatchedMP;
                         vpMatchedMP.resize(mHost.mpCurrentKF->GetMapPointMatches().size(), nullptr);
                         int numProjOptMatches = matcher.SearchByProjection(mHost.mpCurrentKF, mScw, vpMapPoints, vpMatchedMP, 5, 1.0);
 
@@ -569,9 +565,9 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
                             //vpMatchedMPs = vpMatchedMP;
                             //vpMPs = vpMapPoints;
                             // Check the Sim3 transformation with the current KeyFrame covisibles
-                            vector<KeyFramePtr> vpCurrentCovKFs = mHost.mpCurrentKF->GetBestCovisibilityKeyFrames(nNumCovisibles);
+                            std::vector<KeyFramePtr> vpCurrentCovKFs = mHost.mpCurrentKF->GetBestCovisibilityKeyFrames(nNumCovisibles);
 
-                            int j = 0;
+                            size_t j = 0;
                             while(nNumKFs < 3 && j<vpCurrentCovKFs.size())
                             {
                                 KeyFramePtr pKFj = vpCurrentCovKFs[j];
@@ -579,7 +575,7 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
                                 g2o::Sim3 gSjc(mTjc.unit_quaternion(),mTjc.translation(),1.0);
                                 g2o::Sim3 gSjw = gSjc * gScw;
                                 int numProjMatches_j = 0;
-                                vector<MapPointPtr> vpMatchedMPs_j;
+                                std::vector<MapPointPtr> vpMatchedMPs_j;
                                 bool bValid = DetectCommonRegionsFromLastKF(pKFj,pMostBoWMatchesKF, gSjw,numProjMatches_j, vpMapPoints, vpMatchedMPs_j);
 
                                 if(bValid)
@@ -616,7 +612,7 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
 bool PlaceRecognition::DetectCommonRegionsFromLastKF(KeyFramePtr pCurrentKF, KeyFramePtr pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
                                                 std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs)
 {
-    set<MapPointPtr> spAlreadyMatchedMPs(vpMatchedMPs.begin(), vpMatchedMPs.end());
+    std::set<MapPointPtr> spAlreadyMatchedMPs(vpMatchedMPs.begin(), vpMatchedMPs.end());
     nNumProjMatches = FindMatchesByProjection(pCurrentKF, pMatchedKF, gScw, spAlreadyMatchedMPs, vpMPs, vpMatchedMPs);
 
     int nProjMatches = 30;
@@ -629,22 +625,22 @@ bool PlaceRecognition::DetectCommonRegionsFromLastKF(KeyFramePtr pCurrentKF, Key
 }
 
 int PlaceRecognition::FindMatchesByProjection(KeyFramePtr pCurrentKF, KeyFramePtr pMatchedKFw, g2o::Sim3 &g2oScw,
-                                         set<MapPointPtr> &spMatchedMPinOrigin, vector<MapPointPtr> &vpMapPoints,
-                                         vector<MapPointPtr> &vpMatchedMapPoints)
+                                         std::set<MapPointPtr> &spMatchedMPinOrigin, std::vector<MapPointPtr> &vpMapPoints,
+                                         std::vector<MapPointPtr> &vpMatchedMapPoints)
 {
     int nNumCovisibles = 10;
-    vector<KeyFramePtr> vpCovKFm = pMatchedKFw->GetBestCovisibilityKeyFrames(nNumCovisibles);
+    std::vector<KeyFramePtr> vpCovKFm = pMatchedKFw->GetBestCovisibilityKeyFrames(nNumCovisibles);
     int nInitialCov = vpCovKFm.size();
     vpCovKFm.push_back(pMatchedKFw);
-    set<KeyFramePtr> spCheckKFs(vpCovKFm.begin(), vpCovKFm.end());
-    set<KeyFramePtr> spCurrentCovisbles = pCurrentKF->GetConnectedKeyFrames();
+    std::set<KeyFramePtr> spCheckKFs(vpCovKFm.begin(), vpCovKFm.end());
+    std::set<KeyFramePtr> spCurrentCovisbles = pCurrentKF->GetConnectedKeyFrames();
     if(nInitialCov < nNumCovisibles)
     {
         for(int i=0; i<nInitialCov; ++i)
         {
-            vector<KeyFramePtr> vpKFs = vpCovKFm[i]->GetBestCovisibilityKeyFrames(nNumCovisibles);
+            std::vector<KeyFramePtr> vpKFs = vpCovKFm[i]->GetBestCovisibilityKeyFrames(nNumCovisibles);
             int nInserted = 0;
-            int j = 0;
+            size_t j = 0;
             while(j < vpKFs.size() && nInserted < nNumCovisibles)
             {
                 if(spCheckKFs.find(vpKFs[j]) == spCheckKFs.end() && spCurrentCovisbles.find(vpKFs[j]) == spCurrentCovisbles.end())
@@ -657,7 +653,7 @@ int PlaceRecognition::FindMatchesByProjection(KeyFramePtr pCurrentKF, KeyFramePt
             vpCovKFm.insert(vpCovKFm.end(), vpKFs.begin(), vpKFs.end());
         }
     }
-    set<MapPointPtr> spMapPoints;
+    std::set<MapPointPtr> spMapPoints;
     vpMapPoints.clear();
     vpMatchedMapPoints.clear();
     for(KeyFramePtr pKFi : vpCovKFm)

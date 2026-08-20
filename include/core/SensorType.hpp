@@ -16,46 +16,26 @@
 * If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef ORB_SLAM3_VERBOSE_HPP
-#define ORB_SLAM3_VERBOSE_HPP
-
-#include <iostream>
-#include <string>
+#ifndef ORB_SLAM3_SENSORTYPE_HPP
+#define ORB_SLAM3_SENSORTYPE_HPP
 
 namespace ORB_SLAM3
 {
 
-// Global log-level gate (extracted from System.hpp in P2-3; semantics
-// unchanged — System's constructor still forces VERBOSITY_QUIET, an
-// upstream hardcode kept for behavior parity).
-class Verbose
-{
-public:
-    enum class eLevel
-    {
-        VERBOSITY_QUIET=0,
-        VERBOSITY_NORMAL=1,
-        VERBOSITY_VERBOSE=2,
-        VERBOSITY_VERY_VERBOSE=3,
-        VERBOSITY_DEBUG=4
-    };
-    // R4c: scoped enum; the re-export keeps Verbose::VERBOSITY_* sites intact.
-    using enum eLevel;
-
-    static eLevel th;
-
-    static void PrintMess(const std::string& str, eLevel lev)
-    {
-        if(lev <= th)
-            std::cout << str << std::endl;
-    }
-
-    static void SetTh(eLevel _th)
-    {
-        th = _th;
-    }
+// R4c: System::eSensor promoted to a scoped enum at namespace scope so that
+// Tracking and Settings can name the TYPE without the System.hpp include
+// cycle (a class-nested enum cannot be forward-declared). System re-exports
+// the old spelling (`using eSensor = Sensor;` plus `using enum Sensor;`),
+// so every existing System::MONOCULAR / System::eSensor site is unchanged.
+enum class Sensor : int {
+    MONOCULAR = 0,
+    STEREO = 1,
+    RGBD = 2,
+    IMU_MONOCULAR = 3,
+    IMU_STEREO = 4,
+    IMU_RGBD = 5,
 };
 
 }
 
-#endif // ORB_SLAM3_VERBOSE_HPP
+#endif // ORB_SLAM3_SENSORTYPE_HPP
