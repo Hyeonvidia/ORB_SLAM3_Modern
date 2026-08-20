@@ -18,11 +18,16 @@
 
 
 /**
- * Ownership/lifetime (R4b slice 1, 2026-08-20): MapPoint is shared_ptr-managed
- * (MapPointPtr, see map/MapTypes.hpp). Map::mspMapPoints is the owner; every
- * other holder is deliberately strong so tombstone liveness is preserved:
- * a bad MapPoint stays alive while anything references it. SetBadFlag() is
- * still the removal protocol (KeyFrame is still a raw pointer — slice 2).
+ * Ownership/lifetime (R4b slices 1+2, 2026-08-20): MapPoint is
+ * shared_ptr-managed (MapPointPtr, see map/MapTypes.hpp). Map::mspMapPoints is
+ * the owner; every other MapPoint holder is deliberately strong so tombstone
+ * liveness is preserved. SetBadFlag() is still the removal protocol.
+ * Slice 2: the MP -> KF back-references are the deliberate KF<->MP cycle
+ * break — mObservations keys stay RAW KeyFrame* (scrub contract: a key
+ * present in the map has not completed KeyFrame::SetBadFlag and is Map-pinned;
+ * accessors wrap keys into KeyFramePtr pins under mMutexFeatures), and
+ * mpRefKF/mpHostKF are WEAK (a bad MapPoint may outlive its reference KF —
+ * GetReferenceKeyFrame() then returns null instead of dangling).
  * See docs/OWNERSHIP.md before changing any lifetime or lock-order behavior.
  */
 
@@ -108,8 +113,8 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     MapPoint();
 
-    MapPoint(const Eigen::Vector3f &Pos, KeyFrame* pRefKF, Map* pMap);
-    MapPoint(const double invDepth, cv::Point2f uv_init, KeyFrame* pRefKF, KeyFrame* pHostKF, Map* pMap);
+    MapPoint(const Eigen::Vector3f &Pos, const KeyFramePtr& pRefKF, Map* pMap);
+    MapPoint(const double invDepth, cv::Point2f uv_init, const KeyFramePtr& pRefKF, const KeyFramePtr& pHostKF, Map* pMap);
     MapPoint(const Eigen::Vector3f &Pos,  Map* pMap, Frame* pFrame, const int &idxF);
 
     void SetWorldPos(const Eigen::Vector3f &Pos);
@@ -118,16 +123,19 @@ public:
     Eigen::Vector3f GetNormal();
     void SetNormalVector(const Eigen::Vector3f& normal);
 
-    KeyFrame* GetReferenceKeyFrame();
+    KeyFramePtr GetReferenceKeyFrame();
 
-    std::map<KeyFrame*,std::tuple<int,int>> GetObservations();
+    // Keys are wrapped into KeyFramePtr pins under mMutexFeatures (see the
+    // ownership comment above) — the caller's copy keeps every observing
+    // KeyFrame alive for the duration of its use.
+    std::map<KeyFramePtr,std::tuple<int,int>> GetObservations();
     int Observations();
 
-    void AddObservation(KeyFrame* pKF,int idx);
-    void EraseObservation(KeyFrame* pKF);
+    void AddObservation(const KeyFramePtr& pKF,int idx);
+    void EraseObservation(const KeyFramePtr& pKF);
 
-    std::tuple<int,int> GetIndexInKeyFrame(KeyFrame* pKF);
-    bool IsInKeyFrame(KeyFrame* pKF);
+    std::tuple<int,int> GetIndexInKeyFrame(const KeyFramePtr& pKF);
+    bool IsInKeyFrame(const KeyFramePtr& pKF);
 
     void SetBadFlag();
     bool isBad();
@@ -150,7 +158,7 @@ public:
 
     float GetMinDistanceInvariance();
     float GetMaxDistanceInvariance();
-    int PredictScale(const float &currentDist, KeyFrame*pKF);
+    int PredictScale(const float &currentDist, const KeyFramePtr& pKF);
     int PredictScale(const float &currentDist, Frame* pF);
 
     Map* GetMap();
@@ -158,8 +166,8 @@ public:
 
     void PrintObservations();
 
-    void PreSave(std::set<KeyFrame*>& spKF,std::set<MapPointPtr>& spMP);
-    void PostLoad(std::map<long unsigned int, KeyFrame*>& mpKFid, std::map<long unsigned int, MapPointPtr>& mpMPid);
+    void PreSave(std::set<KeyFramePtr>& spKF,std::set<MapPointPtr>& spMP);
+    void PostLoad(std::map<long unsigned int, KeyFramePtr>& mpKFid, std::map<long unsigned int, MapPointPtr>& mpMPid);
 
 public:
     long unsigned int mnId;
@@ -197,7 +205,9 @@ public:
     double mInvDepth;
     double mInitU;
     double mInitV;
-    KeyFrame* mpHostKF;
+    // R4b slice 2: WEAK (write-only member; a strong ref would feed the
+    // KF<->MP cycle for no benefit)
+    KeyFrameWeakPtr mpHostKF;
 
     static std::mutex mGlobalMutex;
 
@@ -208,7 +218,12 @@ protected:
      // Position in absolute coordinates
      Eigen::Vector3f mWorldPos;
 
-     // Keyframes observing the point and associated index in keyframe
+     // Keyframes observing the point and associated index in keyframe.
+     // R4b slice 2: RAW keys on purpose — the KF<->MP cycle break. Scrub
+     // contract: KeyFrame::SetBadFlag erases its key from here (under
+     // mMutexFeatures) before the Map's strong pin on that KF can drop, so
+     // a present key is always alive; GetObservations() wraps keys into
+     // pins under the same lock.
      std::map<KeyFrame*,std::tuple<int,int> > mObservations;
      // For save relation without pointer, this is necessary for save/load function
      std::map<long unsigned int, int> mBackupObservationsId1;
@@ -220,8 +235,12 @@ protected:
      // Best descriptor to fast matching
      cv::Mat mDescriptor;
 
-     // Reference KeyFrame
-     KeyFrame* mpRefKF;
+     // Reference KeyFrame. R4b slice 2: WEAK — a bad MapPoint keeps its last
+     // mpRefKF value with no scrub, so a strong ref would leak and a raw one
+     // could dangle once the KF is reclaimed; lock() returns null instead.
+     // For a LIVE MapPoint the invariant "mpRefKF is an observation key (or
+     // null)" holds (EraseObservation reassigns it), so lock() succeeds.
+     KeyFrameWeakPtr mpRefKF;
      long unsigned int mBackupRefKFId;
 
      // Tracking counters

@@ -270,7 +270,7 @@ public:
     // published by PreintegrateIMU (NULL until then, and NULL forever on its early
     // exits — consumers must not assume it is set). Frame never deletes it.
     IMU::Preintegrated* mpImuPreintegrated;
-    KeyFrame* mpLastKeyFrame;
+    KeyFramePtr mpLastKeyFrame;
 
     // Pointer to previous frame
     Frame* mpPrevFrame;
@@ -285,7 +285,7 @@ public:
     long unsigned int mnId;
 
     // Reference Keyframe.
-    KeyFrame* mpReferenceKF;
+    KeyFramePtr mpReferenceKF;
 
     // Scale pyramid info.
     int mnScaleLevels;

@@ -47,25 +47,32 @@ public:
 
     KeyFrameDatabase(const ORBVocabulary &voc);
 
-    void add(KeyFrame* pKF);
+    void add(const KeyFramePtr& pKF);
 
+    // Raw on purpose: called from KeyFrame::SetBadFlag with `this` (the
+    // caller pins the KF); pure key-scrub of the inverted file.
     void erase(KeyFrame* pKF);
 
     void clear();
     void clearMap(Map* pMap);
 
     // Loop and Merge Detection
-    void DetectNBestCandidates(KeyFrame *pKF, std::vector<KeyFrame*> &vpLoopCand, std::vector<KeyFrame*> &vpMergeCand, int nNumCandidates);
+    void DetectNBestCandidates(const KeyFramePtr& pKF, std::vector<KeyFramePtr> &vpLoopCand, std::vector<KeyFramePtr> &vpMergeCand, int nNumCandidates);
 
     // Relocalization
-    std::vector<KeyFrame*> DetectRelocalizationCandidates(Frame* F, Map* pMap);
+    std::vector<KeyFramePtr> DetectRelocalizationCandidates(Frame* F, Map* pMap);
 
 protected:
 
    // Associated vocabulary
    const ORBVocabulary* mpVoc;
 
-   // Inverted file
+   // Inverted file. R4b slice 2: RAW entries on purpose (~1M word lists —
+   // weak_ptr would double the entry size and add refcount churn to the
+   // hottest query loops). Contract: KeyFrame::SetBadFlag scrubs its entries
+   // via erase() before releasing the KF, so any listed entry is alive; the
+   // Detect* queries wrap candidates into KeyFramePtr pins under mMutex
+   // before scoring them outside the lock.
    std::vector<std::list<KeyFrame*> > mvInvertedFile;
 
    // Mutex

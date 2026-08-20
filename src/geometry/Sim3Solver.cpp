@@ -36,8 +36,8 @@ namespace ORB_SLAM3
 {
 
 
-Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPointPtr> &vpMatched12, const bool bFixScale,
-                       vector<KeyFrame*> vpKeyFrameMatchedMP):
+Sim3Solver::Sim3Solver(KeyFramePtr pKF1, KeyFramePtr pKF2, const vector<MapPointPtr> &vpMatched12, const bool bFixScale,
+                       vector<KeyFramePtr> vpKeyFrameMatchedMP):
     mnIterations(0), mnBestInliers(0), mbFixScale(bFixScale),
     pCamera1(pKF1->mpCamera), pCamera2(pKF2->mpCamera)
 {
@@ -45,7 +45,7 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPointPtr>
     if(vpKeyFrameMatchedMP.empty())
     {
         bDifferentKFs = true;
-        vpKeyFrameMatchedMP = vector<KeyFrame*>(vpMatched12.size(), pKF2);
+        vpKeyFrameMatchedMP = vector<KeyFramePtr>(vpMatched12.size(), pKF2);
     }
 
     mpKF1 = pKF1;
@@ -71,7 +71,7 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPointPtr>
 
     size_t idx=0;
 
-    KeyFrame* pKFm = pKF2; //Default variable
+    KeyFramePtr pKFm = pKF2; //Default variable
     for(int i1=0; i1<mN1; i1++)
     {
         if(vpMatched12[i1])

@@ -50,25 +50,90 @@ SetBadFlag가 여전히 제거 프로토콜). KeyFrame은 이 슬라이스에서
 - 기존(업스트림 계승) Map::PreSave의 순회-중-소거 self-invalidation 가능성은
   raw 시절과 동일 클래스로 유지(신규 위험 아님).
 
+## R4b 슬라이스 2: KeyFrame shared_ptr 이행 (2026-08-20)
+
+**KeyFrame도 이제 `KeyFramePtr = std::shared_ptr<KeyFrame>` 관리다**
+(include/map/MapTypes.hpp — `KeyFrameWeakPtr`, `SharedSlot<T>`도 여기).
+C-lite 유지: strong-by-default로 툼스톤 수명 계약을 보존하되, **순환은
+의도적으로 끊는다** — KF↔MP·KF↔KF 상호 에지가 전부 strong이면 맵 clear가
+아무것도 회수하지 못한다. SetBadFlag가 여전히 제거 프로토콜이고, bad KF는
+참조가 남아 있는 동안 산다.
+
+### 소유권 표 (슬라이스 2 추가분)
+
+| 보유자 | 타입 | 강도 | 근거 |
+|---|---|---|---|
+| `Map::mspKeyFrames` | `std::set<KeyFramePtr>` | **strong (THE owner)** | SetBadFlag → EraseKeyFrame이 여기서 제거. shared_ptr 컨테이너 순서 = `.get()` 순서라 순회 순서는 raw 시절과 동일 |
+| `Map::mvpKeyFrameOrigins`, `mpKFinitial`, `mpKFlowerID`, `mpFirstRegionKF` | `KeyFramePtr` | strong | 맵 수명 동위 핀 |
+| `KeyFrame::mpParent` (child→parent) | `KeyFramePtr` | **strong** | 궤적 저장·UpdateFrameIMU의 bad-KF 부모 체인 워크가 부모 생존을 요구 (P12-L0-b 실측: 사망 후 146s까지 2,772회 읽음) |
+| `KeyFrame::mspChildrens` (parent→children) | `set<KeyFrameWeakPtr, owner_less>` | weak | 역방향 strong이면 트리가 순환. SetBadFlag 재부모화는 lock() 순회 (만료 자식 = "이미 회수됨" 스킵) |
+| `KeyFrame::mPrevKF` | `KeyFramePtr` | **strong** | 컬링의 MergePrevious·IMU 전파가 (bad일 수 있는) 이전 KF 생존을 요구. 체인은 선형이라 순환 없음; 소멸은 꼬리부터 연쇄 |
+| `KeyFrame::mNextKF` | `KeyFrameWeakPtr` | weak | 역방향 에지 = 순환. 사용부 ~12곳이 lock() (만료 = 재배선된 NULL과 동일 의미) |
+| `KeyFrame::mspLoopEdges`, `mspMergeEdges` | `set<KeyFrameWeakPtr, owner_less>` | weak | 상호 에지 = 순환. 루프엣지 파트너는 래치 프로토콜로 맵-핀 영구(엔트리 만료 없음 → SetErase의 empty() 검사 의미 불변); 머지엣지 파트너는 컬링 가능 — 만료가 댕글 대신 "사라짐"으로 읽힘 |
+| KF↔KF 공가시성 (`mConnectedKeyFrameWeights` 키, `mvpOrderedConnectedKeyFrames`) | `KeyFrame*` (raw) | — **의도적** | 상호 에지 전부 strong = 그래프 전체가 한 덩어리 순환. **스크럽 계약**: SetBadFlag가 Map 핀을 놓기 전에 모든 파트너의 맵에서 자신을 지운다(EraseConnection) → 맵에 남아 있는 raw 엔트리는 항상 생존. **접근자가 락 안에서 핀 래핑** — GetConnectedKeyFrames/GetVectorCovisible*/GetBestCovisibility*/GetCovisiblesByWeight는 mMutexConnections 하에 shared_from_this로 감싼 KeyFramePtr 컨테이너를 반환(락 보유 중 파트너의 EraseConnection이 블록되므로 래핑 시점 생존 보장) — 호출자 사본이 곧 핀 |
+| `MapPoint::mObservations` 키 | `KeyFrame*` (raw) | — **의도적** | **THE KF↔MP 순환 절단점**. weak 키는 map 순서·조회 비용·만료 의미론 문제(owner_less 순서는 주소 순서와 다름); raw + 스크럽 계약이 실용해 — KeyFrame::SetBadFlag가 (MP의 mMutexFeatures 하에) 자신 키를 지우고 나서야 Map 핀이 풀린다. GetObservations()는 락 안에서 `map<KeyFramePtr,tuple>`로 래핑해 반환(순서 동일: shared_ptr less = .get() 비교) — MP::SetBadFlag/Replace/ComputeDistinctiveDescriptors/UpdateNormalAndDepth의 락-밖 사본도 같은 방식으로 핀 래핑 |
+| `MapPoint::mpRefKF`, `mpHostKF` | `KeyFrameWeakPtr` | weak | bad MP는 스크럽 없이 마지막 refKF를 영구 보유 — strong이면 누수 경로, raw면 회수 후 댕글. lock() null 반환이 "죽고 회수됨"의 정직한 표현. 살아있는 MP는 "mpRefKF ∈ 관측 키" 불변식(EraseObservation 재할당)으로 lock() 성공 보장. GetReferenceKeyFrame() 호출부는 기존 null 가드 관례 유지 |
+| KFDB inverted file (`vector<list<KeyFrame*>>`) | raw | — **의도적** | ~1M 워드 리스트: weak는 엔트리 크기 2배 + 최다빈도 질의 루프에 refcount 유입(정찰 블로커 8). **계약**: SetBadFlag의 KFDB::erase가 스크럽; Detect* 질의는 mMutex 하에 후보를 KeyFramePtr로 래핑 후 락 밖 스코어링(#23 행 가드는 유지) |
+| `LocalMapping::mlNewKeyFrames` + LC `mlpLoopKeyFrameQueue` | `list<KeyFramePtr>` | strong | **큐 커스터디의 활자화** — 드레인 처분은 SetBadFlag + 참조 드롭으로 단순화: #19/#29의 isBad-가드 delete 2곳 은퇴(leak-vs-UAF 딜레마 해소). ResetIfRequested의 "의도적 누수" clear는 이제 refcount 반환(T 별칭이 손을 놓으면 해제) |
+| `Tracking::mpLastKeyFrame`, `LocalMapping::mpCurrentKeyFrame` | `SharedSlot<KeyFrame>` (뮤텍스 가드 KeyFramePtr 슬롯) | strong | P10-2의 atomic<KeyFrame*>를 대체. atomic<shared_ptr>은 C++20이지만 libstdc++에서 락 기반 — 명명된 뮤텍스 슬롯이 동등 비용에 의미가 명확. `.load()/.store()` 호출부 형태 보존, **모든 load가 핀 반환** (GetLastKeyFrame·GetCurrKFTime의 교차 스레드 리더 포함). 슬롯 자체가 컬링된 last-KF를 T의 역참조 동안 생존시킴 |
+| `Tracking::mlpReferences`, `Frame::mpReferenceKF/mpLastKeyFrame`, `ImuUpdateMsg::pBaseKF` | `KeyFramePtr` | strong | 궤적 참조·프레임 슬롯·메시지 앵커가 곧 핀 — 미편입 큐 KF 별칭 댕글 클래스 소멸 |
+| 사이드 테이블: `BAEpochs::{localForKF,fixedForKF}`, `GBAResult::kfs`, `MergeScratch::kfs`, tcwBefGBA 로컬, `KeyFrameAndPose` 키 | `KeyFramePtr` 키 | strong | 슬라이스 1 선례: 해제 가능 세계에서 raw 키 = 주소 재사용 오판 가능. 순서는 .get() 비교라 불변 |
+| `DetectionChannel::{lastCurrentKF,matchedKF}`, LC `mpCurrentKF` 등 | `KeyFramePtr` | strong | SetNotErase 래치의 핀이 곧 목적. L1/L2 래치 위생(R4a 승격분)은 이제 참조도 함께 놓는다 |
+| Optimizer/G2oTypes 정점 생성자 | raw + `KeyFramePtr` 포워딩 오버로드 | — | 핀-셋 관례 유지: 진입부에서 1회 수집(핀), 핫루프는 raw g2o 정점만. G2oTypes는 KF를 저장하지 않음 |
+| `Map::mvpBackupKeyFrames` | `std::vector<KeyFrame*>` (raw) | non-owning | 직렬화 전용, 슬라이스 1 패턴 그대로: PreSave가 .get() 채움, PostLoad가 정확히 1회 KeyFramePtr 래핑(그래프 배선 전 = shared_from_this 유효성의 기점) 후 정리. **.osa 아카이브 레이아웃 바이트 호환 유지** |
+
+### 계약 변경/불변 사항 (슬라이스 2)
+
+- **무락 isBad() 계약(152사이트)**: 관측 키/공가시성 조회는 확립된 락 하에서
+  일어나고, 락-밖 사본은 접근자가 이미 핀으로 래핑해 넘긴다 — "호출자 핀
+  또는 Map 핀" 계약이 구조적으로 성립. 잔존 창: **비대칭 에지**(A가 B를
+  아는데 B가 A를 모르는 UpdateConnections/AddObservation 창)에서 스크럽이
+  자신을 못 지우는 경우의 stale raw 엔트리 — 업스트림 툼브스톤 시절과 동일
+  클래스(당시엔 dead-read, 지금은 래핑 시점 UAF 가능성). ASan 전장 런 무보고가
+  실증 게이트.
+- **enable_shared_from_this (KeyFrame)**: 생성은 make_shared 3곳(Tracking) +
+  boost 로드 경로의 PostLoad 1회 래핑. SetBadFlag는 진입부에서 `pSelf =
+  shared_from_this()` 자기 핀 — Map::EraseKeyFrame이 소유 참조를 놓은 뒤에도
+  함수 꼬리(KFDB erase)까지 생존 보장.
+- **EraseObservation의 빈-맵 UB 가드**: 업스트림은 마지막 관측 삭제 시
+  `begin()->first`(빈 맵!)를 refKF에 저장했다 — 이제 null로 대체(도달 시
+  업스트림은 쓰레기 포인터였음). UpdateNormalAndDepth의 null refKF 조기
+  return 가드 동반(도달 시 업스트림은 wild deref).
+- **해제되는 것 (회수 의미론)**: `Map::clear()/~Map`은 이제 진짜로 그래프를
+  해제한다 — 순환 보유 에지가 전부 raw/weak라 소유 집합 드롭이 연쇄 해제로
+  이어진다(KF가 mPrevKF/mpParent를 strong으로 물고 있어 꼬리→머리 순 연쇄;
+  재귀 깊이는 IMU 체인 길이에 비례하나 KF 소멸자 프레임이 작아 수천 KF
+  규모에서 문제없음). 외부 핀(mlpReferences·프레임 슬롯·큐·채널·사이드
+  테이블)이 잡은 툼스톤은 그 보유자가 놓을 때 해제. **세션 중 실회수**:
+  컬링된 KF는 스크럽 완료 + 마지막 핀 소멸 시점에 해제(mlpReferences에 든
+  KF는 리셋/셧다운까지 생존 — 의도된 툼스톤 보존).
+- **.osa**: 형식 무변경(backup 벡터 raw 유지). 세이브 파일의 자식/엣지 ID
+  순서는 weak-set(owner_less) 순회 순서라 pre-R4b 저장물과 바이트 동일하진
+  않을 수 있으나 로드 호환(ID 기반 재배선)은 완전.
+- **frozen 등가 트윈**: 타입 전용 전환 + **R3 낙진 수리** — 트윈은 R3가
+  벤더드 DBoW2의 전역 `using namespace std`를 은퇴시킨 뒤 빌드 불능이었고
+  (R2 이후 vendored 트리는 시스템 Eigen 캐시로 재구성도 불능), 슬라이스 2가
+  스코프드 using 복원 + 재구성으로 되살렸다. 크로스 게이트 4/5 EQUIVALENT;
+  `inertial_optimization_full` 1건은 **R4a #9 승격의 예상 불일치**(트윈은
+  의도적 버그 보존 — tests/backend_equiv/run_equiv.sh 헤더 주석).
+
 ## 할당·해제 지도
 
 | 객체 | 생성자(유일) | 정상 경로 해제 |
 |---|---|---|
-| KeyFrame | Tracking (3곳: 초기화 2, CreateNewKeyFrame) | **없음 — tombstone** |
-| MapPoint | LocalMapping 삼각측량 + Tracking (초기화/신규KF/임시) | **없음 — tombstone** (임시 포인트만 Tracking이 delete) |
+| KeyFrame | Tracking (make_shared 3곳: 초기화 2, CreateNewKeyFrame) + boost 로드 래핑 | **refcount** (R4b 슬라이스 2) — SetBadFlag 스크럽 후 마지막 강한 참조가 놓일 때 |
+| MapPoint | LocalMapping 삼각측량 + Tracking (초기화/신규KF/임시) — 전부 make_shared | **refcount** (R4b) — 임시 포인트 수동 delete도 은퇴 |
 | Map | Atlas::CreateNewMap | Atlas 소멸자에서만 (bad 맵은 의도적 누수 — RemoveBadMaps의 delete 주석화) |
 | Atlas | System | 없음 (프로세스 수명) |
 
-특수 경로 delete 4곳(맵 편입 전 큐 KF 정리 등)은 LocalMapping/Tracking에 있으며,
-과거 **2곳이 업스트림 그대로의 댕글링 위험**이었다 — 현재 둘 다 강등 완료:
-- `LocalMapping::Release()`: ~~큐 KF를 SetBadFlag 없이 delete~~ →
-  **P11-A(B3)에서 #19 패턴으로 강등 완료**(SetBadFlag → isBad() 확인부
-  delete, DIVERGENCES #29). 미편입 KF에서 Erase류는 no-op, 관측 해제가
-  CreateNewKeyFrame산 MP 역참조 댕글링을 제거. 마지막 잔존 raw delete였음.
-- `LocalMapping::ScaleRefinement()/InitializeIMU()`: SetBadFlag가 초기 KF /
-  mbNotErase에서 조기 return해도 delete는 실행 — mspKeyFrames 댕글링 가능
-  (**P8-3에서 UAF→누수로 강등**: SetBadFlag 후 isBad() 확인 시에만 delete,
-  DIVERGENCES #19)
+특수 경로 delete는 **R4b 슬라이스 2에서 전부 은퇴**했다(KF/MP delete 0):
+- `LocalMapping::Release()` 드레인: P11-A(B3, #29)의 isBad-가드 delete →
+  **SetBadFlag + 참조 드롭**. 미편입 KF에서 Erase류는 no-op, 관측 해제는
+  동일; 해제는 T 별칭(mpLastKeyFrame 슬롯·프레임 멤버)이 놓일 때 refcount로.
+- `PurgeNewKeyFramesAfterInertialInit()`: P8-3(#19) 가드 delete → 동일하게
+  참조 드롭. SetBadFlag 조기 return 생존자(舊 "누수" 팔)는 그냥 핀에 잡힌
+  객체 — leak-vs-UAF 추론 자체가 소멸.
+- Tracking 임시 MP delete는 슬라이스 1에서 기은퇴.
 
 ### 큐 드레인 3종 처분 비대칭 (P8-2 기록)
 
@@ -76,11 +141,11 @@ SetBadFlag가 여전히 제거 프로토콜). KeyFrame은 이 슬라이스에서
 "큐 잔류 KF는 아직 맵에 없음(AddKeyFrame은 ProcessNewKeyFrame에서)" 불변식을
 같이 봐야 한다:
 
-| 경로 | 처분 | 비고 |
+| 경로 | 처분 (R4b 슬라이스 2 현행) | 비고 |
 |---|---|---|
-| Release() | SetBadFlag→delete (P11-A, #29) | 舊 raw delete의 댕글링 강등 |
-| InitializeIMU/ScaleRefinement 말미 | SetBadFlag→delete | P8-3 가드 |
-| ResetIfRequested | clear만 (의도적 누수) | 리셋 중 T는 스핀 대기라 안전 |
+| Release() | SetBadFlag→참조 드롭 | 舊 #29 가드 delete 은퇴 |
+| InitializeIMU/ScaleRefinement 말미 | SetBadFlag→참조 드롭 | 舊 #19 가드 delete 은퇴 |
+| ResetIfRequested | clear만 (참조 드롭) | 舊 "의도적 누수"가 refcount 반환으로 — T 별칭이 놓으면 해제 |
 
 또한 **LC 큐 비대칭**: Run() 주 경로가 소비한 KF만 LoopClosing 큐에 전달된다.
 EmptyQueue/InitializeIMU/ScaleRefinement가 소비한 KF는 맵에는 들어가지만

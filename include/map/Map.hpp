@@ -18,10 +18,12 @@
 
 
 /**
- * Ownership/lifetime: raw pointers by upstream design — KeyFrame/MapPoint are
- * NEVER deleted on the normal path; removal is SetBadFlag() + tombstone
- * (a lock-free concurrency contract, not a leak bug). See docs/OWNERSHIP.md
- * before changing any lifetime or lock-order behavior here. (P5-3)
+ * Ownership/lifetime (R4b): Map is THE owner of both KeyFrames and MapPoints
+ * (mspKeyFrames / mspMapPoints hold the owning shared_ptrs). Removal is still
+ * SetBadFlag() — a tombstoned object survives for as long as any other strong
+ * holder (frames, queues, pins, side tables) references it, and is reclaimed
+ * when the last one lets go. See docs/OWNERSHIP.md before changing any
+ * lifetime or lock-order behavior here.
  */
 
 #ifndef MAP_H
@@ -80,15 +82,15 @@ public:
     Map(int initKFid);
     ~Map();
 
-    void AddKeyFrame(KeyFrame* pKF);
+    void AddKeyFrame(const KeyFramePtr& pKF);
     void AddMapPoint(const MapPointPtr& pMP);
     void EraseMapPoint(const MapPointPtr& pMP);
-    void EraseKeyFrame(KeyFrame* pKF);
+    void EraseKeyFrame(const KeyFramePtr& pKF);
     void SetReferenceMapPoints(const std::vector<MapPointPtr> &vpMPs);
     void InformNewBigChange();
     int GetLastBigChangeIdx();
 
-    std::vector<KeyFrame*> GetAllKeyFrames();
+    std::vector<KeyFramePtr> GetAllKeyFrames();
     std::vector<MapPointPtr> GetAllMapPoints();
     std::vector<MapPointPtr> GetReferenceMapPoints();
 
@@ -101,7 +103,7 @@ public:
     void SetInitKFid(long unsigned int initKFif);
     long unsigned int GetMaxKFid();
 
-    KeyFrame* GetOriginKF();
+    KeyFramePtr GetOriginKF();
 
     void SetCurrentMap();
     void SetStoredMap();
@@ -140,11 +142,11 @@ public:
     void PreSave(std::set<GeometricCamera*> &spCams);
     void PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, std::map<long unsigned int, KeyFrame*>& mpKeyFrameId*/, std::map<unsigned int, GeometricCamera*> &mpCams);
 
-    void printReprojectionError(std::list<KeyFrame*> &lpLocalWindowKFs, KeyFrame* mpCurrentKF, std::string &name, std::string &name_folder);
+    void printReprojectionError(std::list<KeyFramePtr> &lpLocalWindowKFs, const KeyFramePtr& mpCurrentKF, std::string &name, std::string &name_folder);
 
-    std::vector<KeyFrame*> mvpKeyFrameOrigins;
+    std::vector<KeyFramePtr> mvpKeyFrameOrigins;
     std::vector<unsigned long int> mvBackupKeyFrameOriginsId;
-    KeyFrame* mpFirstRegionKF;
+    KeyFramePtr mpFirstRegionKF;
     std::mutex mMutexMapUpdate;
 
     // This avoid that two points are created simultaneously in separate threads (id conflict)
@@ -166,23 +168,25 @@ protected:
 
     long unsigned int mnId;
 
-    // R4b slice 1: THE strong owner of all live MapPoints in this map.
-    // SetBadFlag() erases the entry; a bad MapPoint then survives only as
-    // long as other strong holders (KF slots, frames, pins) reference it.
+    // R4b slices 1+2: THE strong owners of all live MapPoints/KeyFrames in
+    // this map. SetBadFlag() erases the entry; a bad object then survives
+    // only as long as other strong holders (frames, queues, pins) reference
+    // it, and is genuinely reclaimed when the last one lets go.
     std::set<MapPointPtr> mspMapPoints;
-    std::set<KeyFrame*> mspKeyFrames;
+    std::set<KeyFramePtr> mspKeyFrames;
 
     // Save/load, the set structure is broken in libboost 1.58 for ubuntu 16.04, a vector is serializated
-    // R4b slice 1 (2026-08-20): deliberately kept as RAW pointers so the boost
+    // R4b (2026-08-20): deliberately kept as RAW pointers so the boost
     // archive layout (pointer-tracked vector) is byte-compatible with pre-R4b
-    // .osa sessions. PreSave() fills it with .get() of the owning shared_ptrs;
-    // on load, boost news the objects here and PostLoad() wraps each exactly
-    // once into the owning MapPointPtr, then clears this vector (non-owning).
+    // .osa sessions. PreSave() fills them with .get() of the owning
+    // shared_ptrs; on load, boost news the objects here and PostLoad() wraps
+    // each exactly once into the owning smart pointer, then clears the
+    // vectors (non-owning).
     std::vector<MapPoint*> mvpBackupMapPoints;
     std::vector<KeyFrame*> mvpBackupKeyFrames;
 
-    KeyFrame* mpKFinitial;
-    KeyFrame* mpKFlowerID;
+    KeyFramePtr mpKFinitial;
+    KeyFramePtr mpKFlowerID;
 
     unsigned long int mnBackupKFinitialID;
     unsigned long int mnBackupKFlowerID;

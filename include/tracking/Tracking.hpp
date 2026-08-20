@@ -138,7 +138,7 @@ public:
     {
         float scale = 1.0f;          // mlRelativeFramePoses rescale (delta; composes)
         IMU::Bias bias;              // absolute rebias state
-        KeyFrame* pBaseKF = nullptr; // anchor: becomes mpLastKeyFrame; frames re-anchored on it
+        KeyFramePtr pBaseKF = nullptr; // anchor: becomes mpLastKeyFrame; frames re-anchored on it
         bool bFirstInit = false;     // first IMU init: T stamps t0IMU at application
         // Poster-side anchor timestamp (pBaseKF->mTimeStamp, an immutable
         // field — race-free to read on LM/LC). Diagnostic only: the applied
@@ -151,10 +151,11 @@ public:
     // call sites). Never blocks on Tracking; only the slot mutex is taken.
     void PostImuUpdate(const ImuUpdateMsg &msg);
 
-    KeyFrame* GetLastKeyFrame()
+    KeyFramePtr GetLastKeyFrame()
     {
-        // P10-2 (ledger race R-f): LoopClosing/GBA call this lock-free from
-        // their threads; load-acquire pairs with the store-release writes.
+        // P10-2 (ledger race R-f) made this an atomic; R4b slice 2 upgrades
+        // the slot to a mutex-guarded KeyFramePtr (SharedSlot) — the copy
+        // LoopClosing/GBA receive is now a strong pin, not a bare pointer.
         return mpLastKeyFrame.load(std::memory_order_acquire);
     }
 
@@ -283,7 +284,7 @@ public:
     // Lists used to recover the full camera trajectory at the end of the execution.
     // Basically we store the reference keyframe for each frame and its relative transformation
     std::list<Sophus::SE3f> mlRelativeFramePoses;
-    std::list<KeyFrame*> mlpReferences;
+    std::list<KeyFramePtr> mlpReferences;
     std::list<double> mlFrameTimes;
     std::list<bool> mlbLost;
 
@@ -390,7 +391,7 @@ protected:
     // ------------------------------------------------------------------
     void ApplyPendingImuUpdate();
     void DiscardPendingImuUpdate();
-    void UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurrentKeyFrame);
+    void UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFramePtr pCurrentKeyFrame);
 
     // Reset IMU biases and compute frame velocity
     void ResetFrameIMU();
@@ -466,8 +467,8 @@ protected:
     bool mbSetInit;
 
     //Local Map
-    KeyFrame* mpReferenceKF;
-    std::vector<KeyFrame*> mvpLocalKeyFrames;
+    KeyFramePtr mpReferenceKF;
+    std::vector<KeyFramePtr> mvpLocalKeyFrames;
     std::vector<MapPointPtr> mvpLocalMapPoints;
     
     // P7-1b: narrow reset-request interface, implemented by System (which
@@ -528,12 +529,12 @@ protected:
     std::atomic<int> mnMatchesInliers{0};
 
     //Last Frame, KeyFrame and Relocalisation Info
-    // P10-2: atomic (ledger race R-f). Tracking-thread writes use
-    // store-release (so the lock-free readers in LoopClosing/GBA see a
-    // fully constructed KF via GetLastKeyFrame's load-acquire); note
-    // UpdateFrameIMU also writes it FROM the LM/LC threads (inherited
-    // cross-write, unchanged). Tracking-internal reads are relaxed.
-    std::atomic<KeyFrame*> mpLastKeyFrame;
+    // P10-2 made this atomic (ledger race R-f); R4b slice 2 upgrades it to
+    // a mutex-guarded KeyFramePtr slot (SharedSlot, map/MapTypes.hpp): the
+    // .load()/.store() call sites survive verbatim, every load returns a
+    // strong pin, and the slot itself keeps the last KF alive for Tracking's
+    // dereferences even after culling tombstones it.
+    SharedSlot<KeyFrame> mpLastKeyFrame;
     unsigned int mnLastKeyFrameId;
     unsigned int mnLastRelocFrameId;
     double mTimeStampLost;

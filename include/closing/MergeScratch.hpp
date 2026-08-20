@@ -51,7 +51,7 @@ struct MapPointMergeScratch
 
 struct MergeScratch
 {
-    std::map<KeyFrame*, KeyFrameMergeScratch> kfs;
+    std::map<KeyFramePtr, KeyFrameMergeScratch> kfs;
     std::map<MapPointPtr, MapPointMergeScratch> mps;
 };
 

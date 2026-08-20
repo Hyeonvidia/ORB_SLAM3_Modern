@@ -61,46 +61,46 @@ public:
     // Same underlying type as LoopClosing::KeyFrameAndPose (a class-nested
     // typedef cannot be forward-declared; redeclaring the identical std::map
     // instantiation keeps this header outside the LoopClosing.hpp cycle).
-    typedef std::map<KeyFrame*, g2o::Sim3, std::less<KeyFrame*>,
-        Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > > KeyFrameAndPose;
+    typedef std::map<KeyFramePtr, g2o::Sim3, std::less<KeyFramePtr>,
+        Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3> > > KeyFrameAndPose;
 
     virtual ~ILoopOptimizer() = default;
 
     // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono)
-    virtual int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPointPtr>& vpMatches1,
+    virtual int OptimizeSim3(KeyFramePtr pKF1, KeyFramePtr pKF2, std::vector<MapPointPtr>& vpMatches1,
                              g2o::Sim3& g2oS12, float th2, bool bFixScale,
                              Eigen::Matrix<double,7,7>& mAcumHessian, bool bAllPoints = false) const = 0;
 
     // Loop variant. if bFixScale is true, 6DoF optimization (stereo,rgbd),
     // 7DoF otherwise (mono). correctedRefs: map points corrected during the
     // loop closure, mapped to the id of their corrected reference keyframe.
-    virtual void OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+    virtual void OptimizeEssentialGraph(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                         const KeyFrameAndPose& NonCorrectedSim3,
                                         const KeyFrameAndPose& CorrectedSim3,
-                                        const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections,
+                                        const std::map<KeyFramePtr, std::set<KeyFramePtr> >& LoopConnections,
                                         const bool& bFixScale,
                                         const std::map<MapPointPtr, unsigned long>& correctedRefs) const = 0;
 
     // Merge variant (per-call MergeScratch, P5-G).
-    virtual void OptimizeEssentialGraph(KeyFrame* pCurKF, std::vector<KeyFrame*>& vpFixedKFs,
-                                        std::vector<KeyFrame*>& vpFixedCorrectedKFs,
-                                        std::vector<KeyFrame*>& vpNonFixedKFs,
+    virtual void OptimizeEssentialGraph(KeyFramePtr pCurKF, std::vector<KeyFramePtr>& vpFixedKFs,
+                                        std::vector<KeyFramePtr>& vpFixedCorrectedKFs,
+                                        std::vector<KeyFramePtr>& vpNonFixedKFs,
                                         std::vector<MapPointPtr>& vpNonCorrectedMPs,
                                         MergeScratch& scratch) const = 0;
 
     // For inertial loopclosing.
-    virtual void OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+    virtual void OptimizeEssentialGraph4DoF(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                             const KeyFrameAndPose& NonCorrectedSim3,
                                             const KeyFrameAndPose& CorrectedSim3,
-                                            const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections) const = 0;
+                                            const std::map<KeyFramePtr, std::set<KeyFramePtr> >& LoopConnections) const = 0;
 
-    virtual void MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, bool* pbStopFlag, Map* pMap,
+    virtual void MergeInertialBA(KeyFramePtr pCurrKF, KeyFramePtr pMergeKF, bool* pbStopFlag, Map* pMap,
                                  KeyFrameAndPose& corrPoses, BAEpochs& epochs) const = 0;
 
     // Welding variant: local BA in the welding area when two maps are merged
     // (epochs is read-only here).
-    virtual void LocalBundleAdjustment(KeyFrame* pMainKF, std::vector<KeyFrame*> vpAdjustKF,
-                                       std::vector<KeyFrame*> vpFixedKF, bool* pbStopFlag,
+    virtual void LocalBundleAdjustment(KeyFramePtr pMainKF, std::vector<KeyFramePtr> vpAdjustKF,
+                                       std::vector<KeyFramePtr> vpFixedKF, bool* pbStopFlag,
                                        const BAEpochs& epochs) const = 0;
 
     // Bias variant.

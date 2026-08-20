@@ -20,6 +20,18 @@
 #      (tolerance table in compare.py — design §B.2 layer 1)
 #
 # Run from anywhere; requires the orbslam3-modern-dev compose service.
+#
+# KNOWN EXPECTED MISMATCH since R4a (534c739, 2026-08-20): the cross-variant
+# gate for inertial_optimization_full FAILS on scale (rel ~1e-5) and ba
+# (~5e-9). R4a promoted the #9 EdgeInertialGS scale-Jacobian chain-rule fix
+# unconditionally into the live backend, while reference_backend/G2oTypes.cpp
+# keeps the upstream bug BY DESIGN (it is the pre-fix golden reference).
+# The buggy Jacobian stalls that variant's LM at ~1e-5 from GT while the
+# fixed one converges to ~1e-8 — both inside their documented --gt-check
+# gates, which are the operative acceptance for this pair post-R4a. The
+# mismatch went unobserved between R4a and R4b slice 2 because the vendored
+# build tree had been unbuildable since R2 (system-Eigen removal); slice 2
+# repaired it. The other four cross gates remain EQUIVALENT.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

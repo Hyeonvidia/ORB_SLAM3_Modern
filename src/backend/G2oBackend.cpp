@@ -55,14 +55,14 @@ void G2oBackend::GlobalBundleAdjustment(Map* pMap, int nIterations, const std::a
 
 // ---- IMappingOptimizer ------------------------------------------------------
 
-void G2oBackend::LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+void G2oBackend::LocalBundleAdjustment(KeyFramePtr pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                        int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                        BAEpochs& epochs) const
 {
     Optimizer::LocalBundleAdjustment(pKF, pbStopFlag, pMap, num_fixedKF, num_OptKF, num_MPs, num_edges, epochs);
 }
 
-void G2oBackend::LocalInertialBA(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+void G2oBackend::LocalInertialBA(KeyFramePtr pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                  int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                  bool bLarge, bool bRecInit, BAEpochs& epochs) const
 {
@@ -94,48 +94,48 @@ void G2oBackend::FullInertialBA(Map* pMap, int its, bool bFixLocal, unsigned lon
 
 // ---- ILoopOptimizer ---------------------------------------------------------
 
-int G2oBackend::OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPointPtr>& vpMatches1,
+int G2oBackend::OptimizeSim3(KeyFramePtr pKF1, KeyFramePtr pKF2, std::vector<MapPointPtr>& vpMatches1,
                              g2o::Sim3& g2oS12, float th2, bool bFixScale,
                              Eigen::Matrix<double,7,7>& mAcumHessian, bool bAllPoints) const
 {
     return Optimizer::OptimizeSim3(pKF1, pKF2, vpMatches1, g2oS12, th2, bFixScale, mAcumHessian, bAllPoints);
 }
 
-void G2oBackend::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+void G2oBackend::OptimizeEssentialGraph(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                         const LoopClosing::KeyFrameAndPose& NonCorrectedSim3,
                                         const LoopClosing::KeyFrameAndPose& CorrectedSim3,
-                                        const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections,
+                                        const std::map<KeyFramePtr, std::set<KeyFramePtr> >& LoopConnections,
                                         const bool& bFixScale,
                                         const std::map<MapPointPtr, unsigned long>& correctedRefs) const
 {
     Optimizer::OptimizeEssentialGraph(pMap, pLoopKF, pCurKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, bFixScale, correctedRefs);
 }
 
-void G2oBackend::OptimizeEssentialGraph(KeyFrame* pCurKF, std::vector<KeyFrame*>& vpFixedKFs,
-                                        std::vector<KeyFrame*>& vpFixedCorrectedKFs,
-                                        std::vector<KeyFrame*>& vpNonFixedKFs,
+void G2oBackend::OptimizeEssentialGraph(KeyFramePtr pCurKF, std::vector<KeyFramePtr>& vpFixedKFs,
+                                        std::vector<KeyFramePtr>& vpFixedCorrectedKFs,
+                                        std::vector<KeyFramePtr>& vpNonFixedKFs,
                                         std::vector<MapPointPtr>& vpNonCorrectedMPs,
                                         MergeScratch& scratch) const
 {
     Optimizer::OptimizeEssentialGraph(pCurKF, vpFixedKFs, vpFixedCorrectedKFs, vpNonFixedKFs, vpNonCorrectedMPs, scratch);
 }
 
-void G2oBackend::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+void G2oBackend::OptimizeEssentialGraph4DoF(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                             const LoopClosing::KeyFrameAndPose& NonCorrectedSim3,
                                             const LoopClosing::KeyFrameAndPose& CorrectedSim3,
-                                            const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections) const
+                                            const std::map<KeyFramePtr, std::set<KeyFramePtr> >& LoopConnections) const
 {
     Optimizer::OptimizeEssentialGraph4DoF(pMap, pLoopKF, pCurKF, NonCorrectedSim3, CorrectedSim3, LoopConnections);
 }
 
-void G2oBackend::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+void G2oBackend::MergeInertialBA(KeyFramePtr pCurrKF, KeyFramePtr pMergeKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                  LoopClosing::KeyFrameAndPose& corrPoses, BAEpochs& epochs) const
 {
     Optimizer::MergeInertialBA(pCurrKF, pMergeKF, pbStopFlag, pMap, corrPoses, epochs);
 }
 
-void G2oBackend::LocalBundleAdjustment(KeyFrame* pMainKF, std::vector<KeyFrame*> vpAdjustKF,
-                                       std::vector<KeyFrame*> vpFixedKF, const std::atomic<bool>* pbStopFlag,
+void G2oBackend::LocalBundleAdjustment(KeyFramePtr pMainKF, std::vector<KeyFramePtr> vpAdjustKF,
+                                       std::vector<KeyFramePtr> vpFixedKF, const std::atomic<bool>* pbStopFlag,
                                        const BAEpochs& epochs) const
 {
     Optimizer::LocalBundleAdjustment(pMainKF, vpAdjustKF, vpFixedKF, pbStopFlag, epochs);

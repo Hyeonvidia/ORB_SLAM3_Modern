@@ -79,6 +79,10 @@ public:
     ImuCamPose(KeyFrame* pKF);
     ImuCamPose(Frame* pF);
     ImuCamPose(Eigen::Matrix3d &_Rwc, Eigen::Vector3d &_twc, KeyFrame* pKF);
+    // R4b slice 2: KeyFramePtr conveniences (forward to the raw ctors —
+    // the caller's pin-set owns the lifetime, vertices never store the KF)
+    ImuCamPose(const KeyFramePtr& pKF) : ImuCamPose(pKF.get()) {}
+    ImuCamPose(Eigen::Matrix3d &_Rwc, Eigen::Vector3d &_twc, const KeyFramePtr& pKF) : ImuCamPose(_Rwc, _twc, pKF.get()) {}
 
     void SetParam(const std::vector<Eigen::Matrix3d> &_Rcw, const std::vector<Eigen::Vector3d> &_tcw, const std::vector<Eigen::Matrix3d> &_Rbc,
                   const std::vector<Eigen::Vector3d> &_tbc, const double &_bf);
@@ -135,6 +139,7 @@ public:
     VertexPose(KeyFrame* pKF){
         setEstimate(ImuCamPose(pKF));
     }
+    VertexPose(const KeyFramePtr& pKF) : VertexPose(pKF.get()) {}
     VertexPose(Frame* pF){
         setEstimate(ImuCamPose(pF));
     }
@@ -161,6 +166,7 @@ public:
     VertexPose4DoF(KeyFrame* pKF){
         setEstimate(ImuCamPose(pKF));
     }
+    VertexPose4DoF(const KeyFramePtr& pKF) : VertexPose4DoF(pKF.get()) {}
     VertexPose4DoF(Frame* pF){
         setEstimate(ImuCamPose(pF));
     }
@@ -168,6 +174,8 @@ public:
 
         setEstimate(ImuCamPose(_Rwc, _twc, pKF));
     }
+    VertexPose4DoF(Eigen::Matrix3d &_Rwc, Eigen::Vector3d &_twc, const KeyFramePtr& pKF)
+        : VertexPose4DoF(_Rwc, _twc, pKF.get()) {}
 
     virtual bool read(std::istream& is){return false;}
     virtual bool write(std::ostream& os) const{return false;}
@@ -195,6 +203,7 @@ public:
     VertexVelocity(){}
     VertexVelocity(KeyFrame* pKF);
     VertexVelocity(Frame* pF);
+    VertexVelocity(const KeyFramePtr& pKF) : VertexVelocity(pKF.get()) {}
 
     virtual bool read(std::istream& is){return false;}
     virtual bool write(std::ostream& os) const{return false;}
@@ -216,6 +225,7 @@ public:
     VertexGyroBias(){}
     VertexGyroBias(KeyFrame* pKF);
     VertexGyroBias(Frame* pF);
+    VertexGyroBias(const KeyFramePtr& pKF) : VertexGyroBias(pKF.get()) {}
 
     virtual bool read(std::istream& is){return false;}
     virtual bool write(std::ostream& os) const{return false;}
@@ -238,6 +248,7 @@ public:
     VertexAccBias(){}
     VertexAccBias(KeyFrame* pKF);
     VertexAccBias(Frame* pF);
+    VertexAccBias(const KeyFramePtr& pKF) : VertexAccBias(pKF.get()) {}
 
     virtual bool read(std::istream& is){return false;}
     virtual bool write(std::ostream& os) const{return false;}
@@ -326,6 +337,8 @@ public:
     VertexInvDepth(double invDepth, double u, double v, KeyFrame* pHostKF){
         setEstimate(InvDepthPoint(invDepth, u, v, pHostKF));
     }
+    VertexInvDepth(double invDepth, double u, double v, const KeyFramePtr& pHostKF)
+        : VertexInvDepth(invDepth, u, v, pHostKF.get()) {}
 
     virtual bool read(std::istream& is){return false;}
     virtual bool write(std::ostream& os) const{return false;}

@@ -52,7 +52,7 @@ struct KeyFrameGBAResult
 
 struct GBAResult
 {
-    std::map<KeyFrame*, KeyFrameGBAResult> kfs;
+    std::map<KeyFramePtr, KeyFrameGBAResult> kfs;
     std::map<MapPointPtr, Eigen::Vector3f> mps;   // was MapPoint::mPosGBA
 };
 

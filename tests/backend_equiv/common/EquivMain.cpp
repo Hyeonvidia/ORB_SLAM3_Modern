@@ -78,8 +78,8 @@ void DebugInertialAtGT(equiv::ImuChainFixture& fx)
     const Eigen::Vector3d g = fx.gWorldTrue;
     std::fprintf(stderr, "DEBUG residuals at GT (s=%.17g):\n", s);
     for (int k = 1; k < equiv::ImuChainFixture::kNumKFs; k++) {
-        ORB_SLAM3::KeyFrame* p1 = fx.kf(k - 1);
-        ORB_SLAM3::KeyFrame* p2 = fx.kf(k);
+        ORB_SLAM3::KeyFramePtr p1 = fx.kf(k - 1);
+        ORB_SLAM3::KeyFramePtr p2 = fx.kf(k);
         const Eigen::Matrix3d R1 = p1->GetImuRotation().cast<double>();
         const Eigen::Vector3d t1 = p1->GetImuPosition().cast<double>();
         const Eigen::Vector3d v1 = p1->GetVelocity().cast<double>();

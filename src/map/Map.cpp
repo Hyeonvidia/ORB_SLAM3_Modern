@@ -30,7 +30,7 @@ namespace ORB_SLAM3
 
 long unsigned int Map::nNextId=0;
 
-Map::Map():mnMaxKFid(0),mnBigChangeIdx(0), mbImuInitialized(false), mnMapChange(0), mpFirstRegionKF(static_cast<KeyFrame*>(NULL)),
+Map::Map():mnMaxKFid(0),mnBigChangeIdx(0), mbImuInitialized(false), mnMapChange(0), mpFirstRegionKF(nullptr),
 mbFail(false), mIsInUse(false), mHasTumbnail(false), mbBad(false), mnMapChangeNotified(0), mbIsInertial(false), mbIMU_BA1(false), mbIMU_BA2(false)
 {
     mnId=nNextId++;
@@ -38,7 +38,7 @@ mbFail(false), mIsInUse(false), mHasTumbnail(false), mbBad(false), mnMapChangeNo
 }
 
 Map::Map(int initKFid):mnInitKFid(initKFid), mnMaxKFid(initKFid),/*mnLastLoopKFid(initKFid),*/ mnBigChangeIdx(0), mIsInUse(false),
-                       mHasTumbnail(false), mbBad(false), mbImuInitialized(false), mpFirstRegionKF(static_cast<KeyFrame*>(NULL)),
+                       mHasTumbnail(false), mbBad(false), mbImuInitialized(false), mpFirstRegionKF(nullptr),
                        mnMapChange(0), mbFail(false), mnMapChangeNotified(0), mbIsInertial(false), mbIMU_BA1(false), mbIMU_BA2(false)
 {
     mnId=nNextId++;
@@ -47,11 +47,14 @@ Map::Map(int initKFid):mnInitKFid(initKFid), mnMaxKFid(initKFid),/*mnLastLoopKFi
 
 Map::~Map()
 {
-    // R4b slice 1: dropping the owning set releases every MapPoint that no
-    // other strong holder (leaked KeyFrame slots, frames, pins) references.
+    // R4b: dropping the owning sets releases every MapPoint/KeyFrame that no
+    // other strong holder (frames, queues, pins, side tables) references.
+    // KF match slots hold MPs strongly and each KF holds mPrevKF/mpParent
+    // strongly, so the release cascades through the graph in dependency
+    // order once the external pins are gone (the cycle-bearing edges —
+    // observations, covisibility, children, mNextKF, loop/merge — are
+    // raw/weak by design and cannot keep the graph alive).
     mspMapPoints.clear();
-
-    //TODO: erase all keyframes from memory (KeyFrame is raw until slice 2)
     mspKeyFrames.clear();
 
     if(mThumbnail)
@@ -62,7 +65,7 @@ Map::~Map()
     mvpKeyFrameOrigins.clear();
 }
 
-void Map::AddKeyFrame(KeyFrame *pKF)
+void Map::AddKeyFrame(const KeyFramePtr& pKF)
 {
     unique_lock<mutex> lock(mMutexMap);
     if(mspKeyFrames.empty()){
@@ -109,7 +112,7 @@ void Map::EraseMapPoint(const MapPointPtr& pMP)
     // Delete the MapPoint
 }
 
-void Map::EraseKeyFrame(KeyFrame *pKF)
+void Map::EraseKeyFrame(const KeyFramePtr& pKF)
 {
     unique_lock<mutex> lock(mMutexMap);
     mspKeyFrames.erase(pKF);
@@ -117,18 +120,18 @@ void Map::EraseKeyFrame(KeyFrame *pKF)
     {
         if(pKF->mnId == mpKFlowerID->mnId)
         {
-            vector<KeyFrame*> vpKFs = vector<KeyFrame*>(mspKeyFrames.begin(),mspKeyFrames.end());
+            vector<KeyFramePtr> vpKFs = vector<KeyFramePtr>(mspKeyFrames.begin(),mspKeyFrames.end());
             sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
             mpKFlowerID = vpKFs[0];
         }
     }
     else
     {
-        mpKFlowerID = 0;
+        mpKFlowerID = nullptr;
     }
 
-    // TODO: This only erase the pointer.
-    // Delete the MapPoint
+    // R4b: dropping the owning reference IS the erase; the tombstone lives
+    // on through whatever other strong holders remain.
 }
 
 void Map::SetReferenceMapPoints(const vector<MapPointPtr> &vpMPs)
@@ -149,10 +152,10 @@ int Map::GetLastBigChangeIdx()
     return mnBigChangeIdx;
 }
 
-vector<KeyFrame*> Map::GetAllKeyFrames()
+vector<KeyFramePtr> Map::GetAllKeyFrames()
 {
     unique_lock<mutex> lock(mMutexMap);
-    return vector<KeyFrame*>(mspKeyFrames.begin(),mspKeyFrames.end());
+    return vector<KeyFramePtr>(mspKeyFrames.begin(),mspKeyFrames.end());
 }
 
 vector<MapPointPtr> Map::GetAllMapPoints()
@@ -201,7 +204,7 @@ long unsigned int Map::GetMaxKFid()
     return mnMaxKFid;
 }
 
-KeyFrame* Map::GetOriginKF()
+KeyFramePtr Map::GetOriginKF()
 {
     return mpKFinitial;
 }
@@ -218,15 +221,17 @@ void Map::SetStoredMap()
 
 void Map::clear()
 {
-    // R4b slice 1: no manual delete — releasing the owning set is the drop.
-    // MapPoints still referenced by the (leaked, raw) KeyFrames stay alive
-    // through those KF slots, which preserves the upstream tombstone reality.
+    // R4b: no manual delete — releasing the owning sets is the drop. With
+    // both classes shared and the cycle-bearing edges raw/weak, this now
+    // genuinely frees every KF/MP that no external strong holder (Tracking's
+    // trajectory references and frames, queues, LC channels, side tables)
+    // still pins; pinned tombstones are reclaimed later when those holders
+    // let go.
 
-    for(set<KeyFrame*>::iterator sit=mspKeyFrames.begin(), send=mspKeyFrames.end(); sit!=send; sit++)
+    for(set<KeyFramePtr>::iterator sit=mspKeyFrames.begin(), send=mspKeyFrames.end(); sit!=send; sit++)
     {
-        KeyFrame* pKF = *sit;
+        const KeyFramePtr& pKF = *sit;
         pKF->UpdateMap(static_cast<Map*>(NULL));
-//        delete *sit;
     }
 
     mspMapPoints.clear();
@@ -264,9 +269,9 @@ void Map::ApplyScaledRotation(const Sophus::SE3f &T, const float s, const bool b
     Eigen::Matrix3f Ryw = Tyw.rotationMatrix();
     Eigen::Vector3f tyw = Tyw.translation();
 
-    for(set<KeyFrame*>::iterator sit=mspKeyFrames.begin(); sit!=mspKeyFrames.end(); sit++)
+    for(set<KeyFramePtr>::iterator sit=mspKeyFrames.begin(); sit!=mspKeyFrames.end(); sit++)
     {
-        KeyFrame* pKF = *sit;
+        const KeyFramePtr& pKF = *sit;
         Sophus::SE3f Twc = pKF->GetPoseInverse();
         Twc.translation() *= s;
         Sophus::SE3f Tyc = Tyw*Twc;
@@ -376,8 +381,8 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
         {
             nMPWithoutObs++;
         }
-        map<KeyFrame*, std::tuple<int,int>> mpObs = pMPi->GetObservations();
-        for(map<KeyFrame*, std::tuple<int,int>>::iterator it= mpObs.begin(), end=mpObs.end(); it!=end; ++it)
+        map<KeyFramePtr, std::tuple<int,int>> mpObs = pMPi->GetObservations();
+        for(map<KeyFramePtr, std::tuple<int,int>>::iterator it= mpObs.begin(), end=mpObs.end(); it!=end; ++it)
         {
             if(it->first->GetMap() != this || it->first->isBad())
             {
@@ -413,14 +418,16 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
 
     // Backup of KeyFrames
     mvpBackupKeyFrames.clear();
-    for(KeyFrame* pKFi : mspKeyFrames)
+    for(const KeyFramePtr& pKFi : mspKeyFrames)
     {
         if(!pKFi || pKFi->isBad())
         {
             continue;
         }
 
-        mvpBackupKeyFrames.push_back(pKFi);
+        // Raw .get(): the backup vector keeps the pre-R4b archive layout
+        // (see Map.hpp); the owning shared_ptr lives in mspKeyFrames.
+        mvpBackupKeyFrames.push_back(pKFi.get());
         pKFi->PreSave(mspKeyFrames,mspMapPoints, spCams);
     }
 
@@ -440,12 +447,15 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
 
 void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long unsigned int, KeyFrame*>& mpKeyFrameId*/, map<unsigned int, GeometricCamera*> &mpCams)
 {
-    // R4b slice 1: boost allocated the MapPoints raw into the backup vector;
-    // wrap each exactly ONCE into its owning shared_ptr here (this is the
-    // single ownership hand-off point of the load path).
+    // R4b: boost allocated the MapPoints/KeyFrames raw into the backup
+    // vectors; wrap each exactly ONCE into its owning shared_ptr here (this
+    // is the single ownership hand-off point of the load path — it runs
+    // before any graph wiring, so shared_from_this() is valid everywhere
+    // downstream).
     for(MapPoint* pMPraw : mvpBackupMapPoints)
         mspMapPoints.insert(MapPointPtr(pMPraw));
-    std::copy(mvpBackupKeyFrames.begin(), mvpBackupKeyFrames.end(), std::inserter(mspKeyFrames, mspKeyFrames.begin()));
+    for(KeyFrame* pKFraw : mvpBackupKeyFrames)
+        mspKeyFrames.insert(KeyFramePtr(pKFraw));
 
     map<long unsigned int,MapPointPtr> mpMapPointId;
     for(const MapPointPtr& pMPi : mspMapPoints)
@@ -459,8 +469,8 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
         mpMapPointId[pMPi->mnId] = pMPi;
     }
 
-    map<long unsigned int, KeyFrame*> mpKeyFrameId;
-    for(KeyFrame* pKFi : mspKeyFrames)
+    map<long unsigned int, KeyFramePtr> mpKeyFrameId;
+    for(const KeyFramePtr& pKFi : mspKeyFrames)
     {
         if(!pKFi || pKFi->isBad())
         {
@@ -484,7 +494,7 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
         pMPi->PostLoad(mpKeyFrameId, mpMapPointId);
     }
 
-    for(KeyFrame* pKFi : mspKeyFrames)
+    for(const KeyFramePtr& pKFi : mspKeyFrames)
     {
         if(!pKFi || pKFi->isBad())
         {

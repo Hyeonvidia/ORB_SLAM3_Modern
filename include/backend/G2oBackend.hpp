@@ -54,10 +54,10 @@ public:
                                 GBAResult* pResult) const override;
 
     // ---- IMappingOptimizer --------------------------------------------------
-    void LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+    void LocalBundleAdjustment(KeyFramePtr pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                BAEpochs& epochs) const override;
-    void LocalInertialBA(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+    void LocalInertialBA(KeyFramePtr pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                          int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                          bool bLarge, bool bRecInit, BAEpochs& epochs) const override;
     void InertialOptimization(Map* pMap, Eigen::Matrix3d& Rwg, double& scale,
@@ -73,28 +73,28 @@ public:
                         GBAResult* pResult, BAEpochs& epochs) const override;
 
     // ---- ILoopOptimizer -----------------------------------------------------
-    int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPointPtr>& vpMatches1,
+    int OptimizeSim3(KeyFramePtr pKF1, KeyFramePtr pKF2, std::vector<MapPointPtr>& vpMatches1,
                      g2o::Sim3& g2oS12, float th2, bool bFixScale,
                      Eigen::Matrix<double,7,7>& mAcumHessian, bool bAllPoints) const override;
-    void OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+    void OptimizeEssentialGraph(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                 const KeyFrameAndPose& NonCorrectedSim3,
                                 const KeyFrameAndPose& CorrectedSim3,
-                                const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections,
+                                const std::map<KeyFramePtr, std::set<KeyFramePtr> >& LoopConnections,
                                 const bool& bFixScale,
                                 const std::map<MapPointPtr, unsigned long>& correctedRefs) const override;
-    void OptimizeEssentialGraph(KeyFrame* pCurKF, std::vector<KeyFrame*>& vpFixedKFs,
-                                std::vector<KeyFrame*>& vpFixedCorrectedKFs,
-                                std::vector<KeyFrame*>& vpNonFixedKFs,
+    void OptimizeEssentialGraph(KeyFramePtr pCurKF, std::vector<KeyFramePtr>& vpFixedKFs,
+                                std::vector<KeyFramePtr>& vpFixedCorrectedKFs,
+                                std::vector<KeyFramePtr>& vpNonFixedKFs,
                                 std::vector<MapPointPtr>& vpNonCorrectedMPs,
                                 MergeScratch& scratch) const override;
-    void OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+    void OptimizeEssentialGraph4DoF(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                     const KeyFrameAndPose& NonCorrectedSim3,
                                     const KeyFrameAndPose& CorrectedSim3,
-                                    const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections) const override;
-    void MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+                                    const std::map<KeyFramePtr, std::set<KeyFramePtr> >& LoopConnections) const override;
+    void MergeInertialBA(KeyFramePtr pCurrKF, KeyFramePtr pMergeKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                          KeyFrameAndPose& corrPoses, BAEpochs& epochs) const override;
-    void LocalBundleAdjustment(KeyFrame* pMainKF, std::vector<KeyFrame*> vpAdjustKF,
-                               std::vector<KeyFrame*> vpFixedKF, const std::atomic<bool>* pbStopFlag,
+    void LocalBundleAdjustment(KeyFramePtr pMainKF, std::vector<KeyFramePtr> vpAdjustKF,
+                               std::vector<KeyFramePtr> vpFixedKF, const std::atomic<bool>* pbStopFlag,
                                const BAEpochs& epochs) const override;
     void InertialOptimization(Map* pMap, Eigen::Vector3d& bg, Eigen::Vector3d& ba,
                               float priorG, float priorA) const override;

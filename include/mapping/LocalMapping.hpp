@@ -93,7 +93,7 @@ public:
     // Main function
     void Run();
 
-    void InsertKeyFrame(KeyFrame* pKF);
+    void InsertKeyFrame(KeyFramePtr pKF);
     void EmptyQueue();
 
     // Thread Synch
@@ -224,14 +224,14 @@ protected:
     LoopClosing* mpLoopCloser;
     Tracking* mpTracker;
 
-    std::list<KeyFrame*> mlNewKeyFrames;
+    std::list<KeyFramePtr> mlNewKeyFrames;
 
-    // P10-2: atomic (ledger race R5). Store-release in ProcessNewKeyFrame
-    // (pairs with the mMutexNewKFs handoff to make the Tracking-thread KF
-    // construction visible), load-acquire in GetCurrKFTime (the lock-free
-    // cross-thread reader via System::GetTimeFromIMUInit); all same-thread
-    // (LM) uses are relaxed loads.
-    std::atomic<KeyFrame*> mpCurrentKeyFrame;
+    // P10-2 made this atomic (ledger race R5); R4b slice 2 upgrades it to a
+    // mutex-guarded KeyFramePtr slot (SharedSlot, map/MapTypes.hpp): the
+    // .load()/.store() call sites survive verbatim, every load returns a
+    // strong pin (including GetCurrKFTime's cross-thread read via
+    // System::GetTimeFromIMUInit), and the slot pins the KF LM is working on.
+    SharedSlot<KeyFrame> mpCurrentKeyFrame;
 
     std::list<MapPointPtr> mlpRecentAddedMapPoints;
 

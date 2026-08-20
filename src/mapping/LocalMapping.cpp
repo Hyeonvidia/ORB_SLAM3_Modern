@@ -344,7 +344,7 @@ void LocalMapping::Run()
     SetFinish();
 }
 
-void LocalMapping::InsertKeyFrame(KeyFrame *pKF)
+void LocalMapping::InsertKeyFrame(KeyFramePtr pKF)
 {
     {
         unique_lock<mutex> lock(mMutexNewKFs);
@@ -474,15 +474,15 @@ void LocalMapping::CreateNewMapPoints()
     // For stereo inertial case
     if(mbMonocular)
         nn=30;
-    vector<KeyFrame*> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
+    vector<KeyFramePtr> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
 
     if (mbInertial)
     {
-        KeyFrame* pKF = mpCurrentKeyFrame.load(std::memory_order_relaxed);
+        KeyFramePtr pKF = mpCurrentKeyFrame.load(std::memory_order_relaxed);
         int count=0;
         while((vpNeighKFs.size()<=nn)&&(pKF->mPrevKF)&&(count++<nn))
         {
-            vector<KeyFrame*>::iterator it = std::find(vpNeighKFs.begin(), vpNeighKFs.end(), pKF->mPrevKF);
+            vector<KeyFramePtr>::iterator it = std::find(vpNeighKFs.begin(), vpNeighKFs.end(), pKF->mPrevKF);
             if(it==vpNeighKFs.end())
                 vpNeighKFs.push_back(pKF->mPrevKF);
             pKF = pKF->mPrevKF;
@@ -514,7 +514,7 @@ void LocalMapping::CreateNewMapPoints()
         if(i>0 && CheckNewKeyFrames())
             return;
 
-        KeyFrame* pKF2 = vpNeighKFs[i];
+        KeyFramePtr pKF2 = vpNeighKFs[i];
 
         GeometricCamera* pCamera1 = mpCurrentKeyFrame.load(std::memory_order_relaxed)->mpCamera, *pCamera2 = pKF2->mpCamera;
 
@@ -781,17 +781,17 @@ void LocalMapping::SearchInNeighbors()
 {
     // P5-2: per-call dedup scratch, externalized from KeyFrame::mnFuseTargetForKF
     // and MapPoint::mnFuseCandidateForKF (their lifetime was one call anyway).
-    set<KeyFrame*> sFuseTargets;
+    set<KeyFramePtr> sFuseTargets;
     set<MapPointPtr> sFuseCandidates;
     // Retrieve neighbor keyframes
     int nn = 10;
     if(mbMonocular)
         nn=30;
-    const vector<KeyFrame*> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
-    vector<KeyFrame*> vpTargetKFs;
-    for(vector<KeyFrame*>::const_iterator vit=vpNeighKFs.begin(), vend=vpNeighKFs.end(); vit!=vend; vit++)
+    const vector<KeyFramePtr> vpNeighKFs = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetBestCovisibilityKeyFrames(nn);
+    vector<KeyFramePtr> vpTargetKFs;
+    for(vector<KeyFramePtr>::const_iterator vit=vpNeighKFs.begin(), vend=vpNeighKFs.end(); vit!=vend; vit++)
     {
-        KeyFrame* pKFi = *vit;
+        KeyFramePtr pKFi = *vit;
         if(pKFi->isBad() || sFuseTargets.count(pKFi))
         {
             continue;
@@ -804,10 +804,10 @@ void LocalMapping::SearchInNeighbors()
     // Extend to some second neighbors if abort is not requested
     for(int i=0, imax=vpTargetKFs.size(); i<imax; i++)
     {
-        const vector<KeyFrame*> vpSecondNeighKFs = vpTargetKFs[i]->GetBestCovisibilityKeyFrames(20);
-        for(vector<KeyFrame*>::const_iterator vit2=vpSecondNeighKFs.begin(), vend2=vpSecondNeighKFs.end(); vit2!=vend2; vit2++)
+        const vector<KeyFramePtr> vpSecondNeighKFs = vpTargetKFs[i]->GetBestCovisibilityKeyFrames(20);
+        for(vector<KeyFramePtr>::const_iterator vit2=vpSecondNeighKFs.begin(), vend2=vpSecondNeighKFs.end(); vit2!=vend2; vit2++)
         {
-            KeyFrame* pKFi2 = *vit2;
+            KeyFramePtr pKFi2 = *vit2;
             if(pKFi2->isBad() || sFuseTargets.count(pKFi2) || pKFi2->mnId==mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId)
             {
                 continue;
@@ -822,7 +822,7 @@ void LocalMapping::SearchInNeighbors()
     // Extend to temporal neighbors
     if(mbInertial)
     {
-        KeyFrame* pKFi = mpCurrentKeyFrame.load(std::memory_order_relaxed)->mPrevKF;
+        KeyFramePtr pKFi = mpCurrentKeyFrame.load(std::memory_order_relaxed)->mPrevKF;
         while(vpTargetKFs.size()<20 && pKFi)
         {
             if(pKFi->isBad() || sFuseTargets.count(pKFi))
@@ -839,9 +839,9 @@ void LocalMapping::SearchInNeighbors()
     // Search matches by projection from current KF in target KFs
     ORBmatcher matcher;
     vector<MapPointPtr> vpMapPointMatches = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMapPointMatches();
-    for(vector<KeyFrame*>::iterator vit=vpTargetKFs.begin(), vend=vpTargetKFs.end(); vit!=vend; vit++)
+    for(vector<KeyFramePtr>::iterator vit=vpTargetKFs.begin(), vend=vpTargetKFs.end(); vit!=vend; vit++)
     {
-        KeyFrame* pKFi = *vit;
+        KeyFramePtr pKFi = *vit;
 
         matcher.Fuse(pKFi,vpMapPointMatches);
         if(pKFi->NLeft != -1) matcher.Fuse(pKFi,vpMapPointMatches,true);
@@ -855,9 +855,9 @@ void LocalMapping::SearchInNeighbors()
     vector<MapPointPtr> vpFuseCandidates;
     vpFuseCandidates.reserve(vpTargetKFs.size()*vpMapPointMatches.size());
 
-    for(vector<KeyFrame*>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
+    for(vector<KeyFramePtr>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
     {
-        KeyFrame* pKFi = *vitKF;
+        KeyFramePtr pKFi = *vitKF;
 
         vector<MapPointPtr> vpMapPointsKFi = pKFi->GetMapPointMatches();
 
@@ -968,26 +968,21 @@ void LocalMapping::Release()
             // initialization producers. Trace deque cleared under the same lock
             // (P10-0 shadow-deque contract).
             //
-            // P11-A (B3, DIVERGENCES #29): raw delete demoted to the #19
-            // pattern (SetBadFlag -> isBad()-guarded delete), mirroring
-            // PurgeNewKeyFramesAfterInertialInit below. The raw delete left
-            // every alias of the queued (never-admitted) KF dangling:
-            // Tracking::mpLastKeyFrame / Frame::mpLastKeyFrame, and the
-            // stereo/RGBD MapPoint observations created in CreateNewKeyFrame.
-            // For un-admitted KFs SetBadFlag's Map/KFDB erases are no-ops and
-            // the observation detach removes the dangling MP back-references;
-            // its early returns (map-origin KF, mbNotErase) are practically
-            // unreachable here, and if reached we leak instead of UAF --
-            // identical in kind to #19/#22/#23/#25/#26, hence unconditional.
+            // P11-A (B3, DIVERGENCES #29) demoted the raw delete to the #19
+            // pattern. R4b slice 2 dissolves that leak-vs-UAF reasoning
+            // entirely: the queue holds strong KeyFramePtrs, so disposal is
+            // SetBadFlag (graph detach; no-op Map/KFDB erases for the
+            // never-admitted) + dropping the reference — the KF is freed
+            // when Tracking's own aliases (mpLastKeyFrame slot, frame
+            // members) let go, and simply lives on if SetBadFlag's early
+            // returns fired (the old "leak" arm, now just a pinned object).
             // SetBadFlag under mMutexNewKFs is safe:
             // it takes only KeyFrame/Map/KFDB-layer mutexes, and no path
             // acquires mMutexNewKFs while holding those (P10-2 R3 precedent).
             unique_lock<mutex> lock3(mMutexNewKFs);
-            for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
+            for(list<KeyFramePtr>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
             {
                 (*lit)->SetBadFlag();
-                if((*lit)->isBad())
-                    delete *lit;
             }
             mlNewKeyFrames.clear();
             if(TraceQueueOn())
@@ -1039,7 +1034,7 @@ void LocalMapping::KeyFrameCulling()
     // We only consider close stereo points
     const int Nd = 21;
     mpCurrentKeyFrame.load(std::memory_order_relaxed)->UpdateBestCovisibles();
-    vector<KeyFrame*> vpLocalKeyFrames = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetVectorCovisibleKeyFrames();
+    vector<KeyFramePtr> vpLocalKeyFrames = mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetVectorCovisibleKeyFrames();
 
     float redundant_th;
     if(!mbInertial)
@@ -1059,7 +1054,7 @@ void LocalMapping::KeyFrameCulling()
     if (mbInertial)
     {
         int count = 0;
-        KeyFrame* aux_KF = mpCurrentKeyFrame.load(std::memory_order_relaxed);
+        KeyFramePtr aux_KF = mpCurrentKeyFrame.load(std::memory_order_relaxed);
         while(count<Nd && aux_KF->mPrevKF)
         {
             aux_KF = aux_KF->mPrevKF;
@@ -1070,10 +1065,10 @@ void LocalMapping::KeyFrameCulling()
 
 
 
-    for(vector<KeyFrame*>::iterator vit=vpLocalKeyFrames.begin(), vend=vpLocalKeyFrames.end(); vit!=vend; vit++)
+    for(vector<KeyFramePtr>::iterator vit=vpLocalKeyFrames.begin(), vend=vpLocalKeyFrames.end(); vit!=vend; vit++)
     {
         count++;
-        KeyFrame* pKF = *vit;
+        KeyFramePtr pKF = *vit;
 
         if((pKF->mnId==pKF->GetMap()->GetInitKFid()) || pKF->isBad())
         {
@@ -1104,11 +1099,11 @@ void LocalMapping::KeyFrameCulling()
                         const int &scaleLevel = (pKF -> NLeft == -1) ? pKF->mvKeysUn[i].octave
                                                                      : (i < pKF -> NLeft) ? pKF -> mvKeys[i].octave
                                                                                           : pKF -> mvKeysRight[i].octave;
-                        const map<KeyFrame*, tuple<int,int>> observations = pMP->GetObservations();
+                        const map<KeyFramePtr, tuple<int,int>> observations = pMP->GetObservations();
                         int nObs=0;
-                        for(map<KeyFrame*, tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+                        for(map<KeyFramePtr, tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
                         {
-                            KeyFrame* pKFi = mit->first;
+                            KeyFramePtr pKFi = mit->first;
                             if(pKFi==pKF)
                                 continue;
                             tuple<int,int> indexes = mit->second;
@@ -1153,25 +1148,28 @@ void LocalMapping::KeyFrameCulling()
                 if(pKF->mnId>(mpCurrentKeyFrame.load(std::memory_order_relaxed)->mnId-2))
                     continue;
 
-                if(pKF->mPrevKF && pKF->mNextKF)
+                // R4b slice 2: mNextKF is weak — pin it once for the whole
+                // rewire (an expired next == "already rewired away": skip).
+                KeyFramePtr pNextKF = pKF->mNextKF.lock();
+                if(pKF->mPrevKF && pNextKF)
                 {
-                    const float t = pKF->mNextKF->mTimeStamp-pKF->mPrevKF->mTimeStamp;
+                    const float t = pNextKF->mTimeStamp-pKF->mPrevKF->mTimeStamp;
 
                     if((bInitImu && (pKF->mnId<last_ID) && t<3.) || (t<0.5))
                     {
-                        pKF->mNextKF->mpImuPreintegrated->MergePrevious(pKF->mpImuPreintegrated);
-                        pKF->mNextKF->mPrevKF = pKF->mPrevKF;
-                        pKF->mPrevKF->mNextKF = pKF->mNextKF;
-                        pKF->mNextKF = NULL;
+                        pNextKF->mpImuPreintegrated->MergePrevious(pKF->mpImuPreintegrated);
+                        pNextKF->mPrevKF = pKF->mPrevKF;
+                        pKF->mPrevKF->mNextKF = pNextKF;
+                        pKF->mNextKF.reset();
                         pKF->mPrevKF = NULL;
                         pKF->SetBadFlag();
                     }
                     else if(!mpCurrentKeyFrame.load(std::memory_order_relaxed)->GetMap()->GetIniertialBA2() && ((pKF->GetImuPosition()-pKF->mPrevKF->GetImuPosition()).norm()<0.02) && (t<3))
                     {
-                        pKF->mNextKF->mpImuPreintegrated->MergePrevious(pKF->mpImuPreintegrated);
-                        pKF->mNextKF->mPrevKF = pKF->mPrevKF;
-                        pKF->mPrevKF->mNextKF = pKF->mNextKF;
-                        pKF->mNextKF = NULL;
+                        pNextKF->mpImuPreintegrated->MergePrevious(pKF->mpImuPreintegrated);
+                        pNextKF->mPrevKF = pKF->mPrevKF;
+                        pKF->mPrevKF->mNextKF = pNextKF;
+                        pKF->mNextKF.reset();
                         pKF->mPrevKF = NULL;
                         pKF->SetBadFlag();
                     }
@@ -1369,14 +1367,13 @@ void LocalMapping::PurgeNewKeyFramesAfterInertialInit()
     // path acquires mMutexNewKFs while holding those. Trace deque cleared
     // under the same lock (P10-0 shadow-deque contract).
     unique_lock<mutex> lock(mMutexNewKFs);
-    for(list<KeyFrame*>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
+    for(list<KeyFramePtr>::iterator lit = mlNewKeyFrames.begin(), lend=mlNewKeyFrames.end(); lit!=lend; lit++)
     {
-        // DIVERGENCES #19: SetBadFlag early-returns for the map-origin KF and
-        // under mbNotErase, leaving the KF registered -- deleting it then
-        // would dangle mspKeyFrames. Leak the (pathological) survivor instead.
+        // DIVERGENCES #19 guarded a raw delete here; R4b slice 2 retires it:
+        // disposal is SetBadFlag + dropping the strong queue reference. A
+        // SetBadFlag early-return survivor (map-origin KF, mbNotErase) just
+        // stays alive through its remaining pins — no leak-vs-UAF choice.
         (*lit)->SetBadFlag();
-        if((*lit)->isBad())
-            delete *lit;
     }
     mlNewKeyFrames.clear();
     if(TraceQueueOn())
@@ -1396,7 +1393,7 @@ double LocalMapping::GetCurrKFTime()
 {
     // P10-2 (R5): called lock-free from System::GetTimeFromIMUInit;
     // load-acquire pairs with ProcessNewKeyFrame's store-release.
-    KeyFrame* pKF = mpCurrentKeyFrame.load(std::memory_order_acquire);
+    KeyFramePtr pKF = mpCurrentKeyFrame.load(std::memory_order_acquire);
     if (pKF)
     {
         return pKF->mTimeStamp;

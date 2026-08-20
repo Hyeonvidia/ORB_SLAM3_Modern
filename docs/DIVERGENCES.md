@@ -103,6 +103,11 @@
     시(사실상 불가) UAF 대신 누수. #19/#22/#23/#25/#26과 동급이라
     **무조건부**(FixLevel 플래그 아님). 정상 경로 동작 동일, 병리 창
     전용 강등.
+    - **R4b 슬라이스 2 (2026-08-20) 후속**: 큐가 `list<KeyFramePtr>`가
+      되면서 #19/#29의 isBad-가드 delete 2곳 모두 은퇴 — 처분은
+      SetBadFlag + 참조 드롭이고, 해제는 Tracking 별칭(이제 강한 핀)이
+      놓일 때 refcount로 일어난다. leak-vs-UAF 추론 자체가 소멸
+      (docs/OWNERSHIP.md "R4b 슬라이스 2").
 
 ## 계승 결함 (bug-for-bug 보존, FixLevel 후보)
 

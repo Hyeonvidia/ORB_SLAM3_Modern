@@ -52,14 +52,14 @@ class MapPoint;
 // see docs/OWNERSHIP.md for the inherited concurrency contracts.
 struct BAEpochs
 {
-    std::map<KeyFrame*, unsigned long> localForKF;   // was KeyFrame::mnBALocalForKF
-    std::map<KeyFrame*, unsigned long> fixedForKF;   // was KeyFrame::mnBAFixedForKF
+    std::map<KeyFramePtr, unsigned long> localForKF;   // was KeyFrame::mnBALocalForKF
+    std::map<KeyFramePtr, unsigned long> fixedForKF;   // was KeyFrame::mnBAFixedForKF
     std::map<MapPointPtr, unsigned long> mpLocalForKF; // was MapPoint::mnBALocalForKF
 
     // Lookup with default 0: the old member fields were zero-initialized in
     // the KeyFrame/MapPoint constructors, so an absent entry must compare
     // exactly like a never-stamped field.
-    // Key is either a raw KeyFrame* or a MapPointPtr (R4b slice 1). A
+    // Key is either a raw KeyFramePtr or a MapPointPtr (R4b slice 1). A
     // MapPointPtr key is a deliberate STRONG pin: a tombstoned MapPoint
     // stamped here stays alive with its epoch mark, so stale-entry address
     // reuse (freed MP, new MP at the same address) cannot occur.

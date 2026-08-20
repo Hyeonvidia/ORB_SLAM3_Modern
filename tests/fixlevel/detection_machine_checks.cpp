@@ -38,6 +38,7 @@
 #include "closing/LoopClosing.hpp"
 
 #include <cstdio>
+#include <memory>
 #include <cstdlib>
 #include <mutex>
 
@@ -75,14 +76,14 @@ struct DetectionMachineTestAccess {
 
     // Mirrors LoopClosing::PopNewKeyFrame's observable effect on the
     // machine's inputs: current-KF adoption + its SetNotErase latch.
-    static void PopKF(LoopClosing& lc, KeyFrame* pKF)
+    static void PopKF(LoopClosing& lc, KeyFramePtr pKF)
     {
         lc.mpCurrentKF = pKF;
         pKF->SetNotErase();
     }
 
     static bool Seed(LoopClosing& lc, const char* ch, Channel& c,
-                     KeyFrame* pMatched, int nCoincidences)
+                     KeyFramePtr pMatched, int nCoincidences)
     {
         return lc.mPlaceRec.ChannelBoWSeed(
             ch, c, pMatched, nCoincidences, g2o::Sim3(),
@@ -141,15 +142,17 @@ void loopHygiene()
     auto& loopCh = Access::LoopCh(*host);
     auto& mergeCh = Access::MergeCh(*host);
 
-    TestKF kfC1(111), kfC2(112);
-    TestKF kfM1(211), kfM2(212);
+    auto kfC1 = std::make_shared<TestKF>(111);
+    auto kfC2 = std::make_shared<TestKF>(112);
+    auto kfM1 = std::make_shared<TestKF>(211);
+    auto kfM2 = std::make_shared<TestKF>(212);
 
     // a1: BoW seed latches the matched KF and sets detected at cnt>=3.
-    Access::PopKF(*host, &kfC1);
-    CHECK(Access::Seed(*host, "loop", loopCh, &kfM1, 3));
+    Access::PopKF(*host, kfC1);
+    CHECK(Access::Seed(*host, "loop", loopCh, kfM1, 3));
     CHECK(loopCh.detected);
     CHECK(loopCh.numCoincidences == 3);
-    CHECK(kfM1.Latched());
+    CHECK(kfM1->Latched());
     std::fprintf(stderr, "ok  a1_seed_latches_and_detects\n");
 
     // a2: loop reffine-fail clears detected — the production call-site
@@ -161,7 +164,7 @@ void loopHygiene()
     std::fprintf(stderr, "ok  a2_loop_decay_clears_detected\n");
 
     // a3: merge twin behaves identically.
-    CHECK(Access::Seed(*host, "merge", mergeCh, &kfM2, 3));
+    CHECK(Access::Seed(*host, "merge", mergeCh, kfM2, 3));
     CHECK(mergeCh.detected);
     Access::Decay(*host, "merge", mergeCh, /*bClearDetected=*/true);
     CHECK(!mergeCh.detected);
@@ -170,15 +173,15 @@ void loopHygiene()
     // a4: scale-abort guard replica (LoopClosing.cpp Run) fires on a
     // DETECTED hypothesis and the real wipe runs: the escaping hypothesis
     // is discarded (counters, flag, latches).
-    Access::PopKF(*host, &kfC2);
-    Access::Seed(*host, "loop", loopCh, &kfM1, 3);
+    Access::PopKF(*host, kfC2);
+    Access::Seed(*host, "loop", loopCh, kfM1, 3);
     CHECK(loopCh.detected);
     if (Access::PR(*host).LoopCh().detected)
         Access::PR(*host).WipeLoopOnMergePriority();
     CHECK(loopCh.numCoincidences == 0);
     CHECK(!loopCh.detected);
-    CHECK(!kfM1.Latched());           // wipe released the matched latch
-    CHECK(!kfC2.Latched());           // ...and the anchor latch
+    CHECK(!kfM1->Latched());           // wipe released the matched latch
+    CHECK(!kfC2->Latched());           // ...and the anchor latch
     std::fprintf(stderr, "ok  a4_scale_abort_wipes_loop\n");
 }
 
@@ -190,33 +193,37 @@ void latchHygiene()
     LoopClosing* host = MakeHost();
     auto& loopCh = Access::LoopCh(*host);
 
-    TestKF kfC1(121), kfC2(122), kfC3(123);
-    TestKF kfA(221), kfB(222), kfC(223);
+    auto kfC1 = std::make_shared<TestKF>(121);
+    auto kfC2 = std::make_shared<TestKF>(122);
+    auto kfC3 = std::make_shared<TestKF>(123);
+    auto kfA = std::make_shared<TestKF>(221);
+    auto kfB = std::make_shared<TestKF>(222);
+    auto kfC = std::make_shared<TestKF>(223);
 
     // b1: re-seed releases the old matched latch AND the old anchor latch,
     // and zeroes the carried numNotFound (L1).
-    Access::PopKF(*host, &kfC1);
-    Access::Seed(*host, "loop", loopCh, &kfA, 2);
-    CHECK(kfA.Latched());
-    CHECK(kfC1.Latched());            // pop latch = anchor latch
+    Access::PopKF(*host, kfC1);
+    Access::Seed(*host, "loop", loopCh, kfA, 2);
+    CHECK(kfA->Latched());
+    CHECK(kfC1->Latched());            // pop latch = anchor latch
     Access::Decay(*host, "loop", loopCh, /*bClearDetected=*/true);
     CHECK(loopCh.numNotFound == 1);
-    Access::PopKF(*host, &kfC2);
-    Access::Seed(*host, "loop", loopCh, &kfB, 2);
-    CHECK(!kfA.Latched());            // old matched released
-    CHECK(!kfC1.Latched());           // old anchor released
-    CHECK(kfB.Latched());
+    Access::PopKF(*host, kfC2);
+    Access::Seed(*host, "loop", loopCh, kfB, 2);
+    CHECK(!kfA->Latched());            // old matched released
+    CHECK(!kfC1->Latched());           // old anchor released
+    CHECK(kfB->Latched());
     CHECK(loopCh.numNotFound == 0);   // carryover zeroed
     CHECK(loopCh.numCoincidences == 2);
     std::fprintf(stderr, "ok  b1_reseed_releases_old_latches\n");
 
     // b2: cnt==0 seed is refused — no orphan latch, existing hypothesis
     // (and its latches) intact (L2).
-    Access::PopKF(*host, &kfC3);
-    CHECK(!Access::Seed(*host, "loop", loopCh, &kfC, 0));
-    CHECK(!kfC.Latched());            // no latch taken
-    CHECK(loopCh.matchedKF == &kfB);  // prior hypothesis survives
-    CHECK(kfB.Latched());
+    Access::PopKF(*host, kfC3);
+    CHECK(!Access::Seed(*host, "loop", loopCh, kfC, 0));
+    CHECK(!kfC->Latched());            // no latch taken
+    CHECK(loopCh.matchedKF == kfB);  // prior hypothesis survives
+    CHECK(kfB->Latched());
     CHECK(loopCh.numCoincidences == 2);
     std::fprintf(stderr, "ok  b2_cnt0_seed_refused\n");
 }
@@ -239,33 +246,36 @@ void resetWipe()
     auto& loopCh = Access::LoopCh(*host);
     auto& mergeCh = Access::MergeCh(*host);
 
-    TestKF kfC1(131), kfC2(132);
-    TestKF kfM1(231), kfM2(232), kfM3(233);
+    auto kfC1 = std::make_shared<TestKF>(131);
+    auto kfC2 = std::make_shared<TestKF>(132);
+    auto kfM1 = std::make_shared<TestKF>(231);
+    auto kfM2 = std::make_shared<TestKF>(232);
+    auto kfM3 = std::make_shared<TestKF>(233);
 
     // c2: full reset wipes BOTH channels — counters, detected, latches.
-    Access::PopKF(*host, &kfC1);
-    Access::Seed(*host, "loop", loopCh, &kfM1, 3);
-    Access::Seed(*host, "merge", mergeCh, &kfM2, 1);
+    Access::PopKF(*host, kfC1);
+    Access::Seed(*host, "loop", loopCh, kfM1, 3);
+    Access::Seed(*host, "merge", mergeCh, kfM2, 1);
     CHECK(loopCh.detected);
-    CHECK(kfM1.Latched() && kfM2.Latched());
+    CHECK(kfM1->Latched() && kfM2->Latched());
     Access::FireResetFull(*host);
     CHECK(loopCh.numCoincidences == 0);
     CHECK(!loopCh.detected);
     CHECK(mergeCh.numCoincidences == 0);
     CHECK(!mergeCh.detected);
-    CHECK(!kfM1.Latched());
-    CHECK(!kfM2.Latched());
-    CHECK(!kfC1.Latched());
+    CHECK(!kfM1->Latched());
+    CHECK(!kfM2->Latched());
+    CHECK(!kfC1->Latched());
     std::fprintf(stderr, "ok  c2_full_reset_wipes_channels\n");
 
     // c3: active-map reset wipes the same way (both branches).
-    Access::PopKF(*host, &kfC2);
-    Access::Seed(*host, "loop", loopCh, &kfM3, 2);
-    CHECK(kfM3.Latched());
+    Access::PopKF(*host, kfC2);
+    Access::Seed(*host, "loop", loopCh, kfM3, 2);
+    CHECK(kfM3->Latched());
     Access::FireResetActiveMap(*host);
     CHECK(loopCh.numCoincidences == 0);
     CHECK(!loopCh.detected);
-    CHECK(!kfM3.Latched());
+    CHECK(!kfM3->Latched());
     std::fprintf(stderr, "ok  c3_active_map_reset_wipes_channels\n");
 }
 

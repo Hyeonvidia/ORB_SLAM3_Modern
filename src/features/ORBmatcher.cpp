@@ -219,7 +219,7 @@ namespace ORB_SLAM3
             return 4.0;
     }
 
-    int ORBmatcher::SearchByBoW(KeyFrame* pKF,Frame &F, vector<MapPointPtr> &vpMapPointMatches)
+    int ORBmatcher::SearchByBoW(KeyFramePtr pKF,Frame &F, vector<MapPointPtr> &vpMapPointMatches)
     {
         const vector<MapPointPtr> vpMapPointsKF = pKF->GetMapPointMatches();
 
@@ -425,7 +425,7 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByProjection(KeyFrame* pKF, Sophus::Sim3f &Scw, const vector<MapPointPtr> &vpPoints,
+    int ORBmatcher::SearchByProjection(KeyFramePtr pKF, Sophus::Sim3f &Scw, const vector<MapPointPtr> &vpPoints,
                                        vector<MapPointPtr> &vpMatched, int th, float ratioHamming)
     {
         // Get Calibration Parameters for later projection
@@ -534,8 +534,8 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByProjection(KeyFrame* pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPointPtr> &vpPoints, const std::vector<KeyFrame*> &vpPointsKFs,
-                                       std::vector<MapPointPtr> &vpMatched, std::vector<KeyFrame*> &vpMatchedKF, int th, float ratioHamming)
+    int ORBmatcher::SearchByProjection(KeyFramePtr pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPointPtr> &vpPoints, const std::vector<KeyFramePtr> &vpPointsKFs,
+                                       std::vector<MapPointPtr> &vpMatched, std::vector<KeyFramePtr> &vpMatchedKF, int th, float ratioHamming)
     {
         // Get Calibration Parameters for later projection
         const float &fx = pKF->fx;
@@ -556,7 +556,7 @@ namespace ORB_SLAM3
         for(int iMP=0, iendMP=vpPoints.size(); iMP<iendMP; iMP++)
         {
             MapPointPtr pMP = vpPoints[iMP];
-            KeyFrame* pKFi = vpPointsKFs[iMP];
+            KeyFramePtr pKFi = vpPointsKFs[iMP];
 
             // Discard Bad MapPoints and already found
             if(pMP->isBad() || spAlreadyFound.count(pMP))
@@ -767,7 +767,7 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPointPtr> &vpMatches12)
+    int ORBmatcher::SearchByBoW(KeyFramePtr pKF1, KeyFramePtr pKF2, vector<MapPointPtr> &vpMatches12)
     {
         const vector<cv::KeyPoint> &vKeysUn1 = pKF1->mvKeysUn;
         const DBoW2::FeatureVector &vFeatVec1 = pKF1->mFeatVec;
@@ -913,7 +913,7 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2,
+    int ORBmatcher::SearchForTriangulation(KeyFramePtr pKF1, KeyFramePtr pKF2,
                                            vector<pair<size_t, size_t> > &vMatchedPairs, const bool bOnlyStereo, const bool bCoarse)
     {
         const DBoW2::FeatureVector &vFeatVec1 = pKF1->mFeatVec;
@@ -1154,7 +1154,7 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPointPtr> &vpMapPoints, const float th, const bool bRight)
+    int ORBmatcher::Fuse(KeyFramePtr pKF, const vector<MapPointPtr> &vpMapPoints, const float th, const bool bRight)
     {
         GeometricCamera* pCamera;
         Sophus::SE3f Tcw;
@@ -1346,7 +1346,7 @@ namespace ORB_SLAM3
         return nFused;
     }
 
-    int ORBmatcher::Fuse(KeyFrame *pKF, Sophus::Sim3f &Scw, const vector<MapPointPtr> &vpPoints, float th, vector<MapPointPtr> &vpReplacePoint)
+    int ORBmatcher::Fuse(KeyFramePtr pKF, Sophus::Sim3f &Scw, const vector<MapPointPtr> &vpPoints, float th, vector<MapPointPtr> &vpReplacePoint)
     {
         // Get Calibration Parameters for later projection
         const float &fx = pKF->fx;
@@ -1680,7 +1680,7 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByProjection(Frame &CurrentFrame, KeyFrame *pKF, const set<MapPointPtr> &sAlreadyFound, const float th , const int ORBdist)
+    int ORBmatcher::SearchByProjection(Frame &CurrentFrame, KeyFramePtr pKF, const set<MapPointPtr> &sAlreadyFound, const float th , const int ORBdist)
     {
         int nmatches = 0;
 

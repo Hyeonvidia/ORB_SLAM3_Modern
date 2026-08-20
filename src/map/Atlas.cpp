@@ -123,7 +123,7 @@ void Atlas::SetViewer(Viewer* pViewer)
 // while holding a Map/KeyFrame-layer mutex, and callers holding
 // mMutexMapUpdate (e.g. CreateNewKeyFrame -> AddKeyFrame) follow the
 // existing MapUpdate -> Atlas order (ImuInitializer precedent).
-void Atlas::AddKeyFrame(KeyFrame* pKF)
+void Atlas::AddKeyFrame(KeyFramePtr pKF)
 {
     unique_lock<mutex> lock(mMutexAtlas);
     Map* pMapKF = pKF->GetMap();
@@ -218,7 +218,7 @@ long unsigned Atlas::KeyFramesInMap()
     return mpCurrentMap->KeyFramesInMap();
 }
 
-std::vector<KeyFrame*> Atlas::GetAllKeyFrames()
+std::vector<KeyFramePtr> Atlas::GetAllKeyFrames()
 {
     unique_lock<mutex> lock(mMutexAtlas);
     return mpCurrentMap->GetAllKeyFrames();
@@ -438,14 +438,14 @@ long unsigned int Atlas::GetNumLivedMP() {
     return num;
 }
 
-map<long unsigned int, KeyFrame*> Atlas::GetAtlasKeyframes()
+map<long unsigned int, KeyFramePtr> Atlas::GetAtlasKeyframes()
 {
-    map<long unsigned int, KeyFrame*> mpIdKFs;
+    map<long unsigned int, KeyFramePtr> mpIdKFs;
     for(Map* pMap_i : mvpBackupMaps)
     {
-        vector<KeyFrame*> vpKFs_Mi = pMap_i->GetAllKeyFrames();
+        vector<KeyFramePtr> vpKFs_Mi = pMap_i->GetAllKeyFrames();
 
-        for(KeyFrame* pKF_j_Mi : vpKFs_Mi)
+        for(KeyFramePtr pKF_j_Mi : vpKFs_Mi)
         {
             mpIdKFs[pKF_j_Mi->mnId] = pKF_j_Mi;
         }

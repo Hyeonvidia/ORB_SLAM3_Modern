@@ -164,7 +164,7 @@ std::string SerializeInertialOptimizationInput(const ImuChainFixture& fx,
 
     // Per-KF stored state, read back through the optimizer's accessors.
     for (int k = 0; k < ImuChainFixture::kNumKFs; k++) {
-        ORB_SLAM3::KeyFrame* pKF = fx.kf(k);
+        ORB_SLAM3::KeyFramePtr pKF = fx.kf(k);
         os << "kf " << pKF->mnId << '\n';
         AppendPose(os, "tcw", pKF->GetPose().cast<double>());
         AppendVec3(os, "twb", pKF->GetImuPosition().cast<double>());
@@ -342,7 +342,7 @@ std::string MakeInertialBiasRecord(const std::string& function,
 std::string SerializePoseInertialInput(const PoseInertialFixture& fx)
 {
     const ORB_SLAM3::Frame& F = fx.frame;
-    ORB_SLAM3::KeyFrame* pKF = fx.kf();
+    ORB_SLAM3::KeyFramePtr pKF = fx.kf();
 
     std::ostringstream os;
     os << "INPUT pose_inertial_lastkf v1\n";

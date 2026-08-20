@@ -111,8 +111,8 @@ public:
         int  numCoincidences = 0;
         int  numNotFound = 0;
         bool detected = false;
-        KeyFrame* lastCurrentKF = nullptr;   // upstream left these uninitialized;
-        KeyFrame* matchedKF = nullptr;       // nullptr init is strictly safer and unobservable
+        KeyFramePtr lastCurrentKF = nullptr;   // upstream left these uninitialized;
+        KeyFramePtr matchedKF = nullptr;       // nullptr init is strictly safer and unobservable
         g2o::Sim3 slw;
         std::vector<MapPointPtr> mps;
         std::vector<MapPointPtr> matchedMps;
@@ -154,10 +154,10 @@ private:
     friend struct DetectionMachineTestAccess;
 
     //Methods to implement the new place recognition algorithm
-    bool DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
+    bool DetectAndReffineSim3FromLastKF(KeyFramePtr pCurrentKF, KeyFramePtr pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
                                         std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs);
-    bool DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, const char* chName, DetectionChannel &ch);
-    bool DetectCommonRegionsFromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
+    bool DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBowCand, const char* chName, DetectionChannel &ch);
+    bool DetectCommonRegionsFromLastKF(KeyFramePtr pCurrentKF, KeyFramePtr pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
                                             std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs);
 
     // P9-4: the ONLY mutators of DetectionChannel state after construction
@@ -181,11 +181,11 @@ private:
     // BoW commit block ("bow-seed"): seeds/overwrites the hypothesis. Does
     // NOT SetErase the previous anchor/matched KF (latch leak L1, upstream)
     // and does NOT reset numNotFound. Returns the new detected flag.
-    bool ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFrame* pBestMatchedKF,
+    bool ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFramePtr pBestMatchedKF,
                         int nBestNumCoincidences, const g2o::Sim3& g2oBestScw,
                         const std::vector<MapPointPtr>& vpBestMapPoints,
                         const std::vector<MapPointPtr>& vpBestMatchedMapPoints);
-    int FindMatchesByProjection(KeyFrame* pCurrentKF, KeyFrame* pMatchedKFw, g2o::Sim3 &g2oScw,
+    int FindMatchesByProjection(KeyFramePtr pCurrentKF, KeyFramePtr pMatchedKFw, g2o::Sim3 &g2oScw,
                                 std::set<MapPointPtr> &spMatchedMPinOrigin, std::vector<MapPointPtr> &vpMapPoints,
                                 std::vector<MapPointPtr> &vpMatchedMapPoints);
 

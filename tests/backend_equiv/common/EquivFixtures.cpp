@@ -303,14 +303,14 @@ ImuChainFixture MakeImuChainFixture(ImuChainVariant variant,
     const Sophus::SE3d TcbD = Tbc.cast<double>().inverse();
     auto setupKF = [&](int k, const Eigen::Matrix3d& Rwb,
                        const Eigen::Vector3d& pwb, const Eigen::Vector3d& vw) {
-        ORB_SLAM3::KeyFrame* pKF = fx.kfBlock->at(k);
+        ORB_SLAM3::KeyFramePtr pKF = fx.kfBlock->at(k);
         pKF->mImuCalib = calib;  // BEFORE SetPose: mOwb needs mbIsSet
         pKF->mnId = static_cast<unsigned long>(k);
         pKF->bImu = true;
         pKF->mpCamera = fx.camera.get();
         pKF->mpCamera2 = nullptr;  // default ctor leaves it uninitialized
         pKF->mPrevKF = (k == 0) ? nullptr : fx.kfBlock->at(k - 1);
-        pKF->mNextKF = nullptr;
+        pKF->mNextKF.reset();
         if (k > 0)
             fx.kfBlock->at(k - 1)->mNextKF = pKF;
         pKF->mpImuPreintegrated = (k == 0) ? nullptr : fx.preints[k].get();
@@ -331,7 +331,7 @@ ImuChainFixture MakeImuChainFixture(ImuChainVariant variant,
     // edge residual at (s_true, gDirTrue) is a single float quantization.
     setupKF(0, R0, p0 / fx.sTrue, v0 / fx.sTrue);
     for (int k = 1; k < ImuChainFixture::kNumKFs; k++) {
-        ORB_SLAM3::KeyFrame* pPrev = fx.kfBlock->at(k - 1);
+        ORB_SLAM3::KeyFramePtr pPrev = fx.kfBlock->at(k - 1);
         const Eigen::Matrix3d R1 = pPrev->GetImuRotation().cast<double>();
         const Eigen::Vector3d t1 = pPrev->GetImuPosition().cast<double>();
         const Eigen::Vector3d v1 = pPrev->GetVelocity().cast<double>();
@@ -366,8 +366,8 @@ ImuChainFixture MakeImuChainFixture(ImuChainVariant variant,
     // is the float32 storage rounding of the KF states; compare.py turns it
     // into the GT tolerances.
     for (int k = 1; k < ImuChainFixture::kNumKFs; k++) {
-        ORB_SLAM3::KeyFrame* p1 = fx.kfBlock->at(k - 1);
-        ORB_SLAM3::KeyFrame* p2 = fx.kfBlock->at(k);
+        ORB_SLAM3::KeyFramePtr p1 = fx.kfBlock->at(k - 1);
+        ORB_SLAM3::KeyFramePtr p2 = fx.kfBlock->at(k);
         Preintegrated* pre = fx.preints[k].get();
         const double dt = static_cast<double>(pre->dT);
         const Eigen::Matrix3d R1 = p1->GetImuRotation().cast<double>();
@@ -462,14 +462,14 @@ PoseInertialFixture MakePoseInertialFixture()
 
     // ---- KeyFrame (all four of its vertices are fixed in the optimizer) ----
     fx.kfBlock.reset(new KfChainBlock(1));
-    ORB_SLAM3::KeyFrame* pKF = fx.kfBlock->at(0);
+    ORB_SLAM3::KeyFramePtr pKF = fx.kfBlock->at(0);
     pKF->mImuCalib = calib;   // BEFORE SetPose: mOwb needs mbIsSet
     pKF->mnId = 0;
     pKF->bImu = true;
     pKF->mpCamera = fx.camera.get();
     pKF->mpCamera2 = nullptr;
     pKF->mPrevKF = nullptr;
-    pKF->mNextKF = nullptr;
+    pKF->mNextKF.reset();
     pKF->mpImuPreintegrated = nullptr;
     // KeyFrame::mbf is const and the default ctor already zeroes it (mono).
     {

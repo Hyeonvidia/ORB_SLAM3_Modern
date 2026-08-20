@@ -23,7 +23,7 @@
 namespace ORB_SLAM3
 {
 
-Eigen::Matrix3f GeometricTools::ComputeF12(KeyFrame* &pKF1, KeyFrame* &pKF2)
+Eigen::Matrix3f GeometricTools::ComputeF12(KeyFramePtr &pKF1, KeyFramePtr &pKF2)
 {
     Sophus::SE3<float> Tc1w = pKF1->GetPose();
     Sophus::Matrix3<float> Rc1w = Tc1w.rotationMatrix();

@@ -62,23 +62,34 @@ FrameFixture MakeMonoGridFixture();
 // KfChainBlock — placement-new KeyFrames into ONE contiguous aligned buffer,
 // constructed in mnId order, so ascending address == ascending mnId.
 //
-// Why: Map stores KeyFrame* in a std::set (pointer-ordered), and
+// Why: Map stores KeyFramePtr in a std::set (pointer-ordered), and
 // InertialOptimization iterates Map::GetAllKeyFrames() to insert g2o
 // vertices/edges. g2o processes them in insertion (internalId) order, so the
 // floating-point summation order — and therefore the last-ULP content of the
 // serialized record — would depend on heap addresses if the KFs came from
 // individual `new` calls. The contiguous block pins set order to mnId order
 // in every run and both harness variants.
+// R4b slice 2: the block still owns the objects via placement-new (layout
+// determinism unchanged — KeyFramePtr containers order by .get(), i.e. by
+// the same contiguous addresses), but hands out KeyFramePtr handles from ONE
+// no-op-deleter owner group per KF, created at construction. That single
+// owning group also initializes enable_shared_from_this exactly once.
+// Destruction remains the block's job (reverse placement order); the no-op
+// deleter means late handle drops never double-destroy.
 class KfChainBlock {
 public:
     explicit KfChainBlock(int count) : count_(count) {
         raw_ = ::operator new(sizeof(ORB_SLAM3::KeyFrame) * count_,
                               std::align_val_t(alignof(ORB_SLAM3::KeyFrame)));
         auto* base = static_cast<ORB_SLAM3::KeyFrame*>(raw_);
-        for (int i = 0; i < count_; i++)
+        ptrs_.reserve(count_);
+        for (int i = 0; i < count_; i++) {
             new (base + i) ORB_SLAM3::KeyFrame();
+            ptrs_.emplace_back(base + i, [](ORB_SLAM3::KeyFrame*) {});
+        }
     }
     ~KfChainBlock() {
+        ptrs_.clear();
         auto* base = static_cast<ORB_SLAM3::KeyFrame*>(raw_);
         for (int i = count_ - 1; i >= 0; i--)
             (base + i)->~KeyFrame();
@@ -88,13 +99,14 @@ public:
     KfChainBlock(const KfChainBlock&) = delete;
     KfChainBlock& operator=(const KfChainBlock&) = delete;
 
-    ORB_SLAM3::KeyFrame* at(int i) {
-        return static_cast<ORB_SLAM3::KeyFrame*>(raw_) + i;
+    ORB_SLAM3::KeyFramePtr at(int i) {
+        return ptrs_[i];
     }
     int count() const { return count_; }
 
 private:
     void* raw_;
+    std::vector<ORB_SLAM3::KeyFramePtr> ptrs_;
     int count_;
 };
 
@@ -210,7 +222,7 @@ struct ImuChainFixture {
     Eigen::Matrix3d RwgTrue = Eigen::Matrix3d::Identity();
     Eigen::Vector3d gWorldTrue = Eigen::Vector3d::Zero();
 
-    ORB_SLAM3::KeyFrame* kf(int i) const { return kfBlock->at(i); }
+    ORB_SLAM3::KeyFramePtr kf(int i) const { return kfBlock->at(i); }
 
     ImuChainFixture() = default;
     ImuChainFixture(const ImuChainFixture&) = delete;
@@ -291,7 +303,7 @@ struct PoseInertialFixture {
     Sophus::SE3d TcwGT;                                  // camera pose
     Eigen::Vector3d velGT = Eigen::Vector3d::Zero();     // world velocity
 
-    ORB_SLAM3::KeyFrame* kf() const { return kfBlock->at(0); }
+    ORB_SLAM3::KeyFramePtr kf() const { return kfBlock->at(0); }
 
     PoseInertialFixture() = default;
     PoseInertialFixture(const PoseInertialFixture&) = delete;

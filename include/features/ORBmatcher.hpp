@@ -28,6 +28,7 @@
 #include "map/MapPoint.hpp"
 #include "map/KeyFrame.hpp"
 #include "map/Frame.hpp"
+#include "map/MapTypes.hpp"  // R4b: KeyFramePtr/MapPointPtr
 
 
 namespace ORB_SLAM3
@@ -52,37 +53,37 @@ namespace ORB_SLAM3
 
         // Project MapPoints seen in KeyFrame into the Frame and search matches.
         // Used in relocalisation (Tracking)
-        int SearchByProjection(Frame &CurrentFrame, KeyFrame* pKF, const std::set<MapPointPtr> &sAlreadyFound, const float th, const int ORBdist);
+        int SearchByProjection(Frame &CurrentFrame, KeyFramePtr pKF, const std::set<MapPointPtr> &sAlreadyFound, const float th, const int ORBdist);
 
         // Project MapPoints using a Similarity Transformation and search matches.
         // Used in loop detection (Loop Closing)
-        int SearchByProjection(KeyFrame* pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPointPtr> &vpPoints, std::vector<MapPointPtr> &vpMatched, int th, float ratioHamming=1.0);
+        int SearchByProjection(KeyFramePtr pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPointPtr> &vpPoints, std::vector<MapPointPtr> &vpMatched, int th, float ratioHamming=1.0);
 
         // Project MapPoints using a Similarity Transformation and search matches.
         // Used in Place Recognition (Loop Closing and Merging)
-        int SearchByProjection(KeyFrame* pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPointPtr> &vpPoints, const std::vector<KeyFrame*> &vpPointsKFs, std::vector<MapPointPtr> &vpMatched, std::vector<KeyFrame*> &vpMatchedKF, int th, float ratioHamming=1.0);
+        int SearchByProjection(KeyFramePtr pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPointPtr> &vpPoints, const std::vector<KeyFramePtr> &vpPointsKFs, std::vector<MapPointPtr> &vpMatched, std::vector<KeyFramePtr> &vpMatchedKF, int th, float ratioHamming=1.0);
 
         // Search matches between MapPoints in a KeyFrame and ORB in a Frame.
         // Brute force constrained to ORB that belong to the same vocabulary node (at a certain level)
         // Used in Relocalisation and Loop Detection
-        int SearchByBoW(KeyFrame *pKF, Frame &F, std::vector<MapPointPtr> &vpMapPointMatches);
-        int SearchByBoW(KeyFrame *pKF1, KeyFrame* pKF2, std::vector<MapPointPtr> &vpMatches12);
+        int SearchByBoW(KeyFramePtr pKF, Frame &F, std::vector<MapPointPtr> &vpMapPointMatches);
+        int SearchByBoW(KeyFramePtr pKF1, KeyFramePtr pKF2, std::vector<MapPointPtr> &vpMatches12);
 
         // Matching for the Map Initialization (only used in the monocular case)
         int SearchForInitialization(Frame &F1, Frame &F2, std::vector<cv::Point2f> &vbPrevMatched, std::vector<int> &vnMatches12, int windowSize=10);
 
         // Matching to triangulate new MapPoints. Check Epipolar Constraint.
-        int SearchForTriangulation(KeyFrame *pKF1, KeyFrame* pKF2,
+        int SearchForTriangulation(KeyFramePtr pKF1, KeyFramePtr pKF2,
                                    std::vector<std::pair<size_t, size_t> > &vMatchedPairs, const bool bOnlyStereo, const bool bCoarse = false);
 
         // Search matches between MapPoints seen in KF1 and KF2 transforming by a Sim3 [s12*R12|t12]
         // In the stereo and RGB-D case, s12=1
 
         // Project MapPoints into KeyFrame and search for duplicated MapPoints.
-        int Fuse(KeyFrame* pKF, const std::vector<MapPointPtr> &vpMapPoints, const float th=3.0, const bool bRight = false);
+        int Fuse(KeyFramePtr pKF, const std::vector<MapPointPtr> &vpMapPoints, const float th=3.0, const bool bRight = false);
 
         // Project MapPoints into KeyFrame using a given Sim3 and search for duplicated MapPoints.
-        int Fuse(KeyFrame* pKF, Sophus::Sim3f &Scw, const std::vector<MapPointPtr> &vpPoints, float th, std::vector<MapPointPtr> &vpReplacePoint);
+        int Fuse(KeyFramePtr pKF, Sophus::Sim3f &Scw, const std::vector<MapPointPtr> &vpPoints, float th, std::vector<MapPointPtr> &vpReplacePoint);
 
     public:
 

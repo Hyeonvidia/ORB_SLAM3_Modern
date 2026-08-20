@@ -52,8 +52,8 @@ class LoopClosing
 {
 public:
 
-    typedef std::map<KeyFrame*,g2o::Sim3,std::less<KeyFrame*>,
-        Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > > KeyFrameAndPose;
+    typedef std::map<KeyFramePtr,g2o::Sim3,std::less<KeyFramePtr>,
+        Eigen::aligned_allocator<std::pair<KeyFramePtr const, g2o::Sim3> > > KeyFrameAndPose;
 
 public:
 
@@ -66,7 +66,7 @@ public:
     // Main function
     void Run();
 
-    void InsertKeyFrame(KeyFrame *pKF);
+    void InsertKeyFrame(KeyFramePtr pKF);
 
     void RequestReset();
     void RequestResetActiveMap(Map* pMap);
@@ -133,7 +133,7 @@ protected:
     void PopNewKeyFrame();
 
     void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, std::vector<MapPointPtr> &vpMapPoints);
-    void SearchAndFuse(const std::vector<KeyFrame*> &vConectedKFs, std::vector<MapPointPtr> &vpMapPoints);
+    void SearchAndFuse(const std::vector<KeyFramePtr> &vConectedKFs, std::vector<MapPointPtr> &vpMapPoints);
 
     void CorrectLoop();
 
@@ -175,7 +175,7 @@ protected:
 
     LocalMapping *mpLocalMapper;
 
-    std::list<KeyFrame*> mlpLoopKeyFrameQueue;
+    std::list<KeyFramePtr> mlpLoopKeyFrameQueue;
 
     std::mutex mMutexLoopQueue;
     // P10-5: queue CV (paired with mMutexLoopQueue), the LC twin of
@@ -200,9 +200,9 @@ protected:
     unsigned long mnTraceEmptyIters = 0;
 
     // Loop detector variables
-    KeyFrame* mpCurrentKF;
-    KeyFrame* mpLastCurrentKF;
-    std::vector<KeyFrame*> mvpCurrentConnectedKFs;
+    KeyFramePtr mpCurrentKF;
+    KeyFramePtr mpLastCurrentKF;
+    std::vector<KeyFramePtr> mvpCurrentConnectedKFs;
     std::vector<MapPointPtr> mvpLoopMapPoints;
 
     //-------
@@ -212,7 +212,7 @@ protected:
     // from the channel, read by CorrectLoop/MergeLocal/MergeLocal2).
     g2o::Sim3 mg2oLoopScw;
     g2o::Sim3 mg2oMergeScw;
-    std::vector<KeyFrame*> mvpMergeConnectedKFs;
+    std::vector<KeyFramePtr> mvpMergeConnectedKFs;
 
     g2o::Sim3 mSold_new;
     //-------

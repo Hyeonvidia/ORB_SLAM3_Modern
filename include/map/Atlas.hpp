@@ -37,6 +37,7 @@
 #include <mutex>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/export.hpp>
+#include "map/MapTypes.hpp"  // R4b: KeyFramePtr/MapPointPtr
 
 
 namespace ORB_SLAM3
@@ -91,10 +92,10 @@ public:
     void SetViewer(Viewer* pViewer);
 
     // Method for change components in the current map
-    void AddKeyFrame(KeyFrame* pKF);
+    void AddKeyFrame(KeyFramePtr pKF);
     void AddMapPoint(const MapPointPtr& pMP);
     //void EraseMapPoint(const MapPointPtr& pMP);
-    //void EraseKeyFrame(KeyFrame* pKF);
+    //void EraseKeyFrame(KeyFramePtr pKF);
 
     GeometricCamera* AddCamera(GeometricCamera* pCam);
     std::vector<GeometricCamera*> GetAllCameras();
@@ -108,7 +109,7 @@ public:
     long unsigned KeyFramesInMap();
 
     // Method for get data in current map
-    std::vector<KeyFrame*> GetAllKeyFrames();
+    std::vector<KeyFramePtr> GetAllKeyFrames();
     std::vector<MapPointPtr> GetAllMapPoints();
     std::vector<MapPointPtr> GetReferenceMapPoints();
 
@@ -134,7 +135,7 @@ public:
     void PreSave();
     void PostLoad();
 
-    std::map<long unsigned int, KeyFrame*> GetAtlasKeyframes();
+    std::map<long unsigned int, KeyFramePtr> GetAtlasKeyframes();
 
     void SetKeyFrameDababase(KeyFrameDatabase* pKFDB);
     KeyFrameDatabase* GetKeyFrameDatabase();

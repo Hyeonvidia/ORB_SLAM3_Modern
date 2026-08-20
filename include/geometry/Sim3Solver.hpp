@@ -35,8 +35,8 @@ class Sim3Solver
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    Sim3Solver(KeyFrame* pKF1, KeyFrame* pKF2, const std::vector<MapPointPtr> &vpMatched12, const bool bFixScale = true,
-               const std::vector<KeyFrame*> vpKeyFrameMatchedMP = std::vector<KeyFrame*>());
+    Sim3Solver(KeyFramePtr pKF1, KeyFramePtr pKF2, const std::vector<MapPointPtr> &vpMatched12, const bool bFixScale = true,
+               const std::vector<KeyFramePtr> vpKeyFrameMatchedMP = std::vector<KeyFramePtr>());
 
     void SetRansacParameters(double probability = 0.99, int minInliers = 6 , int maxIterations = 300);
 
@@ -65,8 +65,8 @@ protected:
 protected:
 
     // KeyFrames and matches
-    KeyFrame* mpKF1;
-    KeyFrame* mpKF2;
+    KeyFramePtr mpKF1;
+    KeyFramePtr mpKF2;
 
     std::vector<Eigen::Vector3f> mvX3Dc1;
     std::vector<Eigen::Vector3f> mvX3Dc2;

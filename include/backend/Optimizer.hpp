@@ -41,6 +41,7 @@
 #include "g2o/types/sba/types_six_dof_expmap.h"
 #include "g2o/core/robust_kernel_impl.h"
 #include "g2o/solvers/dense/linear_solver_dense.h"
+#include "map/MapTypes.hpp"  // R4b: KeyFramePtr/MapPointPtr
 
 namespace ORB_SLAM3
 {
@@ -58,7 +59,7 @@ public:
     // pbStopFlag is const std::atomic<bool>* since P10-1 (cross-thread abort
     // request; g2o's bool* polling goes through the OrbLevenberg shadow
     // bridge — see include/backend/OrbLevenberg.hpp).
-    void static BundleAdjustment(const std::vector<KeyFrame*> &vpKF, const std::vector<MapPointPtr> &vpMP,
+    void static BundleAdjustment(const std::vector<KeyFramePtr> &vpKF, const std::vector<MapPointPtr> &vpMP,
                                  int nIterations = 5, const std::atomic<bool> *pbStopFlag=NULL, const unsigned long nLoopKF=0,
                                  const bool bRobust = true, GBAResult *pResult=NULL);
     void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, const std::atomic<bool> *pbStopFlag=NULL,
@@ -69,7 +70,7 @@ public:
     // previous LocalInertialBA/MergeInertialBA call to fix those vertices.
     void static FullInertialBA(Map *pMap, int its, const bool bFixLocal, const unsigned long nLoopKF, const std::atomic<bool> *pbStopFlag, bool bInit, float priorG, float priorA, Eigen::VectorXd *vSingVal, bool *bHess, GBAResult *pResult, BAEpochs& epochs);
 
-    void static LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool> *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, BAEpochs& epochs);
+    void static LocalBundleAdjustment(KeyFramePtr pKF, const std::atomic<bool> *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, BAEpochs& epochs);
 
     int static PoseOptimization(Frame* pFrame);
     int static PoseInertialOptimizationLastKeyFrame(Frame* pFrame, bool bRecInit = false);
@@ -78,37 +79,37 @@ public:
     // if bFixScale is true, 6DoF optimization (stereo,rgbd), 7DoF otherwise (mono)
     // correctedRefs: map points corrected during the loop closure, mapped to the id of
     // their corrected reference keyframe (points not in the map use their reference KF)
-    void static OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+    void static OptimizeEssentialGraph(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
-                                       const std::map<KeyFrame *, std::set<KeyFrame *> > &LoopConnections,
+                                       const std::map<KeyFramePtr, std::set<KeyFramePtr> > &LoopConnections,
                                        const bool &bFixScale,
                                        const std::map<MapPointPtr, unsigned long> &correctedRefs);
-    void static OptimizeEssentialGraph(KeyFrame* pCurKF, std::vector<KeyFrame*> &vpFixedKFs, std::vector<KeyFrame*> &vpFixedCorrectedKFs,
-                                       std::vector<KeyFrame*> &vpNonFixedKFs, std::vector<MapPointPtr> &vpNonCorrectedMPs,
+    void static OptimizeEssentialGraph(KeyFramePtr pCurKF, std::vector<KeyFramePtr> &vpFixedKFs, std::vector<KeyFramePtr> &vpFixedCorrectedKFs,
+                                       std::vector<KeyFramePtr> &vpNonFixedKFs, std::vector<MapPointPtr> &vpNonCorrectedMPs,
                                        MergeScratch& scratch);
 
     // For inertial loopclosing
-    void static OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+    void static OptimizeEssentialGraph4DoF(Map* pMap, KeyFramePtr pLoopKF, KeyFramePtr pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
-                                       const std::map<KeyFrame *, std::set<KeyFrame *> > &LoopConnections);
+                                       const std::map<KeyFramePtr, std::set<KeyFramePtr> > &LoopConnections);
 
 
     // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono) (NEW)
-    static int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPointPtr> &vpMatches1,
+    static int OptimizeSim3(KeyFramePtr pKF1, KeyFramePtr pKF2, std::vector<MapPointPtr> &vpMatches1,
                             g2o::Sim3 &g2oS12, const float th2, const bool bFixScale,
                             Eigen::Matrix<double,7,7> &mAcumHessian, const bool bAllPoints=false);
 
     // For inertial systems
 
-    void static LocalInertialBA(KeyFrame* pKF, const std::atomic<bool> *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, bool bLarge, bool bRecInit, BAEpochs& epochs);
-    void static MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std::atomic<bool> *pbStopFlag, Map *pMap, LoopClosing::KeyFrameAndPose &corrPoses, BAEpochs& epochs);
+    void static LocalInertialBA(KeyFramePtr pKF, const std::atomic<bool> *pbStopFlag, Map *pMap, int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges, bool bLarge, bool bRecInit, BAEpochs& epochs);
+    void static MergeInertialBA(KeyFramePtr pCurrKF, KeyFramePtr pMergeKF, const std::atomic<bool> *pbStopFlag, Map *pMap, LoopClosing::KeyFrameAndPose &corrPoses, BAEpochs& epochs);
 
     // Local BA in welding area when two maps are merged
     // (epochs is read-only here: one leftover upstream comparison against
     // localForKF marks stamped by other local-BA calls, feeding statistics)
-    void static LocalBundleAdjustment(KeyFrame* pMainKF,std::vector<KeyFrame*> vpAdjustKF, std::vector<KeyFrame*> vpFixedKF, const std::atomic<bool> *pbStopFlag, const BAEpochs& epochs);
+    void static LocalBundleAdjustment(KeyFramePtr pMainKF,std::vector<KeyFramePtr> vpAdjustKF, std::vector<KeyFramePtr> vpFixedKF, const std::atomic<bool> *pbStopFlag, const BAEpochs& epochs);
 
     // Marginalize block element (start:end,start:end). Perform Schur complement.
     // Marginalized elements are filled with zeros.

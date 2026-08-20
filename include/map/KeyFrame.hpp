@@ -18,15 +18,27 @@
 
 
 /**
- * Ownership/lifetime: raw pointers by upstream design — KeyFrame/MapPoint are
- * NEVER deleted on the normal path; removal is SetBadFlag() + tombstone
- * (a lock-free concurrency contract, not a leak bug). See docs/OWNERSHIP.md
- * before changing any lifetime or lock-order behavior here. (P5-3)
+ * Ownership/lifetime (R4b slice 2, 2026-08-20): KeyFrame is shared_ptr-managed
+ * (KeyFramePtr, see map/MapTypes.hpp). Map::mspKeyFrames is the owner; removal
+ * is still SetBadFlag() (tombstone protocol). Strong-by-default with deliberate
+ * cycle breaks:
+ *   - child->parent (mpParent) and mPrevKF are STRONG: bad-KF parent-chain
+ *     walks (trajectory saving, UpdateFrameIMU) and IMU-chain MergePrevious
+ *     need those targets alive.
+ *   - parent->children, mNextKF, loop/merge edges are WEAK (lock() to use).
+ *   - covisibility (mConnectedKeyFrameWeights / mvpOrderedConnectedKeyFrames)
+ *     stays RAW KeyFrame*: mutual strong edges would leak the whole graph.
+ *     Contract: SetBadFlag() erases this KF from every partner's maps before
+ *     the Map's strong pin is dropped, so a raw entry present in the map is
+ *     alive; the public accessors wrap entries into KeyFramePtr pins under
+ *     mMutexConnections before handing them out.
+ * See docs/OWNERSHIP.md before changing any lifetime or lock-order behavior.
  */
 
 #ifndef KEYFRAME_H
 #define KEYFRAME_H
 
+#include "map/MapTypes.hpp"
 #include "map/MapPoint.hpp"
 // R3: upstream DBoW2 submodule + our serialization shim / wrapper layer
 #include "recognition/BowTypes.hpp"
@@ -56,7 +68,12 @@ class KeyFrameDatabase;
 
 class GeometricCamera;
 
-class KeyFrame
+// enable_shared_from_this: graph maintenance (UpdateConnections, SetBadFlag,
+// ChangeParent, EraseMapPointMatch) must hand `this` out as a KeyFramePtr.
+// Every KeyFrame is created through std::make_shared (3 Tracking sites) or
+// wrapped exactly once in Map::PostLoad on the boost load path, before any
+// of those can run — shared_from_this() is never reached from a constructor.
+class KeyFrame : public std::enable_shared_from_this<KeyFrame>
 {
     friend class boost::serialization::access;
 
@@ -187,34 +204,38 @@ public:
     // Bag of Words Representation
     void ComputeBoW();
 
-    // Covisibility graph functions
+    // Covisibility graph functions.
+    // Internal mutators take raw KeyFrame* (storage is raw — cycle break);
+    // the accessors return KeyFramePtr PINS wrapped under mMutexConnections
+    // (safe: an entry still present in the maps has not completed SetBadFlag,
+    // hence is still strongly held by its Map).
     void AddConnection(KeyFrame* pKF, const int &weight);
     void EraseConnection(KeyFrame* pKF);
 
     void UpdateConnections(bool upParent=true);
     void UpdateBestCovisibles();
-    std::set<KeyFrame *> GetConnectedKeyFrames();
-    std::vector<KeyFrame* > GetVectorCovisibleKeyFrames();
-    std::vector<KeyFrame*> GetBestCovisibilityKeyFrames(const int &N);
-    std::vector<KeyFrame*> GetCovisiblesByWeight(const int &w);
-    int GetWeight(KeyFrame* pKF);
+    std::set<KeyFramePtr> GetConnectedKeyFrames();
+    std::vector<KeyFramePtr> GetVectorCovisibleKeyFrames();
+    std::vector<KeyFramePtr> GetBestCovisibilityKeyFrames(const int &N);
+    std::vector<KeyFramePtr> GetCovisiblesByWeight(const int &w);
+    int GetWeight(const KeyFramePtr& pKF);
 
-    // Spanning tree functions
-    void AddChild(KeyFrame* pKF);
-    void EraseChild(KeyFrame* pKF);
-    void ChangeParent(KeyFrame* pKF);
-    std::set<KeyFrame*> GetChilds();
-    KeyFrame* GetParent();
-    bool hasChild(KeyFrame* pKF);
+    // Spanning tree functions (child->parent strong, parent->children weak)
+    void AddChild(const KeyFramePtr& pKF);
+    void EraseChild(const KeyFramePtr& pKF);
+    void ChangeParent(const KeyFramePtr& pKF);
+    std::set<KeyFramePtr> GetChilds();
+    KeyFramePtr GetParent();
+    bool hasChild(const KeyFramePtr& pKF);
     void SetFirstConnection(bool bFirst);
 
-    // Loop Edges
-    void AddLoopEdge(KeyFrame* pKF);
-    std::set<KeyFrame*> GetLoopEdges();
+    // Loop Edges (weak storage; loop partners are latch-pinned in the Map)
+    void AddLoopEdge(const KeyFramePtr& pKF);
+    std::set<KeyFramePtr> GetLoopEdges();
 
-    // Merge Edges
-    void AddMergeEdge(KeyFrame* pKF);
-    std::set<KeyFrame*> GetMergeEdges();
+    // Merge Edges (weak storage; culled partners simply expire)
+    void AddMergeEdge(const KeyFramePtr& pKF);
+    std::set<KeyFramePtr> GetMergeEdges();
 
     // MapPoint observation functions
     int GetNumberMPs();
@@ -249,7 +270,7 @@ public:
         return a>b;
     }
 
-    static bool lId(KeyFrame* pKF1, KeyFrame* pKF2){
+    static bool lId(const KeyFramePtr& pKF1, const KeyFramePtr& pKF2){
         return pKF1->mnId<pKF2->mnId;
     }
 
@@ -266,8 +287,8 @@ public:
     bool ProjectPointDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v);
     bool ProjectPointUnDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v);
 
-    void PreSave(std::set<KeyFrame*>& spKF,std::set<MapPointPtr>& spMP, std::set<GeometricCamera*>& spCam);
-    void PostLoad(std::map<long unsigned int, KeyFrame*>& mpKFid, std::map<long unsigned int, MapPointPtr>& mpMPid, std::map<unsigned int, GeometricCamera*>& mpCamId);
+    void PreSave(std::set<KeyFramePtr>& spKF,std::set<MapPointPtr>& spMP, std::set<GeometricCamera*>& spCam);
+    void PostLoad(std::map<long unsigned int, KeyFramePtr>& mpKFid, std::map<long unsigned int, MapPointPtr>& mpMPid, std::map<unsigned int, GeometricCamera*>& mpCamId);
 
 
     void SetORBVocabulary(ORBVocabulary* pORBVoc);
@@ -351,9 +372,13 @@ public:
     const int mnMaxX;
     const int mnMaxY;
 
-    // Preintegrated IMU measurements from previous keyframe
-    KeyFrame* mPrevKF;
-    KeyFrame* mNextKF;
+    // IMU chain (R4b slice 2): prev STRONG — culling's MergePrevious and the
+    // propagation walks need the predecessor alive even after it goes bad;
+    // next WEAK — the reverse edge would close a cycle, and culling rewires
+    // both directions anyway. lock() mNextKF before use (null == "rewired
+    // away or reclaimed", the same null the raw pointer produced).
+    KeyFramePtr mPrevKF;
+    KeyFrameWeakPtr mNextKF;
 
     // IMU CONTRACT (docs/IMU_CONTRACT.md §2): preintegration covering
     // mPrevKF -> this. Ownership arrives from Tracking (this ctor copies the
@@ -409,18 +434,27 @@ protected:
     // Grid over the image to speed up feature matching
     std::vector< std::vector <std::vector<size_t> > > mGrid;
 
+    // Covisibility storage stays RAW on purpose (R4b slice 2): the edges are
+    // mutual, so strong pointers would make the whole covisibility graph one
+    // big cycle and Map::clear() would free nothing. SetBadFlag() scrubs this
+    // KF out of every partner before the Map pin drops (see class comment).
     std::map<KeyFrame*,int> mConnectedKeyFrameWeights;
     std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;
     std::vector<int> mvOrderedWeights;
     // For save relation without pointer, this is necessary for save/load function
     std::map<long unsigned int, int> mBackupConnectedKeyFrameIdWeights;
 
-    // Spanning Tree and Loop Edges
+    // Spanning Tree and Loop Edges (R4b slice 2): child->parent STRONG
+    // (bad-KF parent chains must stay walkable), parent->children WEAK.
+    // Loop/merge edges WEAK: loop partners are permanently Map-pinned by the
+    // SetNotErase latch (mspLoopEdges entries never expire while the map
+    // lives, so SetErase's empty() test is unchanged); merge partners may be
+    // culled — an expired entry reads as gone instead of dangling.
     bool mbFirstConnection;
-    KeyFrame* mpParent;
-    std::set<KeyFrame*> mspChildrens;
-    std::set<KeyFrame*> mspLoopEdges;
-    std::set<KeyFrame*> mspMergeEdges;
+    KeyFramePtr mpParent;
+    std::set<KeyFrameWeakPtr, std::owner_less<KeyFrameWeakPtr>> mspChildrens;
+    std::set<KeyFrameWeakPtr, std::owner_less<KeyFrameWeakPtr>> mspLoopEdges;
+    std::set<KeyFrameWeakPtr, std::owner_less<KeyFrameWeakPtr>> mspMergeEdges;
     // For save relation without pointer, this is necessary for save/load function
     long long int mBackupParentId;
     std::vector<long unsigned int> mvBackupChildrensId;

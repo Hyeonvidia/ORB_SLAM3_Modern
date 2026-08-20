@@ -22,6 +22,7 @@
 #include <atomic>
 
 #include <Eigen/Core>
+#include "map/MapTypes.hpp"  // R4b: KeyFramePtr/MapPointPtr
 
 namespace ORB_SLAM3
 {
@@ -49,11 +50,11 @@ public:
     // pbStopFlag became const std::atomic<bool>* in P10-1: the abort request
     // crosses threads (Tracking/LoopClosing -> the optimizing thread); the
     // g2o-facing bool* lives behind the OrbLevenberg shadow bridge.
-    virtual void LocalBundleAdjustment(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+    virtual void LocalBundleAdjustment(KeyFramePtr pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                        int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                        BAEpochs& epochs) const = 0;
 
-    virtual void LocalInertialBA(KeyFrame* pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
+    virtual void LocalInertialBA(KeyFramePtr pKF, const std::atomic<bool>* pbStopFlag, Map* pMap,
                                  int& num_fixedKF, int& num_OptKF, int& num_MPs, int& num_edges,
                                  bool bLarge, bool bRecInit, BAEpochs& epochs) const = 0;
 

@@ -61,15 +61,15 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         return;
 
     // Retrieve all keyframe in temporal order
-    list<KeyFrame*> lpKF;
-    KeyFrame* pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
+    list<KeyFramePtr> lpKF;
+    KeyFramePtr pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
     while(pKF->mPrevKF)
     {
         lpKF.push_front(pKF);
         pKF = pKF->mPrevKF;
     }
     lpKF.push_front(pKF);
-    vector<KeyFrame*> vpKF(lpKF.begin(),lpKF.end());
+    vector<KeyFramePtr> vpKF(lpKF.begin(),lpKF.end());
 
     if(vpKF.size()<nMinKF)
         return;
@@ -95,7 +95,7 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         Eigen::Matrix3f Rwg;
         Eigen::Vector3f dirG;
         dirG.setZero();
-        for(vector<KeyFrame*>::iterator itKF = vpKF.begin(); itKF!=vpKF.end(); itKF++)
+        for(vector<KeyFramePtr>::iterator itKF = vpKF.begin(); itKF!=vpKF.end(); itKF++)
         {
             if (!(*itKF)->mpImuPreintegrated)
                 continue;
@@ -163,7 +163,7 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         // Check if initialization OK
         if (!mHost.mpAtlas->isImuInitialized())
             for (int i = 0; i < N; i++) {
-                KeyFrame *pKF2 = vpKF[i];
+                KeyFramePtr pKF2 = vpKF[i];
                 pKF2->bImu = true;
             }
     }
@@ -217,21 +217,21 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     }
 
     // Correct keyframes starting at map first keyframe
-    list<KeyFrame*> lpKFtoCheck(mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.begin(),mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.end());
+    list<KeyFramePtr> lpKFtoCheck(mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.begin(),mHost.mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.end());
 
     // Pre-correction pose of every keyframe updated in this pass
     // (was KeyFrame::mTcwBefGBA), read below to re-anchor map points
-    std::map<KeyFrame*, Sophus::SE3f> tcwBefGBA;
+    std::map<KeyFramePtr, Sophus::SE3f> tcwBefGBA;
 
     while(!lpKFtoCheck.empty())
     {
-        KeyFrame* pKF = lpKFtoCheck.front();
-        const set<KeyFrame*> sChilds = pKF->GetChilds();
+        KeyFramePtr pKF = lpKFtoCheck.front();
+        const set<KeyFramePtr> sChilds = pKF->GetChilds();
         Sophus::SE3f Twc = pKF->GetPoseInverse();
         KeyFrameGBAResult& rKF = gbaResult.kfs[pKF];
-        for(set<KeyFrame*>::const_iterator sit=sChilds.begin();sit!=sChilds.end();sit++)
+        for(set<KeyFramePtr>::const_iterator sit=sChilds.begin();sit!=sChilds.end();sit++)
         {
-            KeyFrame* pChild = *sit;
+            KeyFramePtr pChild = *sit;
             if(!pChild || pChild->isBad())
             {
                 continue;
@@ -296,9 +296,9 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
         else
         {
             // Update according to the correction of its reference keyframe
-            KeyFrame* pRefKF = pMP->GetReferenceKeyFrame();
+            KeyFramePtr pRefKF = pMP->GetReferenceKeyFrame();
 
-            std::map<KeyFrame*, Sophus::SE3f>::const_iterator itBef = tcwBefGBA.find(pRefKF);
+            std::map<KeyFramePtr, Sophus::SE3f>::const_iterator itBef = tcwBefGBA.find(pRefKF);
             if(itBef == tcwBefGBA.end())
                 continue;
 
@@ -335,15 +335,15 @@ void ImuInitializer::ScaleRefinement()
         return;
 
     // Retrieve all keyframes in temporal order
-    list<KeyFrame*> lpKF;
-    KeyFrame* pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
+    list<KeyFramePtr> lpKF;
+    KeyFramePtr pKF = mHost.mpCurrentKeyFrame.load(std::memory_order_relaxed);
     while(pKF->mPrevKF)
     {
         lpKF.push_front(pKF);
         pKF = pKF->mPrevKF;
     }
     lpKF.push_front(pKF);
-    vector<KeyFrame*> vpKF(lpKF.begin(),lpKF.end());
+    vector<KeyFramePtr> vpKF(lpKF.begin(),lpKF.end());
 
     while(mHost.CheckNewKeyFrames())
     {
