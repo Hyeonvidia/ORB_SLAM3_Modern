@@ -11,7 +11,11 @@ project(ORB_SLAM3_Modern VERSION 0.1.0 LANGUAGES C CXX)
 # via cmake/FindEigen3.cmake — the single Eigen for core, g2o, and the
 # image-baked Pangolin (v0.9.6 submodule); apt libeigen3-dev is gone.
 # P6-2: the backend now builds against the pinned upstream g2o submodule
-# (third_party/g2o @ 20241228_git); DBoW2/Sophus remain vendored Thirdparty.
+# (third_party/g2o @ 20241228_git); Sophus remains vendored Thirdparty.
+# R3 (2026-08-20): DBoW2 builds from the pinned upstream dorian3d submodule
+# (third_party/DBoW2 @ master 3924753); the ORB-SLAM fork deltas live in
+# src/recognition/OrbVocabulary.cpp + include/recognition/BowTypes.hpp, and
+# DUtils::Random moved to src/util/. The vendored Thirdparty/DBoW2 is gone.
 # The vendored Thirdparty/g2o stays in-tree only for the frozen reference
 # variant of tests/backend_equiv (equivalence harness, docs/P6_DESIGN.md §B).
 # =============================================================================
@@ -44,7 +48,27 @@ find_package(Pangolin REQUIRED)
 find_package(Boost REQUIRED COMPONENTS serialization)
 find_package(OpenSSL REQUIRED)
 
-add_subdirectory(Thirdparty/DBoW2)
+# ---- upstream DBoW2 submodule (pinned dorian3d master 3924753) --------------
+# Compiled as our own small static target instead of add_subdirectory: the
+# upstream CMakeLists builds a demo and pulls DLib via ExternalProject at
+# configure time — unusable here. Only the four sources the ORB vocabulary
+# and BoW containers need are built; the submodule is never patched (the
+# OrbLevenberg precedent — ORB-SLAM-specific behavior lives in
+# src/recognition/ + include/recognition/ instead).
+add_library(DBoW2 STATIC
+  third_party/DBoW2/src/BowVector.cpp
+  third_party/DBoW2/src/FeatureVector.cpp
+  third_party/DBoW2/src/ScoringObject.cpp
+  third_party/DBoW2/src/FORB.cpp
+)
+target_include_directories(DBoW2 PUBLIC
+  ${PROJECT_SOURCE_DIR}/third_party/DBoW2/include          # "DBoW2/..." includes
+  PRIVATE
+  ${PROJECT_SOURCE_DIR}/third_party/DBoW2/include/DBoW2    # its own bare includes
+)
+target_link_libraries(DBoW2 PUBLIC ${OpenCV_LIBS})
+# Linked into the SHARED core; upstream default C++ dialect (no forced -std).
+set_target_properties(DBoW2 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---- upstream g2o submodule (pinned 20241228_git) ---------------------------
 # Option matrix per docs/P6_DESIGN.md §A(5): no apps/examples, no external
@@ -97,6 +121,8 @@ add_library(orbslam3_core SHARED
   src/mapping/LocalMapping.cpp
   src/mapping/ImuInitializer.cpp
   src/recognition/KeyFrameDatabase.cpp
+  src/recognition/OrbVocabulary.cpp
+  src/util/Random.cpp
   src/closing/LoopClosing.cpp
   src/closing/PlaceRecognition.cpp
   src/io/Converter.cpp
@@ -177,8 +203,12 @@ if(BUILD_TESTS)
   # extract_hash mold: text load -> saveToBinaryFile -> loadFromBinaryFile
   # into a second instance -> node-by-node bit-exact comparison (the
   # DIVERGENCES #27 "identical by construction" evidence). OpenCV comes
-  # transitively through the DBoW2 target.
-  add_executable(vocab_roundtrip tests/vocab/vocab_roundtrip.cpp)
+  # transitively through the DBoW2 target. R3: exercises the OrbVocabulary
+  # wrapper (compiled in directly — no core dependency).
+  add_executable(vocab_roundtrip
+    tests/vocab/vocab_roundtrip.cpp
+    src/recognition/OrbVocabulary.cpp)
+  target_include_directories(vocab_roundtrip PRIVATE ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(vocab_roundtrip PRIVATE DBoW2)
   set_target_properties(vocab_roundtrip PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

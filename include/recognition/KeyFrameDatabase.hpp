@@ -26,7 +26,7 @@
 
 #include "map/KeyFrame.hpp"
 #include "map/Frame.hpp"
-#include "features/ORBVocabulary.hpp"
+#include "recognition/OrbVocabulary.hpp"
 #include "map/Map.hpp"
 
 #include<mutex>
@@ -55,7 +55,7 @@ public:
     void clearMap(Map* pMap);
 
     // Loop and Merge Detection
-    void DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &vpLoopCand, vector<KeyFrame*> &vpMergeCand, int nNumCandidates);
+    void DetectNBestCandidates(KeyFrame *pKF, std::vector<KeyFrame*> &vpLoopCand, std::vector<KeyFrame*> &vpMergeCand, int nNumCandidates);
 
     // Relocalization
     std::vector<KeyFrame*> DetectRelocalizationCandidates(Frame* F, Map* pMap);
@@ -66,7 +66,7 @@ protected:
    const ORBVocabulary* mpVoc;
 
    // Inverted file
-   std::vector<list<KeyFrame*> > mvInvertedFile;
+   std::vector<std::list<KeyFrame*> > mvInvertedFile;
 
    // Mutex
    std::mutex mMutex;

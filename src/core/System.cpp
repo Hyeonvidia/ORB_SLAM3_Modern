@@ -36,6 +36,10 @@
 #include <boost/archive/xml_iarchive.hpp>
 #include <boost/archive/xml_oarchive.hpp>
 
+// R3: this TU used to inherit a global `using namespace std;` from the vendored
+// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
+using namespace std;
+
 namespace ORB_SLAM3
 {
 

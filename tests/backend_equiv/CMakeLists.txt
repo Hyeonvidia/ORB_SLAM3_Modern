@@ -27,16 +27,37 @@ add_compile_options(-Wall -O3)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." REALPATH)
 
 # Same find_package set as the root CMakeLists.
+# R3 repair of R2 fallout: apt libeigen3-dev is gone since R2 — Eigen must
+# resolve through the repo's FindEigen3.cmake pin (third_party/eigen), same
+# module-path shadowing as the root build.
+list(PREPEND CMAKE_MODULE_PATH "${REPO_ROOT}/cmake")
 find_package(OpenCV 4.4 REQUIRED)
-find_package(Eigen3 3.1.0 REQUIRED)
+find_package(Eigen3 3.1.0 REQUIRED MODULE)
 find_package(Pangolin REQUIRED)
 find_package(Boost REQUIRED COMPONENTS serialization)
 find_package(OpenSSL REQUIRED)
 
+# R3: DBoW2 comes from the pinned upstream submodule for BOTH variants — the
+# live shared sources (Frame/KeyFrame/ORBmatcher/...) now include the
+# recognition wrapper layer, and the vendored Thirdparty/DBoW2 is retired.
+# Same 4-source static target as the root CMakeLists (upstream's own CMake
+# pulls DLib via ExternalProject and is not usable via add_subdirectory).
+add_library(DBoW2 STATIC
+  ${REPO_ROOT}/third_party/DBoW2/src/BowVector.cpp
+  ${REPO_ROOT}/third_party/DBoW2/src/FeatureVector.cpp
+  ${REPO_ROOT}/third_party/DBoW2/src/ScoringObject.cpp
+  ${REPO_ROOT}/third_party/DBoW2/src/FORB.cpp
+)
+target_include_directories(DBoW2 PUBLIC
+  ${REPO_ROOT}/third_party/DBoW2/include
+  PRIVATE
+  ${REPO_ROOT}/third_party/DBoW2/include/DBoW2
+)
+target_link_libraries(DBoW2 PUBLIC ${OpenCV_LIBS})
+
 if(EQUIV_BACKEND STREQUAL "vendored")
-  # Vendored (pre-migration) g2o + DBoW2, exactly as the root build uses them.
+  # Vendored (pre-migration) g2o, exactly as the pre-P6-2 root build used it.
   add_subdirectory(${REPO_ROOT}/Thirdparty/g2o    ${CMAKE_BINARY_DIR}/Thirdparty/g2o)
-  add_subdirectory(${REPO_ROOT}/Thirdparty/DBoW2  ${CMAKE_BINARY_DIR}/Thirdparty/DBoW2)
 
   set(EQUIV_BACKEND_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/reference_backend/Optimizer.cpp
@@ -80,7 +101,6 @@ elseif(EQUIV_BACKEND STREQUAL "modern")
   set(BUILD_WITH_MARCH_NATIVE OFF CACHE BOOL "" FORCE)
   set(G2O_FAST_MATH OFF CACHE BOOL "" FORCE)
   add_subdirectory(${REPO_ROOT}/third_party/g2o ${CMAKE_BINARY_DIR}/third_party/g2o)
-  add_subdirectory(${REPO_ROOT}/Thirdparty/DBoW2 ${CMAKE_BINARY_DIR}/Thirdparty/DBoW2)
 
   set(EQUIV_BACKEND_SOURCES
     ${REPO_ROOT}/src/backend/Optimizer.cpp
@@ -126,6 +146,11 @@ set(EQUIV_SHARED_SOURCES
   ${REPO_ROOT}/src/features/ORBextractor.cpp
   ${REPO_ROOT}/src/features/ORBmatcher.cpp
   ${REPO_ROOT}/src/recognition/KeyFrameDatabase.cpp
+  # R3: OrbVocabulary wrapper (one-TU template instantiation the live
+  # headers reference) + relocated DUtils::Random (previously linked in via
+  # the vendored DBoW2 library, now a plain shared TU).
+  ${REPO_ROOT}/src/recognition/OrbVocabulary.cpp
+  ${REPO_ROOT}/src/util/Random.cpp
   ${REPO_ROOT}/src/io/Converter.cpp
   ${REPO_ROOT}/src/geometry/GeometricTools.cpp
   ${REPO_ROOT}/src/geometry/TwoViewReconstruction.cpp

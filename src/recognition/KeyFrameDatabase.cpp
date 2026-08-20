@@ -21,7 +21,7 @@
 #include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include "map/KeyFrame.hpp"
-#include "Thirdparty/DBoW2/DBoW2/BowVector.h"
+#include "recognition/BowTypes.hpp"  // R3: upstream DBoW2 BowVector
 
 #include<mutex>
 #include<unordered_map>

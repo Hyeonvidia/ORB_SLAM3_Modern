@@ -23,7 +23,7 @@
 #include "map/KeyFrame.hpp"
 #include "mapping/LocalMapping.hpp"
 #include "map/Atlas.hpp"
-#include "features/ORBVocabulary.hpp"
+#include "recognition/OrbVocabulary.hpp"
 
 #include "recognition/KeyFrameDatabase.hpp"
 #include "closing/PlaceRecognition.hpp"
@@ -51,7 +51,7 @@ class LoopClosing
 {
 public:
 
-    typedef map<KeyFrame*,g2o::Sim3,std::less<KeyFrame*>,
+    typedef std::map<KeyFrame*,g2o::Sim3,std::less<KeyFrame*>,
         Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > > KeyFrameAndPose;
 
 public:
@@ -74,7 +74,7 @@ public:
     void RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoopKF);
 
     bool isRunningGBA(){
-        unique_lock<std::mutex> lock(mMutexGBA);
+        std::unique_lock<std::mutex> lock(mMutexGBA);
         return mbRunningGBA;
     }
 
@@ -92,28 +92,28 @@ public:
 
 #ifdef REGISTER_TIMES
 
-    vector<double> vdDataQuery_ms;
-    vector<double> vdEstSim3_ms;
-    vector<double> vdPRTotal_ms;
+    std::vector<double> vdDataQuery_ms;
+    std::vector<double> vdEstSim3_ms;
+    std::vector<double> vdPRTotal_ms;
 
-    vector<double> vdMergeMaps_ms;
-    vector<double> vdWeldingBA_ms;
-    vector<double> vdMergeOptEss_ms;
-    vector<double> vdMergeTotal_ms;
-    vector<int> vnMergeKFs;
-    vector<int> vnMergeMPs;
+    std::vector<double> vdMergeMaps_ms;
+    std::vector<double> vdWeldingBA_ms;
+    std::vector<double> vdMergeOptEss_ms;
+    std::vector<double> vdMergeTotal_ms;
+    std::vector<int> vnMergeKFs;
+    std::vector<int> vnMergeMPs;
     int nMerges;
 
-    vector<double> vdLoopFusion_ms;
-    vector<double> vdLoopOptEss_ms;
-    vector<double> vdLoopTotal_ms;
+    std::vector<double> vdLoopFusion_ms;
+    std::vector<double> vdLoopOptEss_ms;
+    std::vector<double> vdLoopTotal_ms;
     int nLoop;
 
-    vector<double> vdGBA_ms;
-    vector<double> vdUpdateMap_ms;
-    vector<double> vdFGBATotal_ms;
-    vector<int> vnGBAKFs;
-    vector<int> vnGBAMPs;
+    std::vector<double> vdGBA_ms;
+    std::vector<double> vdUpdateMap_ms;
+    std::vector<double> vdFGBATotal_ms;
+    std::vector<int> vnGBAKFs;
+    std::vector<int> vnGBAMPs;
     int nFGBA_exec;
     int nFGBA_abort;
 
@@ -131,8 +131,8 @@ protected:
     // called by PlaceRecognition::NewDetectCommonRegions via mHost.
     void PopNewKeyFrame();
 
-    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector<MapPoint*> &vpMapPoints);
-    void SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<MapPoint*> &vpMapPoints);
+    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, std::vector<MapPoint*> &vpMapPoints);
+    void SearchAndFuse(const std::vector<KeyFrame*> &vConectedKFs, std::vector<MapPoint*> &vpMapPoints);
 
     void CorrectLoop();
 

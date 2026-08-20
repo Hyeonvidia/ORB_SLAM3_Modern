@@ -1,12 +1,6 @@
-echo "Configuring and building Thirdparty/DBoW2 ..."
-
-cd Thirdparty/DBoW2
-mkdir build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j
-
-cd ../../g2o
+# R3: the vendored Thirdparty/DBoW2 is retired — DBoW2 now builds from the
+# third_party/DBoW2 submodule inside the root CMake build (no pre-step).
+cd Thirdparty/g2o
 
 echo "Configuring and building Thirdparty/g2o ..."
 

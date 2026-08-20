@@ -48,9 +48,16 @@
 
 #include "geometry/MLPnPsolver.hpp"
 #include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
+// R3: was reached transitively via the fork TemplatedVocabulary's DUtils
+// include; the upstream submodule has no DUtils, so include it explicitly.
+#include "util/Random.h"
 
 #include <Eigen/Sparse>
 
+
+// R3: this TU used to inherit a global `using namespace std;` from the vendored
+// DBoW2 fork header; restored per-TU until the R4 modern-C++ sweep qualifies it.
+using namespace std;
 
 namespace ORB_SLAM3 {
     MLPnPsolver::MLPnPsolver(const Frame &F, const vector<MapPoint *> &vpMapPointMatches):

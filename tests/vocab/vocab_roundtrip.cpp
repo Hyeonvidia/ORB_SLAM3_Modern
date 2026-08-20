@@ -32,8 +32,9 @@
 // Usage: vocab_roundtrip <ORBvoc.txt> [cache.bin]
 //   cache.bin defaults to <ORBvoc.txt>.roundtrip.bin (removed on PASS).
 
-#include "DBoW2/FORB.h"
-#include "DBoW2/TemplatedVocabulary.h"
+// R3: the loaders under test moved from the vendored DBoW2 fork into the
+// OrbVocabulary wrapper over the upstream submodule; same checks apply.
+#include "recognition/OrbVocabulary.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -45,12 +46,10 @@ namespace {
 
 // Test-only subclass: the node tree is protected, and the whole point of
 // this check is exact node-level state, so expose it read-only here.
-class VocUnderTest :
-    public DBoW2::TemplatedVocabulary<DBoW2::FORB::TDescriptor, DBoW2::FORB>
+class VocUnderTest : public ORB_SLAM3::OrbVocabulary
 {
 public:
-    typedef DBoW2::TemplatedVocabulary<DBoW2::FORB::TDescriptor,
-                                       DBoW2::FORB>::Node Node;
+    typedef ORB_SLAM3::OrbVocabulary::Node Node;
     const std::vector<Node>& nodes() const { return m_nodes; }
     const std::vector<Node*>& words() const { return m_words; }
 };

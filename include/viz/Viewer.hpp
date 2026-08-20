@@ -49,7 +49,7 @@ public:
     // P10-6: was (System* pSystem, ...). bNonInertialSensor replaces the
     // menu-setup read of mpSystem->MONOCULAR/STEREO/RGBD (true for the
     // three non-inertial sensors; gates the ShowGraph default).
-    Viewer(IViewerHost* pHost, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Tracking *pTracking, const string &strSettingPath, Settings* settings, bool bNonInertialSensor);
+    Viewer(IViewerHost* pHost, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Tracking *pTracking, const std::string &strSettingPath, Settings* settings, bool bNonInertialSensor);
 
     void newParameterLoader(Settings* settings);
 

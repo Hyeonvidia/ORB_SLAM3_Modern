@@ -16,19 +16,14 @@
 * If not, see <http://www.gnu.org/licenses/>.
 */
 
-
 #ifndef ORBVOCABULARY_H
 #define ORBVOCABULARY_H
 
-#include"Thirdparty/DBoW2/DBoW2/FORB.h"
-#include"Thirdparty/DBoW2/DBoW2/TemplatedVocabulary.h"
-
-namespace ORB_SLAM3
-{
-
-typedef DBoW2::TemplatedVocabulary<DBoW2::FORB::TDescriptor, DBoW2::FORB>
-  ORBVocabulary;
-
-} //namespace ORB_SLAM
+// R3: the vocabulary moved to the recognition module — upstream DBoW2
+// submodule + wrapper class (docs/REFACTOR_PLAN.md). This forwarder exists
+// only for the byte-frozen backend_equiv reference snapshot, whose headers
+// still include "features/ORBVocabulary.hpp"; live code includes
+// "recognition/OrbVocabulary.hpp" directly.
+#include "recognition/OrbVocabulary.hpp"
 
 #endif // ORBVOCABULARY_H

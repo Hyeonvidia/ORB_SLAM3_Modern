@@ -24,7 +24,7 @@
 
 #include<opencv2/core/core.hpp>
 
-#include "Thirdparty/DBoW2/DBoW2/FeatureVector.h"
+#include "recognition/BowTypes.hpp"  // R3: upstream DBoW2 FeatureVector
 
 #include<stdint-gcc.h>
 

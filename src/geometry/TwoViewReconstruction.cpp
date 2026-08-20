@@ -21,7 +21,7 @@
 #include "io/Converter.hpp"
 #include "geometry/GeometricTools.hpp"
 
-#include "Thirdparty/DBoW2/DUtils/Random.h"
+#include "util/Random.h"  // R3: DUtils::Random relocated out of the vendored DBoW2
 
 #include<thread>
 
