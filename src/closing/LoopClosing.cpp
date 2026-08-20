@@ -1321,7 +1321,6 @@ void LoopClosing::MergeLocal2()
     }
 
     // Critical zone
-    // mpCurrentKF->UpdateConnections(); // to put at false mbFirstConnection
     pMergeMap->GetOriginKF()->SetFirstConnection(false);
     pNewChild = mPlaceRec.MergeCh().matchedKF->GetParent(); // Old parent, it will be the new child of this KF
     pNewParent = mPlaceRec.MergeCh().matchedKF; // Old child, now it will be the parent of its own parent(we need eliminate this KF from children list in its old parent)
@@ -1345,13 +1344,9 @@ void LoopClosing::MergeLocal2()
     mvpMergeConnectedKFs.insert(mvpMergeConnectedKFs.end(), aux.begin(), aux.end());
     if (mvpMergeConnectedKFs.size()>6)
         mvpMergeConnectedKFs.erase(mvpMergeConnectedKFs.begin()+6,mvpMergeConnectedKFs.end());
-    /*mvpMergeConnectedKFs = mPlaceRec.MergeCh().matchedKF->GetVectorCovisibleKeyFrames();
-    mvpMergeConnectedKFs.push_back(mPlaceRec.MergeCh().matchedKF);*/
 
     mpCurrentKF->UpdateConnections();
     vpCurrentConnectedKFs.push_back(mpCurrentKF);
-    /*vpCurrentConnectedKFs = mpCurrentKF->GetVectorCovisibleKeyFrames();
-    vpCurrentConnectedKFs.push_back(mpCurrentKF);*/
     aux = mpCurrentKF->GetVectorCovisibleKeyFrames();
     vpCurrentConnectedKFs.insert(vpCurrentConnectedKFs.end(), aux.begin(), aux.end());
     if (vpCurrentConnectedKFs.size()>6)
@@ -1670,7 +1665,6 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
             // Get Map Mutex
             std::unique_lock<std::mutex> lock(pActiveMap->mMutexMapUpdate);
 
-            //pActiveMap->PrintEssentialGraph();
             // Correct keyframes starting at map first keyframe
             std::list<KeyFramePtr> lpKFtoCheck(pActiveMap->mvpKeyFrameOrigins.begin(),pActiveMap->mvpKeyFrameOrigins.end());
 
@@ -1766,6 +1760,10 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
             pActiveMap->InformNewBigChange();
             pActiveMap->IncreaseChangeIndex();
 
+            // R6 KEEP: upstream's own unresolved TODO. Enabling this post-GBA
+            // UpdateFrameIMU(scale=1) would push the corrected last-KF bias through
+            // the ImuUpdateMsg machinery — a real behavior change in a rarely
+            // exercised path our gates cannot validate; left as upstream shipped it.
             // TODO Check this update
             // mpTracker->UpdateFrameIMU(1.0f, mpTracker->GetLastKeyFrame()->GetImuBias(), mpTracker->GetLastKeyFrame());
 

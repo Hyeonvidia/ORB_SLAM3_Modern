@@ -191,7 +191,6 @@ namespace ORB_SLAM3{
         std::vector<float> mvSigma2;
 
         // 3D Points
-        //vector<cv::Point3f> mvP3Dw;
         points_t mvP3Dw;
 
         // Index in Frame

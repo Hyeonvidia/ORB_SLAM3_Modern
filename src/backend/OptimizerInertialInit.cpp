@@ -107,7 +107,6 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
     vpei.reserve(vpKFs.size());
     std::vector<std::pair<KeyFramePtr,KeyFramePtr> > vppUsedKF;
     vppUsedKF.reserve(vpKFs.size());
-    //std::cout << "build optimization graph" << std::endl;
 
     for(size_t i=0;i<vpKFs.size();i++)
     {

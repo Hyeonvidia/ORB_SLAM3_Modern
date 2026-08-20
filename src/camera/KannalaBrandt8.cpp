@@ -21,10 +21,7 @@
 
 #include <boost/serialization/export.hpp>
 
-//BOOST_CLASS_EXPORT_IMPLEMENT(ORB_SLAM3::KannalaBrandt8)
-
 namespace ORB_SLAM3 {
-//BOOST_CLASS_EXPORT_GUID(KannalaBrandt8, "KannalaBrandt8")
 
     cv::Point2f KannalaBrandt8::project(const cv::Point3f &p3D) {
         const float x2_plus_y2 = p3D.x * p3D.x + p3D.y * p3D.y;
@@ -84,13 +81,6 @@ namespace ORB_SLAM3 {
 
         return res;
 
-        /*cv::Point2f cvres = this->project(cv::Point3f(v3D[0],v3D[1],v3D[2]));
-
-        Eigen::Vector2d res;
-        res[0] = cvres.x;
-        res[1] = cvres.y;
-
-        return res;*/
     }
 
     Eigen::Vector2f KannalaBrandt8::projectMat(const cv::Point3f &p3D) {
@@ -100,12 +90,6 @@ namespace ORB_SLAM3 {
 
     float KannalaBrandt8::uncertainty2(const Eigen::Matrix<double,2,1> &p2D)
     {
-        /*Eigen::Matrix<double,2,1> c;
-        c << mvParameters[2], mvParameters[3];
-        if ((p2D-c).squaredNorm()>57600) // 240*240 (256)
-            return 100.f;
-        else
-            return 1.0f;*/
         return 1.f;
     }
 
@@ -136,7 +120,6 @@ namespace ORB_SLAM3 {
                 if (fabsf(theta_fix) < precision)
                     break;
             }
-            //scale = theta - theta_d;
             scale = std::tan(theta) / theta_d;
         }
 
@@ -326,7 +309,6 @@ namespace ORB_SLAM3 {
 
 
         Triangulate(p11,p22,Tcw1,Tcw2,x3D);
-        // cv::Mat x3Dt = x3D.t();
 
         float z1 = x3D(2);
         if(z1 <= 0){

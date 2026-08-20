@@ -406,7 +406,6 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3f &P1, Eigen::Matrix3f &P2)
     mT21i.setIdentity();
     Eigen::Matrix3f sRinv = (1.0/ms12i)*mR12i.transpose();
 
-    // sRinv.copyTo(mT21i.rowRange(0,3).colRange(0,3));
     mT21i.block<3,3>(0,0) = sRinv;
 
     Eigen::Vector3f tinv = -sRinv * mt12i;

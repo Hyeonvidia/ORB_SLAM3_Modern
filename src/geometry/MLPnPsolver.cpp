@@ -387,8 +387,6 @@ namespace ORB_SLAM3 {
         eigenRot.setIdentity();
 
         // if yes -> transform points to new eigen frame
-        //if (minEigenVal < 1e-3 || minEigenVal == 0.0)
-        //rankTest.setThreshold(1e-10);
         if (rankTest.rank() == 2) {
             planar = true;
             // self adjoint is faster and more accurate than general eigen solvers
@@ -603,7 +601,6 @@ namespace ORB_SLAM3 {
             // get the scale
             double scale = 1.0 /
                            std::pow(std::abs(tmp.col(0).norm() * tmp.col(1).norm() * tmp.col(2).norm()), 1.0 / 3.0);
-            //double scale = 1.0 / std::sqrt(std::abs(tmp.col(0).norm() * tmp.col(1).norm()));
             // find best rotation matrix in frobenius sense
             Eigen::JacobiSVD<Eigen::MatrixXd> svd_R_frob(tmp, Eigen::ComputeFullU | Eigen::ComputeFullV);
             Rout = svd_R_frob.matrixU() * svd_R_frob.matrixV().transpose();

@@ -770,7 +770,6 @@ void Optimizer::LocalInertialBA(KeyFramePtr pKF, const std::atomic<bool> *pbStop
         }
     }
 
-    //cout << "Total map points: " << lLocalMapPoints.size() << endl;
     for(std::map<int,int>::iterator mit=mVisEdges.begin(), mend=mVisEdges.end(); mit!=mend; mit++)
     {
         assert(mit->second>=3);

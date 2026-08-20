@@ -89,8 +89,8 @@ class KeyFrame : public std::enable_shared_from_this<KeyFrame>
         ar & const_cast<float&>(mfGridElementWidthInv);
         ar & const_cast<float&>(mfGridElementHeightInv);
 
-        // Variables of tracking
-        //ar & mnTrackReferenceForFrame;
+        // Tracking-only scratch (mnTrackReferenceForFrame) is deliberately
+        // not serialized — .osa layout unchanged (upstream format).
 
         // Scale
         ar & mfScale;
@@ -399,9 +399,6 @@ public:
     std::string mNameFile;
 
     int mnDataset;
-
-    //bool mbHasHessian;
-    //cv::Mat mHessianPose;
 
     // The following variables need to be accessed trough a mutex to be thread safe.
 protected:

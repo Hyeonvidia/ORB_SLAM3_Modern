@@ -60,8 +60,6 @@ class Map
         ar & mnBigChangeIdx;
 
         // Save/load a set structure, the set structure is broken in libboost 1.58 for ubuntu 16.04, a vector is serializated
-        //ar & mspKeyFrames;
-        //ar & mspMapPoints;
         ar & mvpBackupKeyFrames;
         ar & mvpBackupMapPoints;
 
@@ -144,7 +142,7 @@ public:
     unsigned int GetLowerKFID();
 
     void PreSave(std::set<GeometricCamera*> &spCams);
-    void PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, std::map<long unsigned int, KeyFrame*>& mpKeyFrameId*/, std::map<unsigned int, GeometricCamera*> &mpCams);
+    void PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc, std::map<unsigned int, GeometricCamera*> &mpCams);
 
     void printReprojectionError(std::list<KeyFramePtr> &lpLocalWindowKFs, const KeyFramePtr& mpCurrentKF, std::string &name, std::string &name_folder);
 
@@ -204,7 +202,6 @@ protected:
 
     long unsigned int mnInitKFid;
     long unsigned int mnMaxKFid;
-    //long unsigned int mnLastLoopKFid;
 
     // Index related to a big change in the map (loop closure, global BA)
     int mnBigChangeIdx;

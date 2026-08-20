@@ -82,7 +82,6 @@ void Viewer::Run()
     pangolin::Var<bool> menuFollowCamera("menu.Follow Camera",false,true);
     pangolin::Var<bool> menuCamView("menu.Camera View",false,false);
     pangolin::Var<bool> menuTopView("menu.Top View",false,false);
-    // pangolin::Var<bool> menuSideView("menu.Side View",false,false);
     pangolin::Var<bool> menuShowPoints("menu.Show Points",true,true);
     pangolin::Var<bool> menuShowKeyFrames("menu.Show KeyFrames",true,true);
     pangolin::Var<bool> menuShowGraph("menu.Show Graph",false,true);
@@ -90,7 +89,7 @@ void Viewer::Run()
     pangolin::Var<bool> menuLocalizationMode("menu.Localization Mode",false,true);
     pangolin::Var<bool> menuReset("menu.Reset",false,false);
     pangolin::Var<bool> menuStop("menu.Stop",false,false);
-    pangolin::Var<bool> menuStepByStep("menu.Step By Step",false,true);  // false, true
+    pangolin::Var<bool> menuStepByStep("menu.Step By Step",false,true);
     pangolin::Var<bool> menuStep("menu.Step",false,false);
 
     pangolin::Var<bool> menuShowOptLba("menu.Show LBA opt", false, true);
@@ -191,7 +190,6 @@ void Viewer::Run()
 
         if(menuStepByStep && !bStepByStep)
         {
-            //cout << "Viewer: step by step" << endl;
             mpTracker->SetStepByStep(true);
             bStepByStep = true;
         }

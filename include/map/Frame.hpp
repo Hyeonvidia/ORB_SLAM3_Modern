@@ -72,8 +72,6 @@ public:
     // Constructor for Monocular cameras.
     Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, GeometricCamera* pCamera, cv::Mat &distCoef, const float &bf, const float &thDepth, Frame* pPrevF = nullptr, const IMU::Calib &ImuCalib = IMU::Calib());
 
-    // Destructor
-    // ~Frame();
 
     // Extract ORB on the image. 0 for left image and 1 for right image.
     void ExtractORB(int flag, const cv::Mat &im, const int x0, const int x1);
@@ -279,9 +277,10 @@ public:
     // Pointer to previous frame
     Frame* mpPrevFrame;
     // IMU CONTRACT (docs/IMU_CONTRACT.md §2-§3): frame-to-frame preintegration,
-    // new'd once per frame by PreintegrateIMU. No owner: ~Frame is commented out
-    // and the copy ctor aliases the pointer, so it is never deleted (leak B4,
-    // INHERITED). Consumed by PoseInertialOptimizationLastFrame / PredictStateIMU.
+    // new'd once per frame by PreintegrateIMU. No owner: Frame declares no
+    // destructor and the copy ctor aliases the pointer, so it is never deleted
+    // (leak B4, INHERITED). Consumed by PoseInertialOptimizationLastFrame /
+    // PredictStateIMU.
     IMU::Preintegrated* mpImuPreintegratedFrame;
 
     // Current and Next Frame id.

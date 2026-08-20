@@ -166,7 +166,6 @@ public:
     }
 
     void CreateMapInAtlas();
-    //std::mutex mMutexTracks;
 
     //--
     void NewDataset();
@@ -342,7 +341,6 @@ protected:
 
     // Map initialization for monocular
     void MonocularInitialization();
-    //void CreateNewMapPoints();
     void CreateInitialMapMonocular();
 
     void CheckReplacedInLastFrame();
@@ -558,8 +556,6 @@ protected:
     // They are never registered in the map; they die when the last holder
     // (this list, mLastFrame's slots, FrameDrawer's copy) lets go.
     std::list<MapPointPtr> mlpTemporalPoints;
-
-    //int nMapChangeIndex;
 
     int mnNumDataset;
 

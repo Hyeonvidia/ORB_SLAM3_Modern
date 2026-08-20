@@ -94,6 +94,4 @@ namespace ORB_SLAM3 {
     };
 }
 
-//BOOST_CLASS_EXPORT_KEY(ORBSLAM2::Pinhole)
-
 #endif //CAMERAMODELS_PINHOLE_H

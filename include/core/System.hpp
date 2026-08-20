@@ -185,9 +185,6 @@ public:
     // See format details at: http://www.cvlibs.net/datasets/kitti/eval_odometry.php
     void SaveTrajectoryKITTI(const std::string &filename);
 
-    // TODO: Save/Load functions
-    // SaveMap(const string &filename);
-    // LoadMap(const string &filename);
 
     // Information from most recent processed frame
     // You can call this right after TrackMonocular (or stereo or RGBD)
@@ -236,7 +233,6 @@ private:
     KeyFrameDatabase* mpKeyFrameDatabase;
 
     // Map structure that stores the pointers to all KeyFrames and MapPoints.
-    //Map* mpMap;
     Atlas* mpAtlas;
 
     // Tracker. It receives a frame and computes the associated camera pose.

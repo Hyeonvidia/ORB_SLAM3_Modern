@@ -563,7 +563,6 @@ class EdgeInertialGS : public g2o::BaseMultiEdge<9,Vector9d>
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    // EdgeInertialGS(IMU::Preintegrated* pInt);
     EdgeInertialGS(IMU::Preintegrated* pInt);
 
     virtual bool read(std::istream& is){return false;}
@@ -848,7 +847,7 @@ public:
                  VPi->estimate().Rcw[0]*(-VPj->estimate().Rcw[0].transpose()*VPj->estimate().tcw[0])+VPi->estimate().tcw[0] - dtij;
     }
 
-    // virtual void linearizeOplus(); // numerical implementation
+    // linearizeOplus() not overridden: g2o computes the Jacobian numerically.
 
     Eigen::Matrix4d dTij;
     Eigen::Matrix3d dRij;

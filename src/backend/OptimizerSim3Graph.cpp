@@ -215,7 +215,7 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFramePtr pLoopKF, KeyFrameP
         for(std::vector<KeyFramePtr>::const_iterator vit=vpConnectedKFs.begin(); vit!=vpConnectedKFs.end(); vit++)
         {
             KeyFramePtr pKFn = *vit;
-            if(pKFn && pKFn!=pParentKF && !pKF->hasChild(pKFn) /*&& !sLoopEdges.count(pKFn)*/)
+            if(pKFn && pKFn!=pParentKF && !pKF->hasChild(pKFn))
             {
                 if(!pKFn->isBad() && pKFn->mnId<pKF->mnId)
                 {
@@ -1120,7 +1120,6 @@ void Optimizer::MergeInertialBA(KeyFramePtr pCurrKF, KeyFramePtr pMergeKF, const
     std::vector<EdgeAccRW*> vear(N,nullptr);
     for(int i=0;i<N;i++)
     {
-        //cout << "inserting inertial edge " << i << endl;
         KeyFramePtr pKFi = vpOptimizableKFs[i];
 
         if(!pKFi->mPrevKF)

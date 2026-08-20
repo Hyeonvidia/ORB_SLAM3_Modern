@@ -825,36 +825,11 @@ namespace ORB_SLAM3
                     FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                          vKeysCell,iniThFAST,true);
 
-                    /*if(bRight && j <= 13){
-                        FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
-                             vKeysCell,10,true);
-                    }
-                    else if(!bRight && j >= 16){
-                        FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
-                             vKeysCell,10,true);
-                    }
-                    else{
-                        FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
-                             vKeysCell,iniThFAST,true);
-                    }*/
-
 
                     if(vKeysCell.empty())
                     {
                         FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                              vKeysCell,minThFAST,true);
-                        /*if(bRight && j <= 13){
-                            FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
-                                 vKeysCell,5,true);
-                        }
-                        else if(!bRight && j >= 16){
-                            FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
-                                 vKeysCell,5,true);
-                        }
-                        else{
-                            FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
-                                 vKeysCell,minThFAST,true);
-                        }*/
                     }
 
                     if(!vKeysCell.empty())
@@ -908,7 +883,6 @@ namespace ORB_SLAM3
     int ORBextractor::operator()( InputArray _image, InputArray _mask, std::vector<KeyPoint>& _keypoints,
                                   OutputArray _descriptors, std::vector<int> &vLappingArea)
     {
-        //cout << "[ORBextractor]: Max Features: " << nfeatures << endl;
         if(_image.empty())
             return -1;
 
@@ -934,8 +908,6 @@ namespace ORB_SLAM3
             descriptors = _descriptors.getMat();
         }
 
-        //_keypoints.clear();
-        //_keypoints.reserve(nkeypoints);
         _keypoints = std::vector<cv::KeyPoint>(nkeypoints);
 
         int offset = 0;
@@ -954,14 +926,13 @@ namespace ORB_SLAM3
             GaussianBlur(workingMat, workingMat, Size(7, 7), 2, 2, BORDER_REFLECT_101);
 
             // Compute the descriptors
-            //Mat desc = descriptors.rowRange(offset, offset + nkeypointsLevel);
             Mat desc = cv::Mat(nkeypointsLevel, 32, CV_8U);
             computeDescriptors(workingMat, keypoints, desc, pattern);
 
             offset += nkeypointsLevel;
 
 
-            float scale = mvScaleFactor[level]; //getScale(level, firstLevel, scaleFactor);
+            float scale = mvScaleFactor[level];
             int i = 0;
             for (std::vector<KeyPoint>::iterator keypoint = keypoints.begin(),
                          keypointEnd = keypoints.end(); keypoint != keypointEnd; ++keypoint){
@@ -984,7 +955,6 @@ namespace ORB_SLAM3
                 i++;
             }
         }
-        //cout << "[ORBextractor]: extracted " << _keypoints.size() << " KeyPoints" << endl;
         return monoIndex;
     }
 

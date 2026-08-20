@@ -1165,8 +1165,6 @@ bool KeyFrame::ProjectPointDistort(const MapPointPtr& pMP, cv::Point2f &kp, floa
     u=fx*PcX*invz+cx;
     v=fy*PcY*invz+cy;
 
-    // cout << "c";
-
     if(u<mnMinX || u>mnMaxX)
         return false;
     if(v<mnMinY || v>mnMaxY)

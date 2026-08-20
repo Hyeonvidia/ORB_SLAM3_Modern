@@ -562,8 +562,6 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFramePtr> &vpBo
                         if(numProjOptMatches >= nProjOptMatches)
                         {
                             int nNumKFs = 0;
-                            //vpMatchedMPs = vpMatchedMP;
-                            //vpMPs = vpMapPoints;
                             // Check the Sim3 transformation with the current KeyFrame covisibles
                             std::vector<KeyFramePtr> vpCurrentCovKFs = mHost.mpCurrentKF->GetBestCovisibilityKeyFrames(nNumCovisibles);
 

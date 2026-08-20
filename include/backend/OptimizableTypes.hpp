@@ -191,7 +191,7 @@ public:
         _error = obs-v1->pCamera1->project(v1->estimate().map(v2->estimate()));
     }
 
-    // virtual void linearizeOplus();
+    // linearizeOplus() not overridden: g2o computes the Jacobian numerically.
 
 };
 
@@ -212,7 +212,7 @@ public:
         _error = obs-v1->pCamera2->project((v1->estimate().inverse().map(v2->estimate())));
     }
 
-    // virtual void linearizeOplus();
+    // linearizeOplus() not overridden: g2o computes the Jacobian numerically.
 
 };
 

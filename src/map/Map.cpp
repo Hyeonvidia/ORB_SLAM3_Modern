@@ -52,7 +52,7 @@ Map::Map(int initKFid):
       mnMapChange(0),
       mnMapChangeNotified(0),
       mnInitKFid(initKFid),
-      mnMaxKFid(initKFid),/*mnLastLoopKFid(initKFid),*/
+      mnMaxKFid(initKFid),
       mnBigChangeIdx(0),
       mIsInUse(false),
       mHasTumbnail(false),
@@ -464,7 +464,7 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
 
 }
 
-void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long unsigned int, KeyFrame*>& mpKeyFrameId*/, std::map<unsigned int, GeometricCamera*> &mpCams)
+void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc, std::map<unsigned int, GeometricCamera*> &mpCams)
 {
     // R4b: boost allocated the MapPoints/KeyFrames raw into the backup
     // vectors; wrap each exactly ONCE into its owning shared_ptr here (this

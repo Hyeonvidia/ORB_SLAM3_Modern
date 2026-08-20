@@ -437,7 +437,7 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
 
     mvpMapPoints = std::vector<MapPointPtr>(N,nullptr);
 
-    mmProjectPoints.clear();// = map<long unsigned int, cv::Point2f>(N, static_cast<cv::Point2f>(nullptr));
+    mmProjectPoints.clear();
     mmMatchedInImage.clear();
 
     mvbOutlier = std::vector<bool>(N,false);

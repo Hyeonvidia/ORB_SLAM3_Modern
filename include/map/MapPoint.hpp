@@ -72,33 +72,17 @@ class MapPoint : public std::enable_shared_from_this<MapPoint>
         ar & mnFirstKFid;
         ar & mnFirstFrame;
         ar & nObs;
-        // Variables used by the tracking
-        //ar & mTrackProjX;
-        //ar & mTrackProjY;
-        //ar & mTrackDepth;
-        //ar & mTrackDepthR;
-        //ar & mTrackProjXR;
-        //ar & mTrackProjYR;
-        //ar & mbTrackInView;
-        //ar & mbTrackInViewR;
-        //ar & mnTrackScaleLevel;
-        //ar & mnTrackScaleLevelR;
-        //ar & mTrackViewCos;
-        //ar & mTrackViewCosR;
-        //ar & mnTrackReferenceForFrame;
-        //ar & mnLastFrameSeen;
+        // Per-frame tracking scratch (mTrackProj*/mbTrackInView*/scale/
+        // view-cos/mnTrackReferenceForFrame/mnLastFrameSeen) is deliberately
+        // not serialized — .osa layout unchanged (upstream format).
 
         // Protected variables
         ar & boost::serialization::make_array(mWorldPos.data(), mWorldPos.size());
         ar & boost::serialization::make_array(mNormalVector.data(), mNormalVector.size());
-        //ar & BOOST_SERIALIZATION_NVP(mBackupObservationsId);
-        //ar & mObservations;
         ar & mBackupObservationsId1;
         ar & mBackupObservationsId2;
         serializeMatrix(ar,mDescriptor,version);
         ar & mBackupRefKFId;
-        //ar & mnVisible;
-        //ar & mnFound;
 
         ar & mbBad;
         ar & mBackupReplacedId;

@@ -51,9 +51,6 @@ class Frame;
 class KannalaBrandt8;
 class Pinhole;
 
-//BOOST_CLASS_EXPORT_GUID(Pinhole, "Pinhole")
-//BOOST_CLASS_EXPORT_GUID(KannalaBrandt8, "KannalaBrandt8")
-
 class Atlas
 {
     friend class boost::serialization::access;
@@ -65,7 +62,6 @@ class Atlas
         ar.template register_type<KannalaBrandt8>();
 
         // Save/load a set structure, the set structure is broken in libboost 1.58 for ubuntu 16.04, a vector is serializated
-        //ar & mspMaps;
         ar & mvpBackupMaps;
         ar & mvpCameras;
         // Need to save/load the static Id from Frame, KeyFrame, MapPoint and Map
@@ -98,8 +94,6 @@ public:
     // Method for change components in the current map
     void AddKeyFrame(KeyFramePtr pKF);
     void AddMapPoint(const MapPointPtr& pMP);
-    //void EraseMapPoint(const MapPointPtr& pMP);
-    //void EraseKeyFrame(KeyFramePtr pKF);
 
     GeometricCamera* AddCamera(GeometricCamera* pCam);
     std::vector<GeometricCamera*> GetAllCameras();

@@ -112,7 +112,9 @@ cv::Mat FrameDrawer::DrawFrame(float imageScale)
     {
         for(unsigned int i=0; i<vMatches.size(); i++)
         {
-            if(vMatches[i]>=0)
+            // R6: bounds guard — a snapshot taken between init attempts can carry
+            // match indices that exceed the new frame's keypoint count.
+            if(vMatches[i]>=0 && static_cast<size_t>(vMatches[i])<vCurrentKeys.size())
             {
                 cv::Point2f pt1,pt2;
                 if(imageScale != 1.f)
@@ -250,7 +252,9 @@ cv::Mat FrameDrawer::DrawRightFrame(float imageScale)
     {
         for(unsigned int i=0; i<vMatches.size(); i++)
         {
-            if(vMatches[i]>=0)
+            // R6: bounds guard — a snapshot taken between init attempts can carry
+            // match indices that exceed the new frame's keypoint count.
+            if(vMatches[i]>=0 && static_cast<size_t>(vMatches[i])<vCurrentKeys.size())
             {
                 cv::Point2f pt1,pt2;
                 if(imageScale != 1.f)

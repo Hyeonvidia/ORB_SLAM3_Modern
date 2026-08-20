@@ -76,8 +76,6 @@ void Atlas::CreateNewMap_impl()
         mpCurrentMap->SetStoredMap();
         std::cout << "Stored map with ID: " << mpCurrentMap->GetId() << std::endl;
 
-        //if(mHasViewer)
-        //    mpViewer->AddMapToCreateThumbnail(mpCurrentMap);
     }
     std::cout << "Creation of new map with last KF id: " << mnLastInitKFidMap << std::endl;
 
@@ -262,11 +260,10 @@ void Atlas::clearMap()
 void Atlas::clearAtlas()
 {
     std::unique_lock<std::mutex> lock(mMutexAtlas);
-    /*for(std::set<Map*>::iterator it=mspMaps.begin(), send=mspMaps.end(); it!=send; it++)
-    {
-        (*it)->clear();
-        delete *it;
-    }*/
+    // R6: upstream's commented per-map clear()+delete loop stays retired —
+    // Map* is still a raw pointer other threads may hold, so deleting here
+    // would risk use-after-free. Maps are deliberately leaked until Map
+    // ownership gets its own migration (same policy as RemoveBadMaps).
     mspMaps.clear();
     mpCurrentMap = nullptr;
     mnLastInitKFidMap = 0;
@@ -300,11 +297,8 @@ void Atlas::RemoveBadMaps()
 {
     // P11-A: see SetMapBad.
     std::unique_lock<std::mutex> lock(mMutexAtlas);
-    /*for(Map* pMap : mspBadMaps)
-    {
-        delete pMap;
-        pMap = nullptr;
-    }*/
+    // R6: bad maps are deliberately not deleted (upstream kept this delete
+    // loop commented out): raw Map* references may still be live elsewhere.
     mspBadMaps.clear();
 }
 

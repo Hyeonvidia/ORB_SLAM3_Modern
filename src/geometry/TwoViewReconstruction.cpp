@@ -115,14 +115,12 @@ namespace ORB_SLAM3
         float minParallax = 1.0;
 
         // Try to reconstruct from homography or fundamental depending on the ratio (0.40-0.45)
-        if(RH>0.50) // if(RH>0.40)
+        if(RH>0.50)
         {
-            //cout << "Initialization from Homography" << endl;
             return ReconstructH(vbMatchesInliersH,H, mK,T21,vP3D,vbTriangulated,minParallax,50);
         }
-        else //if(pF_HF>0.6)
+        else
         {
-            //cout << "Initialization from Fundamental" << endl;
             return ReconstructF(vbMatchesInliersF,F,mK,T21,vP3D,vbTriangulated,minParallax,50);
         }
     }
