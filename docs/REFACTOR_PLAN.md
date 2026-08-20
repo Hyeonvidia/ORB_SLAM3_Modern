@@ -33,7 +33,7 @@ FixLevel 스위치, 수명 프로브)가 비대해져 제품이 되어버렸고,
 | 스텝 | 내용 | 검증 |
 |---|---|---|
 | **R1** | 툴체인 상향: Ubuntu 24.04 컨테이너, GCC 13+, 코어 **C++20** (Thirdparty는 빌드 가능한 최고 수준). 컴파일 낙진 수리 | 빌드+스모크+6모드 대역 |
-| **R2** | Eigen3·Pangolin **최신 태그 서브모듈**로 전환 (OpenCV는 apt 유지 — 사용자 결정: 이미지 빌드 30-60분 비용 회피) | 빌드+스모크 |
+| **R2** | Eigen3·Pangolin **최신 태그 서브모듈**로 전환 (OpenCV는 apt 유지 — 사용자 결정: 이미지 빌드 30-60분 비용 회피) — **완료 2026-08-20**: eigen 5.0.1(신규 서브모듈, cmake/FindEigen3.cmake 단일핀·apt libeigen3-dev 제거) + Pangolin v0.9.4→v0.9.6(API 낙진 0), smoke 0.0343 / kitti07 0.486 / bit·유닛 전부 PASS | 빌드+스모크 |
 | **R3** | DBoW2 **업스트림(dorian3d) 서브모듈** 기준으로 전환 + 포크 수정분을 diff로 추출해 **래퍼 층으로 분리** (g2o의 OrbLevenberg 전례). 바이너리 어휘 로드도 래퍼로 이관 | 빌드+스모크+어휘 라운드트립 |
 | **R4** | **modern C++ 전면 스위프** (모듈별 커밋): 스마트 포인터 이행(P11 정찰의 순환 참조 지도 활용 — KF↔MP는 weak 결정, 자식→부모 strong 등), NULL→nullptr, typedef→using, enum class, range-for/알고리즘, rule-of-five, const 정확성, P12-L2 계측 잔재(LifetimeLedger) 제거 | 모듈별 빌드+스모크, 스위프 완료 시 6모드 대역 |
 | **R5** | **g2o 사용부 재구성**: Optimizer.cpp(~5,000줄)를 기능군별 파일로 분해, 그래프 구축을 빌더/헬퍼로 추출 — "정점→엣지→풀기→회수" 골격이 한눈에 보이게 | 빌드+스모크+kitti07 |

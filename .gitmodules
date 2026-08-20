@@ -10,3 +10,8 @@
 [submodule "third_party/Pangolin"]
 	path = third_party/Pangolin
 	url = https://github.com/stevenlovegrove/Pangolin.git
+	shallow = true
+[submodule "third_party/eigen"]
+	path = third_party/eigen
+	url = https://gitlab.com/libeigen/eigen.git
+	shallow = true

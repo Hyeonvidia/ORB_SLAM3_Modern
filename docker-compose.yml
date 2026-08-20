@@ -10,6 +10,7 @@ services:
       context: docker
       additional_contexts:
         pangolinsrc: third_party/Pangolin
+        eigensrc: third_party/eigen
     image: orbslam3-modern-dev:latest
     platform: linux/arm64
     shm_size: 2gb

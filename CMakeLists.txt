@@ -7,6 +7,9 @@ project(ORB_SLAM3_Modern VERSION 0.1.0 LANGUAGES C CXX)
 #   -O3, NO -march=native anywhere, BOOST_BIND_GLOBAL_PLACEHOLDERS.
 # R1 (2026-08-20): our targets moved to C++20 on the gcc-13 / Ubuntu 24.04
 # toolchain (docs/REFACTOR_PLAN.md); ATE re-validated by the 6-mode band check.
+# R2 (2026-08-20): Eigen comes from the third_party/eigen submodule (5.0.1)
+# via cmake/FindEigen3.cmake — the single Eigen for core, g2o, and the
+# image-baked Pangolin (v0.9.6 submodule); apt libeigen3-dev is gone.
 # P6-2: the backend now builds against the pinned upstream g2o submodule
 # (third_party/g2o @ 20241228_git); DBoW2/Sophus remain vendored Thirdparty.
 # The vendored Thirdparty/g2o stays in-tree only for the frozen reference
@@ -29,8 +32,14 @@ option(BUILD_TESTS "Build bit-identity test harness" ON)
 
 add_compile_options(-Wall -O3)
 
+# R2: cmake/ is PREPENDed so our FindEigen3.cmake (hard pin to the
+# third_party/eigen submodule) shadows every other Eigen lookup in this
+# configure — g2o's bundled module and Pangolin's find_dependency(Eigen3)
+# included. MODULE keyword below = never fall back to a system config.
+list(PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
 find_package(OpenCV 4.4 REQUIRED)
-find_package(Eigen3 3.1.0 REQUIRED)
+find_package(Eigen3 3.4 REQUIRED MODULE)
 find_package(Pangolin REQUIRED)
 find_package(Boost REQUIRED COMPONENTS serialization)
 find_package(OpenSSL REQUIRED)
@@ -54,6 +63,8 @@ set(G2O_FAST_MATH OFF CACHE BOOL "" FORCE)
 # Inert on arm64 but pinned so an x86 build host cannot change the numerics
 # (docs/DIVERGENCES.md #17).
 set(DO_SSE_AUTODETECT OFF CACHE BOOL "" FORCE)
+# R2: g2o's internal find_package(Eigen3 3.3) resolves to cmake/FindEigen3.cmake
+# (module-path shadowing, see above) => same third_party/eigen submodule as core.
 add_subdirectory(third_party/g2o)
 
 # ---- core library -----------------------------------------------------------
