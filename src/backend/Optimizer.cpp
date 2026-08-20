@@ -18,7 +18,6 @@
 
 
 #include "backend/Optimizer.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L2 class-3 probes (no-op unless LIFETIME_TRACE)
 
 #include "core/Verbose.hpp"  // P7-1b: was transitive via Tracking.hpp -> System.hpp
 
@@ -45,9 +44,8 @@
 #include <memory>
 #include <utility>
 #include "backend/G2oTypes.hpp"
-#include "backend/LinearSolverEigenLDLT.hpp"  // P11-F5: Fix.LdltPoseGraph vendored solver (DIVERGENCES #13)
+#include "backend/LinearSolverEigenLDLT.hpp"  // vendored LDLT solver for the essential-graph sites (DIVERGENCES #13)
 #include "backend/OrbLevenberg.hpp"
-#include "core/FixFlags.hpp"                  // P11-F5: OptimizeEssentialGraph solver choice
 #include "io/Converter.hpp"
 
 #include<mutex>
@@ -257,7 +255,6 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
         KeyFrame* pKF = vpKFs[i];
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("OptBA.253", 'K', pKF->mnId);
             continue;
         }
         g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
@@ -279,7 +276,6 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
         MapPoint* pMP = vpMP[i];
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptBA.272", 'M', pMP->mnId);
             continue;
         }
         g2o::VertexPointXYZ* vPoint = new g2o::VertexPointXYZ();
@@ -298,7 +294,6 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
             KeyFrame* pKF = mit->first;
             if(pKF->isBad() || pKF->mnId>maxKFid)
             {
-                if(pKF->isBad()) LT_PROBE_BAD("OptBA.288", 'K', pKF->mnId);
                 continue;
             }
             if(optimizer.vertex(id) == NULL || optimizer.vertex(pKF->mnId) == NULL)
@@ -435,7 +430,6 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
         KeyFrame* pKF = vpKFs[i];
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("OptBA.422", 'K', pKF->mnId);
             continue;
         }
         g2o::VertexSE3Expmap* vSE3 = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(pKF->mnId));
@@ -473,7 +467,6 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
 
                     if(pMP->isBad())
                     {
-                        LT_PROBE_BAD("OptBA.457", 'M', pMP->mnId);
                         continue;
                     }
 
@@ -503,7 +496,6 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
 
                     if(pMP->isBad())
                     {
-                        LT_PROBE_BAD("OptBA.484", 'M', pMP->mnId);
                         continue;
                     }
 
@@ -531,7 +523,6 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptBA.509", 'M', pMP->mnId);
             continue;
         }
         g2o::VertexPointXYZ* vPoint = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
@@ -651,7 +642,6 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
         {
             if(pKFi->isBad() || pKFi->mPrevKF->mnId>maxKFid)
             {
-                if(pKFi->isBad()) LT_PROBE_BAD("OptFIBA.626", 'K', pKFi->mnId);
                 continue;
             }
             if(pKFi->bImu && pKFi->mPrevKF->bImu)
@@ -787,7 +777,6 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
             if(pKFi->mnId>maxKFid)
                 continue;
 
-            if(pKFi->isBad()) LT_PROBE_BAD("OptFIBA.761", 'K', pKFi->mnId);
             if(!pKFi->isBad())
             {
                 const int leftIndex = get<0>(mit->second);
@@ -1297,7 +1286,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pb
     {
         KeyFrame* pKFi = vNeighKFs[i];
         epochs.localForKF[pKFi] = pKF->mnId;
-        if(pKFi->isBad()) LT_PROBE_BAD("OptLBA.1270", 'K', pKFi->mnId);
         if(!pKFi->isBad() && pKFi->GetMap() == pCurrentMap)
             lLocalKeyFrames.push_back(pKFi);
     }
@@ -1317,7 +1305,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pb
         for(vector<MapPoint*>::iterator vit=vpMPs.begin(), vend=vpMPs.end(); vit!=vend; vit++)
         {
             MapPoint* pMP = *vit;
-            if(pMP && pMP->isBad()) LT_PROBE_BAD("OptLBA.1290", 'M', pMP->mnId);
             if(pMP)
                 if(!pMP->isBad() && pMP->GetMap() == pCurrentMap)
                 {
@@ -1343,7 +1330,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pb
             if(BAEpochs::get(epochs.localForKF,pKFi)!=pKF->mnId && BAEpochs::get(epochs.fixedForKF,pKFi)!=pKF->mnId )
             {
                 epochs.fixedForKF[pKFi]=pKF->mnId;
-                if(pKFi->isBad()) LT_PROBE_BAD("OptLBA.1314", 'K', pKFi->mnId);
                 if(!pKFi->isBad() && pKFi->GetMap() == pCurrentMap)
                     lFixedCameras.push_back(pKFi);
             }
@@ -1475,7 +1461,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pb
         {
             KeyFrame* pKFi = mit->first;
 
-            if(pKFi->isBad()) LT_PROBE_BAD("OptLBA.1445", 'K', pKFi->mnId);
             if(!pKFi->isBad() && pKFi->GetMap() == pCurrentMap)
             {
                 const int leftIndex = get<0>(mit->second);
@@ -1600,7 +1585,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pb
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptLBA.1567", 'M', pMP->mnId);
             continue;
         }
 
@@ -1618,7 +1602,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pb
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptLBA.1582", 'M', pMP->mnId);
             continue;
         }
 
@@ -1636,7 +1619,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, const std::atomic<bool>* pb
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptLBA.1597", 'M', pMP->mnId);
             continue;
         }
 
@@ -1695,32 +1677,18 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
     // Setup optimizer
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
-    // P11-F5 (DIVERGENCES #13, Fix.LdltPoseGraph -- OFF by default): this
-    // pose graph runs with setUserLambdaInit(1e-16), i.e. effectively
-    // undamped, and upstream g2o's LinearSolverEigen factorizes with
-    // SimplicialLLT (strict SPD) where the vendored ORB-SLAM fork used
-    // SimplicialLDLT (semidefinite-tolerant). On a gauge-poor graph the LLT
-    // refusal is SILENT: every trial step is rejected and optimize(20)
-    // returns positive having moved nothing (#15 -- the stall counter below
-    // is the field detector). The flag selects the vendored LDLT shadow
-    // copy (include/backend/LinearSolverEigenLDLT.hpp, OrbLevenberg
-    // pattern; submodule untouched). Per-optimizer-setup site, direct flag
-    // read.
-    std::unique_ptr<g2o::BlockSolver_7_3::LinearSolverType> linearSolver;
-    if(FixFlags::I().ldltPoseGraph)
-    {
-        auto eigenLdlt =
-               std::make_unique<g2o::LinearSolverEigenLDLT<g2o::BlockSolver_7_3::PoseMatrixType>>();
-        eigenLdlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
-        linearSolver = std::move(eigenLdlt);
-    }
-    else
-    {
-        auto eigenLlt =
-               std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
-        eigenLlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
-        linearSolver = std::move(eigenLlt);
-    }
+    // LDLT, not upstream g2o's SimplicialLLT (DIVERGENCES #13; promoted
+    // unconditional in R4a): this pose graph runs with
+    // setUserLambdaInit(1e-16), i.e. effectively undamped, and LLT (strict
+    // SPD) refuses gauge-poor graphs SILENTLY -- every trial step rejected,
+    // optimize(20) returns positive having moved nothing (#15 -- the stall
+    // counter below is the field detector). The vendored LDLT shadow copy
+    // (include/backend/LinearSolverEigenLDLT.hpp, OrbLevenberg pattern;
+    // submodule untouched) is semidefinite-tolerant, matching the vendored
+    // ORB-SLAM fork's behavior.
+    auto linearSolver =
+        std::make_unique<g2o::LinearSolverEigenLDLT<g2o::BlockSolver_7_3::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
     std::unique_ptr<g2o::BlockSolver_7_3> solver_ptr = std::make_unique<g2o::BlockSolver_7_3>(std::move(linearSolver));
     OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
@@ -1748,7 +1716,6 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
         KeyFrame* pKF = vpKFs[i];
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("OptEG.1706", 'K', pKF->mnId);
             continue;
         }
         g2o::VertexSim3Expmap* VSim3 = new g2o::VertexSim3Expmap();
@@ -1895,7 +1862,6 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
             KeyFrame* pKFn = *vit;
             if(pKFn && pKFn!=pParentKF && !pKF->hasChild(pKFn) /*&& !sLoopEdges.count(pKFn)*/)
             {
-                if(pKFn->isBad()) LT_PROBE_BAD("OptEG.1852", 'K', pKFn->mnId);
                 if(!pKFn->isBad() && pKFn->mnId<pKF->mnId)
                 {
                     if(sInsertedEdges.count(make_pair(min(pKF->mnId,pKFn->mnId),max(pKF->mnId,pKFn->mnId))))
@@ -1976,7 +1942,6 @@ void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* p
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptEG.1930", 'M', pMP->mnId);
             continue;
         }
 
@@ -2018,23 +1983,11 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
 
     g2o::SparseOptimizer optimizer;
     optimizer.setVerbose(false);
-    // P11-F5 (DIVERGENCES #13, Fix.LdltPoseGraph): merge twin of the loop
-    // OptimizeEssentialGraph site above -- see the comment there.
-    std::unique_ptr<g2o::BlockSolver_7_3::LinearSolverType> linearSolver;
-    if(FixFlags::I().ldltPoseGraph)
-    {
-        auto eigenLdlt =
-               std::make_unique<g2o::LinearSolverEigenLDLT<g2o::BlockSolver_7_3::PoseMatrixType>>();
-        eigenLdlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
-        linearSolver = std::move(eigenLdlt);
-    }
-    else
-    {
-        auto eigenLlt =
-               std::make_unique<g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>>();
-        eigenLlt->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
-        linearSolver = std::move(eigenLlt);
-    }
+    // LDLT (DIVERGENCES #13; promoted unconditional in R4a): merge twin of
+    // the loop OptimizeEssentialGraph site above -- see the comment there.
+    auto linearSolver =
+        std::make_unique<g2o::LinearSolverEigenLDLT<g2o::BlockSolver_7_3::PoseMatrixType>>();
+    linearSolver->setBlockOrdering(false);  // fork parity: vendored ORB-SLAM g2o default (docs/DIVERGENCES.md 11)
     std::unique_ptr<g2o::BlockSolver_7_3> solver_ptr = std::make_unique<g2o::BlockSolver_7_3>(std::move(linearSolver));
     OrbLevenberg* solver = new OrbLevenberg(std::move(solver_ptr));
 
@@ -2057,7 +2010,6 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
     {
         if(pKFi->isBad())
         {
-            LT_PROBE_BAD("OptEG.2008", 'K', pKFi->mnId);
             continue;
         }
 
@@ -2091,7 +2043,6 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
     {
         if(pKFi->isBad())
         {
-            LT_PROBE_BAD("OptEG.2039", 'K', pKFi->mnId);
             continue;
         }
 
@@ -2127,7 +2078,6 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
     {
         if(pKFi->isBad())
         {
-            LT_PROBE_BAD("OptEG.2072", 'K', pKFi->mnId);
             continue;
         }
 
@@ -2261,7 +2211,6 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
             KeyFrame* pKFn = *vit;
             if(pKFn && pKFn!=pParentKFi && !pKFi->hasChild(pKFn) && !sLoopEdges.count(pKFn) && spKFs.find(pKFn) != spKFs.end())
             {
-                if(pKFn->isBad()) LT_PROBE_BAD("OptEG.2205", 'K', pKFn->mnId);
                 if(!pKFn->isBad() && pKFn->mnId<pKFi->mnId)
                 {
 
@@ -2318,7 +2267,6 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
     {
         if(pKFi->isBad())
         {
-            LT_PROBE_BAD("OptEG.2259", 'K', pKFi->mnId);
             continue;
         }
 
@@ -2340,14 +2288,12 @@ void Optimizer::OptimizeEssentialGraph(KeyFrame* pCurKF, vector<KeyFrame*> &vpFi
     {
         if(pMPi->isBad())
         {
-            LT_PROBE_BAD("OptEG.2278", 'M', pMPi->mnId);
             continue;
         }
 
         KeyFrame* pRefKF = pMPi->GetReferenceKeyFrame();
         while(pRefKF->isBad())
         {
-            LT_PROBE_BAD("OptEG.2282", 'K', pRefKF->mnId);
             if(!pRefKF)
             {
                 Verbose::PrintMess("MP " + to_string(pMPi->mnId) + " without a valid reference KF", Verbose::VERBOSITY_DEBUG);
@@ -2446,7 +2392,6 @@ int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 
         if(pMP1 && pMP2)
         {
-            if(pMP1->isBad()) LT_PROBE_BAD("OptSim3.2382", 'M', pMP1->mnId);
             if(!pMP1->isBad() && !pMP2->isBad())
             {
                 g2o::VertexPointXYZ* vPoint1 = new g2o::VertexPointXYZ();
@@ -2476,7 +2421,6 @@ int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
             nMatchWithoutMP++;
 
             //TODO The 3D position in KF1 doesn't exist
-            if(pMP2->isBad()) LT_PROBE_BAD("OptSim3.2411", 'M', pMP2->mnId);
             if(!pMP2->isBad())
             {
                 g2o::VertexPointXYZ* vPoint2 = new g2o::VertexPointXYZ();
@@ -2688,7 +2632,6 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFl
         for(vector<MapPoint*>::iterator vit=vpMPs.begin(), vend=vpMPs.end(); vit!=vend; vit++)
         {
             MapPoint* pMP = *vit;
-            if(pMP && pMP->isBad()) LT_PROBE_BAD("OptLIBA.2623", 'M', pMP->mnId);
             if(pMP)
                 if(!pMP->isBad())
                     if(BAEpochs::get(epochs.mpLocalForKF,pMP)!=pKF->mnId)
@@ -2725,7 +2668,6 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFl
         if(BAEpochs::get(epochs.localForKF,pKFi) == pKF->mnId || BAEpochs::get(epochs.fixedForKF,pKFi) == pKF->mnId)
             continue;
         epochs.localForKF[pKFi] = pKF->mnId;
-        if(pKFi->isBad()) LT_PROBE_BAD("OptLIBA.2658", 'K', pKFi->mnId);
         if(!pKFi->isBad() && pKFi->GetMap() == pCurrentMap)
         {
             lpOptVisKFs.push_back(pKFi);
@@ -2734,7 +2676,6 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFl
             for(vector<MapPoint*>::iterator vit=vpMPs.begin(), vend=vpMPs.end(); vit!=vend; vit++)
             {
                 MapPoint* pMP = *vit;
-                if(pMP && pMP->isBad()) LT_PROBE_BAD("OptLIBA.2667", 'M', pMP->mnId);
                 if(pMP)
                     if(!pMP->isBad())
                         if(BAEpochs::get(epochs.mpLocalForKF,pMP)!=pKF->mnId)
@@ -2759,7 +2700,6 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFl
             if(BAEpochs::get(epochs.localForKF,pKFi)!=pKF->mnId && BAEpochs::get(epochs.fixedForKF,pKFi)!=pKF->mnId)
             {
                 epochs.fixedForKF[pKFi]=pKF->mnId;
-                if(pKFi->isBad()) LT_PROBE_BAD("OptLIBA.2690", 'K', pKFi->mnId);
                 if(!pKFi->isBad())
                 {
                     lFixedKeyFrames.push_back(pKFi);
@@ -2995,7 +2935,6 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFl
             if(BAEpochs::get(epochs.localForKF,pKFi)!=pKF->mnId && BAEpochs::get(epochs.fixedForKF,pKFi)!=pKF->mnId)
                 continue;
 
-            if(pKFi->isBad()) LT_PROBE_BAD("OptLIBA.2925", 'K', pKFi->mnId);
             if(!pKFi->isBad() && pKFi->GetMap() == pCurrentMap)
             {
                 const int leftIndex = get<0>(mit->second);
@@ -3134,7 +3073,6 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFl
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptLIBA.3061", 'M', pMP->mnId);
             continue;
         }
 
@@ -3154,7 +3092,6 @@ void Optimizer::LocalInertialBA(KeyFrame *pKF, const std::atomic<bool> *pbStopFl
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptLIBA.3078", 'M', pMP->mnId);
             continue;
         }
 
@@ -3421,7 +3358,6 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
         {
             if(pKFi->isBad() || pKFi->mPrevKF->mnId>maxKFid)
             {
-                if(pKFi->isBad()) LT_PROBE_BAD("OptInOpt.3342", 'K', pKFi->mnId);
                 continue;
             }
             if(!pKFi->mpImuPreintegrated)
@@ -3597,7 +3533,6 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Vector3d &bg, Eigen::Vect
         {
             if(pKFi->isBad() || pKFi->mPrevKF->mnId>maxKFid)
             {
-                if(pKFi->isBad()) LT_PROBE_BAD("OptInOpt.3515", 'K', pKFi->mnId);
                 continue;
             }
 
@@ -3738,7 +3673,6 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
         {
             if(pKFi->isBad() || pKFi->mPrevKF->mnId>maxKFid)
             {
-                if(pKFi->isBad()) LT_PROBE_BAD("OptInOpt.3653", 'K', pKFi->mnId);
                 continue;
             }
                 
@@ -3825,7 +3759,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     {
         if(pKFi->isBad() || pKFi->GetMap() != pCurrentMap)
         {
-            if(pKFi->isBad()) LT_PROBE_BAD("OptLBA.3737", 'K', pKFi->mnId);
             Verbose::PrintMess("ERROR LBA: KF is bad or is not in the current map", Verbose::VERBOSITY_NORMAL);
             continue;
         }
@@ -3842,7 +3775,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
         set<MapPoint*> spViewMPs = pKFi->GetMapPoints();
         for(MapPoint* pMPi : spViewMPs)
         {
-            if(pMPi && pMPi->isBad()) LT_PROBE_BAD("OptLBA.3756", 'M', pMPi->mnId);
             if(pMPi)
                 if(!pMPi->isBad() && pMPi->GetMap() == pCurrentMap)
 
@@ -3864,7 +3796,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     {
         if(pKFi->isBad() || pKFi->GetMap() != pCurrentMap)
         {
-            if(pKFi->isBad()) LT_PROBE_BAD("OptLBA.3774", 'K', pKFi->mnId);
             continue;
         }
 
@@ -3881,7 +3812,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
         {
             if(pMPi)
             {
-                if(pMPi->isBad()) LT_PROBE_BAD("OptLBA.3790", 'M', pMPi->mnId);
                 if(!pMPi->isBad() && pMPi->GetMap() == pCurrentMap)
                 {
                     if(!spMapPointBA.count(pMPi))
@@ -3929,7 +3859,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
         MapPoint* pMPi = vpMPs[i];
         if(pMPi->isBad())
         {
-            LT_PROBE_BAD("OptLBA.3835", 'M', pMPi->mnId);
             continue;
         }
 
@@ -3949,7 +3878,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
             KeyFrame* pKF = mit->first;
             if(pKF->isBad() || pKF->mnId>maxKFid || !spKeyFrameBA.count(pKF) || !pKF->GetMapPoint(get<0>(mit->second)))
             {
-                if(pKF->isBad()) LT_PROBE_BAD("OptLBA.3852", 'K', pKF->mnId);
                 continue;
             }
 
@@ -4047,7 +3975,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
 
             if(pMP->isBad())
             {
-                LT_PROBE_BAD("OptLBA.3947", 'M', pMP->mnId);
                 continue;
             }
 
@@ -4066,7 +3993,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
 
             if(pMP->isBad())
             {
-                LT_PROBE_BAD("OptLBA.3963", 'M', pMP->mnId);
                 continue;
             }
 
@@ -4098,7 +4024,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptLBA.3992", 'M', pMP->mnId);
             continue;
         }
 
@@ -4121,7 +4046,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptLBA.4012", 'M', pMP->mnId);
             continue;
         }
 
@@ -4157,7 +4081,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
         MapPoint* pMPi = vpMPs[i];
         if(pMPi->isBad())
         {
-            LT_PROBE_BAD("OptLBA.4045", 'M', pMPi->mnId);
             continue;
         }
 
@@ -4169,7 +4092,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
             // never stamps it) -- feeds the mpObsFinalKFs statistics only
             if(pKF->isBad() || pKF->mnId>maxKFid || BAEpochs::get(epochs.localForKF,pKF) != pMainKF->mnId || !pKF->GetMapPoint(get<0>(mit->second)))
             {
-                if(pKF->isBad()) LT_PROBE_BAD("OptLBA.4054", 'K', pKF->mnId);
                 continue;
             }
 
@@ -4190,7 +4112,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     {
         if(pKFi->isBad())
         {
-            LT_PROBE_BAD("OptLBA.4072", 'K', pKFi->mnId);
             continue;
         }
 
@@ -4216,7 +4137,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
 
             if(pMP->isBad())
             {
-                LT_PROBE_BAD("OptLBA.4095", 'M', pMP->mnId);
                 continue;
             }
 
@@ -4247,7 +4167,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
 
             if(pMP->isBad())
             {
-                LT_PROBE_BAD("OptLBA.4123", 'M', pMP->mnId);
                 continue;
             }
 
@@ -4271,7 +4190,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdju
     {
         if(pMPi->isBad())
         {
-            LT_PROBE_BAD("OptLBA.4144", 'M', pMPi->mnId);
             continue;
         }
 
@@ -4382,7 +4300,6 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std
         {
             // Using epochs.mpLocalForKF we avoid redundance here, one MP can not be added several times to lLocalMapPoints
             MapPoint* pMP = *vit;
-            if(pMP && pMP->isBad()) LT_PROBE_BAD("OptMIBA.4255", 'M', pMP->mnId);
             // R1: braces added around the nested ifs (gcc-13 -Wdangling-else);
             // the else already bound to the innermost if — behavior unchanged.
             if(pMP)
@@ -4423,7 +4340,6 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std
             if(BAEpochs::get(epochs.localForKF,pKFi)!=pCurrKF->mnId && BAEpochs::get(epochs.fixedForKF,pKFi)!=pCurrKF->mnId) // If optimizable or already included...
             {
                 epochs.localForKF[pKFi]=pCurrKF->mnId;
-                if(pKFi->isBad()) LT_PROBE_BAD("OptMIBA.4288", 'K', pKFi->mnId);
                 if(!pKFi->isBad())
                 {
                     vpOptimizableCovKFs.push_back(pKFi);
@@ -4661,7 +4577,6 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std
             if(optimizer.vertex(id)==NULL || optimizer.vertex(pKFi->mnId)==NULL)
                 continue;
 
-            if(pKFi->isBad()) LT_PROBE_BAD("OptMIBA.4525", 'K', pKFi->mnId);
             if(!pKFi->isBad())
             {
                 const cv::KeyPoint &kpUn = pKFi->mvKeysUn[get<0>(mit->second)];
@@ -4740,7 +4655,6 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptMIBA.4601", 'M', pMP->mnId);
             continue;
         }
 
@@ -4759,7 +4673,6 @@ void Optimizer::MergeInertialBA(KeyFrame* pCurrKF, KeyFrame* pMergeKF, const std
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptMIBA.4617", 'M', pMP->mnId);
             continue;
         }
 
@@ -5684,7 +5597,6 @@ void Optimizer::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFram
         KeyFrame* pKF = vpKFs[i];
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("OptEG4.5538", 'K', pKF->mnId);
             continue;
         }
 
@@ -5872,7 +5784,6 @@ void Optimizer::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFram
             KeyFrame* pKFn = *vit;
             if(pKFn && pKFn!=pParentKF && pKFn!=prevKF && pKFn!=pKF->mNextKF && !pKF->hasChild(pKFn) && !sLoopEdges.count(pKFn))
             {
-                if(pKFn->isBad()) LT_PROBE_BAD("OptEG4.5725", 'K', pKFn->mnId);
                 if(!pKFn->isBad() && pKFn->mnId<pKF->mnId)
                 {
                     if(sInsertedEdges.count(make_pair(min(pKF->mnId,pKFn->mnId),max(pKF->mnId,pKFn->mnId))))
@@ -5933,7 +5844,6 @@ void Optimizer::OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFram
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("OptEG4.5783", 'M', pMP->mnId);
             continue;
         }
 

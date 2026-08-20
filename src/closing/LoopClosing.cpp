@@ -18,9 +18,7 @@
 
 
 #include "closing/LoopClosing.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
-#include "core/FixFlags.hpp"  // P11-F3: Fix.LoopStateHygiene (scale-abort arm) + Fix.LcResetWipe
 #include "core/System.hpp"   // P7-1b: System::eSensor enumerators; no longer transitive via Tracking.hpp
 #include "tracking/Tracking.hpp"  // P9-1: was transitive via closing/LoopClosing.hpp
 #include "closing/MergeScratch.hpp"
@@ -174,18 +172,16 @@ void LoopClosing::Run()
                                 mPlaceRec.WipeMergeOnScaleAbort();
                                 Verbose::PrintMess("scale bad estimated. Abort merging", Verbose::VERBOSITY_NORMAL);
                                 // This `continue` skips the loop branch AND the
-                                // mpLastCurrentKF update below -- at level 0 a
-                                // DETECTED loop hypothesis escapes the iteration
-                                // intact, still anchored to the PREVIOUS KF, and
-                                // the next iteration consumes that stale slw as
-                                // the CURRENT KF's correction (docs/
-                                // DIVERGENCES.md #21 arm A, preserved verbatim).
-                                // P11-F3 (Fix.LoopStateHygiene, OFF by default):
-                                // discard the escaping hypothesis exactly the
+                                // mpLastCurrentKF update below -- upstream let a
+                                // DETECTED loop hypothesis escape the iteration
+                                // intact, still anchored to the PREVIOUS KF, so
+                                // the next iteration consumed that stale slw as
+                                // the CURRENT KF's correction (DIVERGENCES #21
+                                // arm A; fix promoted unconditional in R4a).
+                                // Discard the escaping hypothesis exactly the
                                 // way the merge-priority path does -- same wipe,
-                                // same trace reason, keeping the trace-event set
-                                // closed. Per-LC-KF site, direct flag read.
-                                if(FixFlags::I().loopStateHygiene && mPlaceRec.LoopCh().detected)
+                                // same trace reason.
+                                if(mPlaceRec.LoopCh().detected)
                                     mPlaceRec.WipeLoopOnMergePriority();
                                 continue;
                             }
@@ -503,7 +499,6 @@ void LoopClosing::CorrectLoop()
                     continue;
                 if(pMPi->isBad())
                 {
-                    LT_PROBE_BAD("LCCorrectLoop.499", 'M', pMPi->mnId);
                     continue;
                 }
                 if(mCorrectedRefs.count(pMPi))
@@ -736,7 +731,6 @@ void LoopClosing::MergeLocal()
             vector<KeyFrame*> vpKFiCov = pKFi->GetBestCovisibilityKeyFrames(numTemporalKFs/2);
             for(KeyFrame* pKFcov : vpKFiCov)
             {
-                if(pKFcov->isBad()) LT_PROBE_BAD("LCMergeLocal.731", 'K', pKFcov->mnId);
                 if(pKFcov && !pKFcov->isBad() && spLocalWindowKFs.find(pKFcov) == spLocalWindowKFs.end())
                 {
                     vpNewCovKFs.push_back(pKFcov);
@@ -753,7 +747,6 @@ void LoopClosing::MergeLocal()
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.745", 'K', pKFi->mnId);
             continue;
         }
 
@@ -797,7 +790,6 @@ void LoopClosing::MergeLocal()
             vector<KeyFrame*> vpKFiCov = pKFi->GetBestCovisibilityKeyFrames(numTemporalKFs/2);
             for(KeyFrame* pKFcov : vpKFiCov)
             {
-                if(pKFcov->isBad()) LT_PROBE_BAD("LCMergeLocal.788", 'K', pKFcov->mnId);
                 if(pKFcov && !pKFcov->isBad() && spMergeConnectedKFs.find(pKFcov) == spMergeConnectedKFs.end())
                 {
                     vpNewCovKFs.push_back(pKFcov);
@@ -845,7 +837,6 @@ void LoopClosing::MergeLocal()
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.833", 'K', pKFi->mnId);
             Verbose::PrintMess("Bad KF in correction", Verbose::VERBOSITY_DEBUG);
             continue;
         }
@@ -894,7 +885,6 @@ void LoopClosing::MergeLocal()
         MapPoint* pMPi = *itMP;
         if(!pMPi || pMPi->isBad())
         {
-            if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.881", 'M', pMPi->mnId);
             itMP = spLocalWindowMPs.erase(itMP);
             continue;
         }
@@ -927,7 +917,6 @@ void LoopClosing::MergeLocal()
         {
             if(!pKFi || pKFi->isBad())
             {
-                if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.913", 'K', pKFi->mnId);
                 continue;
             }
 
@@ -952,7 +941,6 @@ void LoopClosing::MergeLocal()
         {
             if(!pMPi || pMPi->isBad())
             {
-                if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.937", 'M', pMPi->mnId);
                 continue;
             }
 
@@ -1004,7 +992,6 @@ void LoopClosing::MergeLocal()
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.986", 'K', pKFi->mnId);
             continue;
         }
 
@@ -1014,7 +1001,6 @@ void LoopClosing::MergeLocal()
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.993", 'K', pKFi->mnId);
             continue;
         }
 
@@ -1069,7 +1055,6 @@ void LoopClosing::MergeLocal()
             {
                 if(!pKFi || pKFi->isBad() || pKFi->GetMap() != pCurrentMap)
                 {
-                    if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.1045", 'K', pKFi->mnId);
                     continue;
                 }
 
@@ -1108,7 +1093,6 @@ void LoopClosing::MergeLocal()
             {
                 if(!pMPi || pMPi->isBad()|| pMPi->GetMap() != pCurrentMap)
                 {
-                    if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.1083", 'M', pMPi->mnId);
                     continue;
                 }
 
@@ -1146,7 +1130,6 @@ void LoopClosing::MergeLocal()
             {
                 if(!pKFi || pKFi->isBad() || pKFi->GetMap() != pCurrentMap)
                 {
-                    if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal.1118", 'K', pKFi->mnId);
                     continue;
                 }
 
@@ -1160,7 +1143,6 @@ void LoopClosing::MergeLocal()
             {
                 if(!pMPi || pMPi->isBad())
                 {
-                    if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal.1131", 'M', pMPi->mnId);
                     continue;
                 }
 
@@ -1322,7 +1304,6 @@ void LoopClosing::MergeLocal2()
         {
             if(!pKFi || pKFi->isBad() || pKFi->GetMap() != pMergeMap)
             {
-                if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1290", 'K', pKFi->mnId);
                 continue;
             }
 
@@ -1336,7 +1317,6 @@ void LoopClosing::MergeLocal2()
         {
             if(!pMPi || pMPi->isBad() || pMPi->GetMap() != pMergeMap)
             {
-                if(pMPi && pMPi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1303", 'M', pMPi->mnId);
                 continue;
             }
 
@@ -1403,7 +1383,6 @@ void LoopClosing::MergeLocal2()
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1367", 'K', pKFi->mnId);
             continue;
         }
 
@@ -1413,7 +1392,6 @@ void LoopClosing::MergeLocal2()
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("LCMergeLocal2.1374", 'K', pKFi->mnId);
             continue;
         }
 
@@ -1543,19 +1521,13 @@ void LoopClosing::ResetIfRequested()
         {
             executed_reset = true;
             cout << "Loop closer reset requested..." << endl;
-            // P9-4 (D5 visibility): at level 0 the reset does NOT clear the
-            // detection machine -- upstream only clears the queue, and we
-            // preserve that verbatim (docs/P9_RECON.md D5). The two trace
-            // lines make the surviving channel state visible; they change
-            // nothing.
             mPlaceRec.TraceReset("reset-full");
-            // P11-F3 (OWNERSHIP D5, Fix.LcResetWipe -- OFF by default):
-            // wipe both channels so no hypothesis survives the reset
+            // Wipe both channels so no hypothesis survives the reset
             // pointing into the torn-down map (releases the KF latches,
             // which also completes any deferred SetBadFlag -- the #19
-            // completion path). Per-reset site, direct flag read.
-            if(FixFlags::I().lcResetWipe)
-                mPlaceRec.ResetChannels();
+            // completion path). Upstream only cleared the queue (OWNERSHIP
+            // D5; fix promoted unconditional in R4a).
+            mPlaceRec.ResetChannels();
             {
                 // P10-2 (R-b): queue mutation now under mMutexLoopQueue (inner,
                 // order mMutexReset -> mMutexLoopQueue; no reverse nesting
@@ -1572,17 +1544,13 @@ void LoopClosing::ResetIfRequested()
         else if(mbResetActiveMapRequested)
         {
             executed_reset = true;
-            // P9-4 (D5 visibility): same as above -- at level 0 the state
-            // survives an active-map reset and may point into the torn-down
-            // map for up to two KFs before the decay wipe clears it.
             mPlaceRec.TraceReset("reset-active-map");
-            // P11-F3 (Fix.LcResetWipe): same wipe as the full-reset branch
-            // above. Deliberately BOTH channels here too -- an active-map
-            // reset invalidates mpCurrentKF/mpLastMap either way, and a
-            // hypothesis anchored in the surviving map is re-seedable within
-            // two KFs at BoW cost only.
-            if(FixFlags::I().lcResetWipe)
-                mPlaceRec.ResetChannels();
+            // Same wipe as the full-reset branch above. Deliberately BOTH
+            // channels here too -- an active-map reset invalidates
+            // mpCurrentKF/mpLastMap either way, and a hypothesis anchored in
+            // the surviving map is re-seedable within two KFs at BoW cost
+            // only (OWNERSHIP D5; promoted unconditional in R4a).
+            mPlaceRec.ResetChannels();
 
             {
                 // P10-2 (R-b): same closure as the full-reset branch above.
@@ -1727,7 +1695,6 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
                     KeyFrame* pChild = *sit;
                     if(!pChild || pChild->isBad())
                     {
-                        if(pChild && pChild->isBad()) LT_PROBE_BAD("LCRunGlobalBun.1685", 'K', pChild->mnId);
                         continue;
                     }
 
@@ -1776,7 +1743,6 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
 
                 if(pMP->isBad())
                 {
-                    LT_PROBE_BAD("LCRunGlobalBun.1731", 'M', pMP->mnId);
                     continue;
                 }
 

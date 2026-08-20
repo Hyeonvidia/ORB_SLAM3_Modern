@@ -95,7 +95,6 @@ add_subdirectory(third_party/g2o)
 add_library(orbslam3_core SHARED
   src/core/System.cpp
   src/core/Settings.cpp
-  src/core/FixFlags.cpp
   src/camera/CameraFactory.cpp
   src/camera/Pinhole.cpp
   src/camera/KannalaBrandt8.cpp
@@ -214,25 +213,11 @@ if(BUILD_TESTS)
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
-  # ---- FixLevel flag parse/preset checks (P11-F0) ---------------------------
-  # extract_hash mold: asserts the all-false level-0 default (the permanent
-  # gate contract), the FixLevel:1/2 preset sets, individual-key override
-  # precedence in both directions, and absent-keys silence, on temp yamls
-  # written by the test itself. Runs well under 1 s.
-  add_executable(fixflags_checks tests/fixflags/fixflags_checks.cpp)
-  target_link_libraries(fixflags_checks PRIVATE ORB_SLAM3::core)
-  set_target_properties(fixflags_checks PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
-
-  # ---- FL-9 scale-convergence property test (P11-F1) ------------------------
+  # ---- FL-9 scale-convergence property test ---------------------------------
   # extract_hash mold; reuses the backend_equiv imu_chain fixture (with the
-  # P11-F1 s_true override) against the LIVE backend in this build tree.
-  # OFF phase reproduces the DIVERGENCES #9 stall at s_true=2.0; the ON phase
-  # arms Fix.ScaleJacobian through the public write-once FixFlags::Set
-  # (single-threaded binary, no System — the Set-before-threads contract
-  # holds trivially) and asserts convergence. The frozen reference backend
-  # cannot arm the flag, so the ON property lives here, not in backend_equiv.
+  # s_true override) against the LIVE backend in this build tree. Pure
+  # convergence property test since R4a (the #9 chain-rule fix is
+  # unconditional): s_true = 2.0 AND 1.1 must both converge.
   add_executable(fl9_scale_convergence
     tests/fixlevel/fl9_scale_convergence.cpp
     tests/backend_equiv/common/EquivFixtures.cpp)
@@ -243,7 +228,9 @@ if(BUILD_TESTS)
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 
-  # ---- P11-F3..F5 fix-level checks -----------------------------------------
+  # ---- detection-machine / LDLT / stereo-mb checks --------------------------
+  # Since R4a these assert the now-unconditional fixed behaviors (#21+L1/L2+
+  # D5 hygiene, #13 LDLT essential-graph solver, #5 stereo mb determinism).
   foreach(tgt detection_machine_checks fl13_ldlt_posegraph fl5_stereo_mb_checks)
     add_executable(${tgt} tests/fixlevel/${tgt}.cpp)
     target_link_libraries(${tgt} PRIVATE ORB_SLAM3::core)

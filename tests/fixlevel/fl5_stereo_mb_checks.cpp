@@ -1,45 +1,30 @@
 /**
- * P11-F4 FL-5 stereo Frame::mb read-before-init check (DIVERGENCES #5,
- * Fix.StereoMbInit, OFF by default; docs/P11_RECON.md 2부 FL-5).
+ * FL-5 stereo Frame::mb determinism check (DIVERGENCES #5; the
+ * mb-before-ComputeStereoMatches init was promoted to unconditional in
+ * R4a — this now asserts the fixed behavior only).
  *
  * Dependency-free assert-style binary in the tests/bit_identity/
  * extract_hash.cpp mold: no gtest, exits nonzero on the first failure.
  *
- * THE BUG: the pinhole-stereo Frame ctor calls ComputeStereoMatches()
- * (Frame.cpp:~140 upstream shape) BEFORE assigning mb = mbf/fx (:~167).
- * ComputeStereoMatches derives its disparity search range from that
- * indeterminate read (minZ = mb; maxD = mbf/minZ; minU = uL - maxD), so
- * every stereo frame's match set depends on whatever bytes the fresh Frame
- * object happens to sit on — genuine UB and a latent nondeterminism source
- * the golden baseline merely got lucky with.
+ * THE HISTORICAL BUG: the pinhole-stereo Frame ctor called
+ * ComputeStereoMatches() BEFORE assigning mb = mbf/fx.
+ * ComputeStereoMatches derives its disparity search range from that read
+ * (minZ = mb; maxD = mbf/minZ; minU = uL - maxD), so every stereo frame's
+ * match set depended on whatever bytes the fresh Frame object happened to
+ * sit on — genuine UB and a latent nondeterminism source. Since R4a mb is
+ * initialized before the call, unconditionally.
  *
- * DETERMINISTIC CONSTRUCTION OF THE INDETERMINACY: the test placement-news
- * the Frame into a caller-owned buffer prefilled with a chosen byte
- * pattern, so the "indeterminate" mb read becomes a chosen value:
- *   0x00-fill -> mb = 0.0f  -> maxD = +inf -> full search range (the lucky
- *                 stack-garbage class the baseline lives on: matches found);
- *   0xFF-fill -> mb = NaN   -> maxD/minU = NaN -> every range test false ->
- *                 ZERO stereo matches (the unlucky class: silent stereo
- *                 blindness on the frame).
- * Identical synthetic stereo input both times; only the object's prior
- * memory differs — which is exactly the #5 mechanism.
- *
- * Assertions:
- *   OFF (a): 0x00-fill yields a healthy match count; 0xFF-fill yields zero
- *            matches on the same input — the two constructions DISAGREE
- *            (bug reproduced; if this starts failing, the OFF contract
- *            drifted);
- *   ON  (b): with Fix.StereoMbInit armed (public write-once FixFlags::Set,
- *            single-threaded binary — the extraction threads the ctor
- *            spawns start after Set, satisfying the header contract), both
- *            fill patterns produce IDENTICAL mvuRight/mvDepth and a healthy
- *            match count, and mb was already mbf/fx during the matching.
+ * DETERMINISTIC PROBE OF THE OLD INDETERMINACY: the test placement-news the
+ * Frame into a caller-owned buffer prefilled with a chosen byte pattern
+ * (0x00 -> a pre-fix mb of 0.0; 0xFF -> a pre-fix mb of NaN, which made the
+ * frame silently stereo-blind). With the fix, both fill patterns must
+ * produce IDENTICAL mvuRight/mvDepth, a healthy match count, and
+ * mb == mbf/fx already during the matching.
  */
 
 #include "map/Frame.hpp"
 
 #include "camera/Pinhole.hpp"
-#include "core/FixFlags.hpp"
 #include "features/ORBextractor.hpp"
 
 #include <algorithm>
@@ -50,7 +35,6 @@
 #include <random>
 #include <vector>
 
-using ORB_SLAM3::FixFlags;
 using ORB_SLAM3::Frame;
 using ORB_SLAM3::ORBextractor;
 using ORB_SLAM3::Pinhole;
@@ -156,48 +140,22 @@ int main()
     cv::Mat dist = cv::Mat::zeros(4, 1, CV_32F);
     Pinhole cam(std::vector<float>{kFx, kFx, kW / 2.0f, kH / 2.0f});
 
-    // ---- OFF phase: the untouched process-global default is level 0 ----
-    CHECK(!FixFlags::I().stereoMbInit);
-    {
-        const RunResult zero =
-            ConstructOnPattern(0x00, imL, imR, &extL, &extR, K, dist, &cam);
-        const RunResult ones =
-            ConstructOnPattern(0xFF, imL, imR, &extL, &extR, K, dist, &cam);
-        std::fprintf(stderr,
-                     "off: keys=%d/%d matches(0x00)=%d matches(0xFF)=%d\n",
-                     zero.nKeys, ones.nKeys, zero.nMatches, ones.nMatches);
-        CHECK(zero.nKeys == ones.nKeys);      // extraction ignores mb
-        CHECK(zero.nKeys > 100);              // synthetic texture is ORB-rich
-        CHECK(zero.nMatches > 20);            // lucky-garbage class matches
-        CHECK(ones.nMatches == 0);            // NaN garbage: stereo-blind
-        CHECK(zero.nMatches != ones.nMatches);  // the #5 nondeterminism
-        std::fprintf(stderr, "ok  a_off_pattern_dependent (bug reproduced)\n");
-    }
-
-    // ---- ON phase: arm Fix.StereoMbInit via the write-once installer ----
-    {
-        FixFlags f;
-        f.stereoMbInit = true;
-        FixFlags::Set(f);
-        CHECK(FixFlags::I().stereoMbInit);
-    }
-    {
-        const RunResult zero =
-            ConstructOnPattern(0x00, imL, imR, &extL, &extR, K, dist, &cam);
-        const RunResult ones =
-            ConstructOnPattern(0xFF, imL, imR, &extL, &extR, K, dist, &cam);
-        std::fprintf(stderr, "on : keys=%d matches=%d/%d mb=%g (expect %g)\n",
-                     zero.nKeys, zero.nMatches, ones.nMatches, zero.mb,
-                     kBf / kFx);
-        CHECK(zero.nKeys == ones.nKeys);
-        CHECK(zero.nMatches > 20);
-        CHECK(zero.nMatches == ones.nMatches);
-        CHECK(zero.uRight == ones.uRight);    // bit-identical match sets
-        CHECK(zero.depth == ones.depth);
-        CHECK(zero.mb == kBf / kFx);          // hoisted value == upstream :167
-        CHECK(ones.mb == kBf / kFx);
-        std::fprintf(stderr, "ok  b_on_pattern_independent (fix property)\n");
-    }
+    const RunResult zero =
+        ConstructOnPattern(0x00, imL, imR, &extL, &extR, K, dist, &cam);
+    const RunResult ones =
+        ConstructOnPattern(0xFF, imL, imR, &extL, &extR, K, dist, &cam);
+    std::fprintf(stderr, "keys=%d matches=%d/%d mb=%g (expect %g)\n",
+                 zero.nKeys, zero.nMatches, ones.nMatches, zero.mb,
+                 kBf / kFx);
+    CHECK(zero.nKeys == ones.nKeys);
+    CHECK(zero.nKeys > 100);              // synthetic texture is ORB-rich
+    CHECK(zero.nMatches > 20);            // healthy match count
+    CHECK(zero.nMatches == ones.nMatches);
+    CHECK(zero.uRight == ones.uRight);    // bit-identical match sets
+    CHECK(zero.depth == ones.depth);
+    CHECK(zero.mb == kBf / kFx);          // set before ComputeStereoMatches
+    CHECK(ones.mb == kBf / kFx);
+    std::fprintf(stderr, "ok  pattern_independent (determinism property)\n");
 
     std::fprintf(stderr, "fl5_stereo_mb_checks: ALL PASS\n");
     return 0;

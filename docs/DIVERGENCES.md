@@ -177,33 +177,41 @@
     `WaitUntilStopped()`는 의도적으로 finish-unaware 유지(업스트림 W6
     liveness 특이점 자구 보존).
 
-## FixLevel 레지스트리 (P11-F0, 2026-08-11)
+## FixLevel 레지스트리 (P11-F0, 2026-08-11 — **R4a에서 은퇴, 2026-08-20**)
 
-런타임 픽스 플래그 인프라(`include/core/FixFlags.hpp`, docs/P11_RECON.md 2부
-§2/§4). 동일 바이너리 ON/OFF가 설계 동인(#20: ifdef면 레이아웃 교란이 ON 검증을
-오염). System 생성자가 Settings에서 **스레드 스폰 전 1회** 기록(원자화 불필요 —
-스레드 생성이 happens-before), 이후 불변. yaml 표면: `FixLevel: 0|1|2` 프리셋
-(부재 = 0 = 전부 false = 게이트 구성) + 개별 `Fix.<이름>: 0|1` 키(프리셋보다
-우선, 양방향). 레벨 0은 stderr 배너 포함 완전 침묵; 플래그가 하나라도 켜지면
-System 기동 시 stderr 한 줄(`[FixFlags] non-default fix flags ACTIVE: ...`)로
-출처를 남긴다.
+> **R4a (2026-08-20): 플래그 간접층 은퇴.** 아래 픽스 8종은 결함 수정이 맞으므로
+> **무조건 적용으로 승격**되었고, FixFlags 기반시설 전체(`include/core/
+> FixFlags.hpp`, `src/core/FixFlags.cpp`, Settings 파스 표면, System 배너,
+> `tests/fixflags/`)가 삭제되었다. 예외 하나 — `legacyImuResetWindow`(#3)는
+> "장점이 논쟁적인 레거시 의미론"이므로 **플래그만 은퇴하고 값은 정본 0**
+> (현대 경로: 재위치 후 IMU 리셋 창 비활성)을 유지한다. 원 코드 흔적은 git
+> 이력이 보존한다. 아래 표·설명은 동결 이력이다.
+
+런타임 픽스 플래그 인프라(P11-F0 당시 `include/core/FixFlags.hpp`,
+docs/P11_RECON.md 2부 §2/§4). 동일 바이너리 ON/OFF가 설계 동인(#20: ifdef면
+레이아웃 교란이 ON 검증을 오염). System 생성자가 Settings에서 **스레드 스폰 전
+1회** 기록(원자화 불필요 — 스레드 생성이 happens-before), 이후 불변. yaml 표면:
+`FixLevel: 0|1|2` 프리셋(부재 = 0 = 전부 false = 게이트 구성) + 개별
+`Fix.<이름>: 0|1` 키(프리셋보다 우선, 양방향). 레벨 0은 stderr 배너 포함 완전
+침묵; 플래그가 하나라도 켜지면 System 기동 시 stderr 한 줄(`[FixFlags]
+non-default fix flags ACTIVE: ...`)로 출처를 남겼다.
 
 | 플래그 (yaml 키) | 대상 ID | 프리셋 레벨 | 상태 |
 |---|---|---|---|
-| scaleJacobianChainRule (`Fix.ScaleJacobian`) | DIVERGENCES #9 (+#24 동승: 동일 MI 초기 스케일 창 의미론·동일 검증 런) | 2 | **픽스 탑재** — P11-F1(#9: EdgeInertialGS 연쇄율, 생성자 캐시+test/branch, ON 속성 테스트 `tests/fixlevel/fl9_scale_convergence.cpp`) + P11-F2(#24: OptimizeSim3에 완화 bFixedScale). 기본 OFF |
-| loopStateHygiene (`Fix.LoopStateHygiene`) | DIVERGENCES #21 | 1 | **픽스 탑재** — P11-F3(양팔: 스케일 중단 시 루프 와이프 + decay의 detected 소거; 유닛 `detection_machine_checks`가 OFF 비대칭 자구 보존/ON 위생 양쪽 단언). 기본 OFF |
-| latchHygiene (`Fix.LatchHygiene`) | OWNERSHIP L1/L2 (P9_RECON D2/D3) | 1 | **픽스 탑재** — P11-F3(BoW 재시딩 시 구 래치 SetErase+notFound 리셋, cnt==0 시딩 거부; 유닛 동일 바이너리). 기본 OFF |
-| lcResetWipe (`Fix.LcResetWipe`) | OWNERSHIP D5 | 1 | **픽스 탑재** — P11-F3(ResetChannels() 양 리셋 분기 호출 — D5 소거; 유닛+TraceReset 훅). 기본 OFF |
-| ldltPoseGraph (`Fix.LdltPoseGraph`) | DIVERGENCES #13 | 2 | **픽스 탑재** — P11-F5(#13: 벤더드 `LinearSolverEigenLDLT.hpp`[서브모듈 무수정], 본질그래프 7_3 2사이트 선택; 유닛 `fl13_ldlt_posegraph` — LLT 실패/LDLT 해결 준정정 픽스처, 필드 지표는 #15 chi2 무이동 카운터). 기본 OFF |
-| stereoMbInit (`Fix.StereoMbInit`) | DIVERGENCES #5 | 1 | **픽스 탑재** — P11-F4(#5: mb를 ComputeStereoMatches 전 초기화 — 매 스테레오 프레임의 UB/비결정성 소스 제거; 유닛 `fl5_stereo_mb_checks`). 기본 OFF |
-| legacyImuResetWindow (`Fix.LegacyImuResetWindow`) | DIVERGENCES #3 | 2 | **픽스 탑재** — P11-F6(#3 레거시 의미: 구성 시점 mMaxFrames — 핫패스 0 비용 by construction). 기본 OFF |
-| rectifiedResizeCal2 (`Fix.RectifiedResizeCal2`) | DIVERGENCES #6 | 1 | **픽스 탑재** — P11-F6(#6: 리사이즈 블록에 Rectified calibration2_ 포함 — 구성 시점 전용). 기본 OFF |
+| scaleJacobianChainRule (`Fix.ScaleJacobian`) | DIVERGENCES #9 (+#24 동승: 동일 MI 초기 스케일 창 의미론·동일 검증 런) | 2 | **PROMOTED-UNCONDITIONAL (R4a, 2026-08-20)** — #9 연쇄율이 EdgeInertialGS::linearizeOplus의 유일 경로, #24 완화 bFixedScale이 4번째 OptimizeSim3 사이트의 유일 인자. 수렴 속성은 `tests/fixlevel/fl9_scale_convergence.cpp`(s_true=2.0·1.1 양쪽 수렴)가 고정. (이력: P11-F1/F2 탑재, 기본 OFF) |
+| loopStateHygiene (`Fix.LoopStateHygiene`) | DIVERGENCES #21 | 1 | **PROMOTED-UNCONDITIONAL (R4a, 2026-08-20)** — 스케일 중단 시 루프 와이프 + decay의 detected 소거가 유일 동작; 유닛 `detection_machine_checks`는 위생 계약만 단언. (이력: P11-F3 탑재, 기본 OFF) |
+| latchHygiene (`Fix.LatchHygiene`) | OWNERSHIP L1/L2 (P9_RECON D2/D3) | 1 | **PROMOTED-UNCONDITIONAL (R4a, 2026-08-20)** — BoW 재시딩 시 구 래치 SetErase+notFound 리셋, cnt==0 시딩 거부가 유일 동작. (이력: P11-F3 탑재, 기본 OFF) |
+| lcResetWipe (`Fix.LcResetWipe`) | OWNERSHIP D5 | 1 | **PROMOTED-UNCONDITIONAL (R4a, 2026-08-20)** — ResetChannels()가 양 리셋 분기에서 무조건 호출. (이력: P11-F3 탑재, 기본 OFF) |
+| ldltPoseGraph (`Fix.LdltPoseGraph`) | DIVERGENCES #13 | 2 | **PROMOTED-UNCONDITIONAL (R4a, 2026-08-20)** — 벤더드 `LinearSolverEigenLDLT.hpp`가 본질그래프 7_3 2사이트의 유일 솔버(LLT 분기 삭제); 유닛 `fl13_ldlt_posegraph`는 LDLT 경로만 검사, 필드 지표는 #15 chi2 무이동 카운터 유지. (이력: P11-F5 탑재, 기본 OFF) |
+| stereoMbInit (`Fix.StereoMbInit`) | DIVERGENCES #5 | 1 | **PROMOTED-UNCONDITIONAL (R4a, 2026-08-20)** — mb를 ComputeStereoMatches 전 무조건 초기화(사후 중복 대입 제거); 유닛 `fl5_stereo_mb_checks`는 결정성 계약만 단언. (이력: P11-F4 탑재, 기본 OFF) |
+| legacyImuResetWindow (`Fix.LegacyImuResetWindow`) | DIVERGENCES #3 | 2 | **FLAG RETIRED — VALUE STAYS 0 (R4a, 2026-08-20)** — 8종 중 유일한 예외: 레거시 의미론(mMaxFrames 창)은 장점이 논쟁적이라 승격하지 않고, 플래그 소비 지점과 레거시 팔만 삭제. mnFramesToResetIMU는 정본 0(헤더 초기화자) 유지. (이력: P11-F6 탑재, 기본 OFF) |
+| rectifiedResizeCal2 (`Fix.RectifiedResizeCal2`) | DIVERGENCES #6 | 1 | **PROMOTED-UNCONDITIONAL (R4a, 2026-08-20)** — 리사이즈 블록의 Rectified 제외 조건 삭제(스테레오면 calibration2_ 무조건 스케일). (이력: P11-F6 탑재, 기본 OFF) |
 
-레벨 1 = 상태 위생 세트(#21, L1/L2, D5, #5, #6), 레벨 2 = 전부(+#9/#24, #13,
-#3). **P11-F0 시점엔 어떤 코드도 이 플래그를 읽지 않는다** — 무해성은 구성 증명
-(all-false 기본값 유닛 테스트 `tests/fixflags/fixflags_checks.cpp`) + 레벨-0
-게이트(bit/smoke)로 확인하고, 각 픽스 탑재 커밋(P11-F1~F6)이 자기 플래그의
-소비 지점·ON 검증·이 표의 상태 갱신을 가져온다.
+(동결 이력) 레벨 1 = 상태 위생 세트(#21, L1/L2, D5, #5, #6), 레벨 2 =
+전부(+#9/#24, #13, #3). P11-F0 시점엔 어떤 코드도 이 플래그를 읽지 않았고,
+무해성은 구성 증명(all-false 기본값 유닛 테스트, R4a에서 삭제) + 레벨-0
+게이트(bit/smoke)로 확인했으며, 각 픽스 탑재 커밋(P11-F1~F6)이 자기 플래그의
+소비 지점·ON 검증·이 표의 상태 갱신을 가져왔다.
 
 ## 게이트 방법론 이력
 

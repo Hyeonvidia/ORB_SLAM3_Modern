@@ -19,8 +19,6 @@
 
 
 #include "core/System.hpp"
-#include "core/FixFlags.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 #include "io/Converter.hpp"
 #include <chrono>
 #include <thread>
@@ -92,19 +90,6 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         exit(-1);
     }
     settings_ = new Settings(strSettingsFile,mSensor);
-
-    // P11-F0: install the runtime fix flags into the process-global slot.
-    // MUST stay ahead of every thread spawn in this constructor (the
-    // happens-before edge is thread creation — FixFlags.hpp contract), and
-    // ahead of the Tracking ctor (config-time flags read at parse time).
-    // Provenance: exactly one stderr line when any flag is non-default;
-    // level 0 (all gate yamls) is silent by construction.
-    FixFlags::Set(settings_->fixFlags());
-    {
-        const std::string sActiveFixes = FixFlags::I().ActiveList();
-        if(!sActiveFixes.empty())
-            cerr << "[FixFlags] non-default fix flags ACTIVE: " << sActiveFixes << endl;
-    }
 
     mStrLoadAtlasFromFile = settings_->atlasLoadFile();
     mStrSaveAtlasToFile = settings_->atlasSaveFile();
@@ -673,7 +658,6 @@ void System::SaveTrajectoryTUM(const string &filename)
         // If the reference keyframe was culled, traverse the spanning tree to get a suitable keyframe.
         while(pKF->isBad())
         {
-            LT_PROBE_BAD("SysTrajTUM.walk", 'K', pKF->mnId);
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
         }
@@ -713,7 +697,6 @@ void System::SaveKeyFrameTrajectoryTUM(const string &filename)
 
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("SysKFTrajTUM.skip", 'K', pKF->mnId);
             continue;
         }
 
@@ -811,7 +794,6 @@ void System::SaveTrajectoryEuRoC(const string &filename)
 
         while(pKF->isBad())
         {
-            LT_PROBE_BAD("SysTrajEuRoC.walk", 'K', pKF->mnId);
             //cout << " 2.bad" << endl;
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
@@ -917,7 +899,6 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 
         while(pKF->isBad())
         {
-            LT_PROBE_BAD("SysTrajEuRoCMap.walk1", 'K', pKF->mnId);
             //cout << " 2.bad" << endl;
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
@@ -1033,7 +1014,6 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 
         while(pKF->isBad())
         {
-            LT_PROBE_BAD("SysTrajEuRoCMap.walk2", 'K', pKF->mnId);
             //cout << " 2.bad" << endl;
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
@@ -1113,7 +1093,6 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("SysTrajEuRoCMap.skip", 'K', pKF->mnId);
             continue;
         }
         if (mSensor == IMU_MONOCULAR || mSensor == IMU_STEREO || mSensor==IMU_RGBD)
@@ -1174,7 +1153,6 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
 
         if(!pKF || pKF->isBad())
         {
-            if(pKF) LT_PROBE_BAD("SysKFTrajEuRoC.skip", 'K', pKF->mnId);
             continue;
         }
         if (mSensor == IMU_MONOCULAR || mSensor == IMU_STEREO || mSensor==IMU_RGBD)
@@ -1215,7 +1193,6 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename, Map* pMap)
 
         if(!pKF || pKF->isBad())
         {
-            if(pKF) LT_PROBE_BAD("SysKFTrajEuRoCMap.skip", 'K', pKF->mnId);
             continue;
         }
         if (mSensor == IMU_MONOCULAR || mSensor == IMU_STEREO || mSensor==IMU_RGBD)
@@ -1273,7 +1250,6 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename, Map* pMap)
 
         while(pKF->isBad())
         {
-            LT_PROBE_BAD("SysKFTrajEuRoCMap.walk", 'K', pKF->mnId);
             Trw = Trw * Converter::toCvMat(pKF->mTcp.matrix());
             pKF = pKF->GetParent();
         }
@@ -1331,7 +1307,6 @@ void System::SaveTrajectoryKITTI(const string &filename)
 
         while(pKF->isBad())
         {
-            LT_PROBE_BAD("SysTrajKITTI.walk", 'K', pKF->mnId);
             Trw = Trw * pKF->mTcp;
             pKF = pKF->GetParent();
         }

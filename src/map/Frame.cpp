@@ -18,7 +18,6 @@
 
 #include "map/Frame.hpp"
 
-#include "core/FixFlags.hpp"  // P11-F4: stereo ctor caches Fix.StereoMbInit
 #include "backend/G2oTypes.hpp"
 #include "map/MapPoint.hpp"
 #include "map/KeyFrame.hpp"
@@ -107,12 +106,6 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
      mImuCalib(ImuCalib), mpImuPreintegrated(NULL), mpPrevFrame(pPrevF),mpImuPreintegratedFrame(NULL), mpReferenceKF(static_cast<KeyFrame*>(NULL)), mbIsSet(false), mbImuPreintegrated(false),
      mpCamera(pCamera) ,mpCamera2(nullptr), mbHasPose(false), mbHasVelocity(false)
 {
-    // P11-F4 (DIVERGENCES #5, Fix.StereoMbInit -- OFF by default): cached in
-    // a local const bool at ctor top -- this ctor runs once per stereo frame
-    // (config-per-frame class, not the per-edge hot path, but still worth one
-    // load instead of two). Consumed right before ComputeStereoMatches below.
-    const bool bFixStereoMbInit = FixFlags::I().stereoMbInit;
-
     // Frame ID
     mnId=nNextId++;
 
@@ -145,16 +138,11 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
     UndistortKeyPoints();
 
-    // P11-F4 (DIVERGENCES #5, Fix.StereoMbInit -- OFF by default): upstream
-    // assigns mb = mbf/fx only AFTER ComputeStereoMatches(), whose search
-    // range reads it (minZ = mb -> maxD = mbf/minZ) -- a genuine
-    // read-before-init UB on EVERY stereo frame (fresh Frame object = fresh
-    // indeterminate read; the golden baseline merely got lucky with the
-    // stack garbage). The flag hoists the assignment above the call; the
-    // level-0 path leaves the indeterminate read bug-for-bug intact, and
-    // the (redundant when armed) upstream assignment below is untouched.
-    if(bFixStereoMbInit)
-        mb = mbf/K.at<float>(0,0);
+    // Initialize mb BEFORE ComputeStereoMatches(), whose search range reads
+    // it (minZ = mb -> maxD = mbf/minZ). Upstream assigned it only after the
+    // call -- a read-before-init UB on every stereo frame (DIVERGENCES #5;
+    // fix promoted unconditional in R4a).
+    mb = mbf/K.at<float>(0,0);
 
 #ifdef REGISTER_TIMES
     std::chrono::steady_clock::time_point time_StartStereoMatches = std::chrono::steady_clock::now();
@@ -185,8 +173,7 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     cy = K.at<float>(1,2);
     invfx = 1.0f/fx;
     invfy = 1.0f/fy;
-
-    mb = mbf/fx;
+    // mb already set before ComputeStereoMatches() above (DIVERGENCES #5).
 
     if(pPrevF)
     {

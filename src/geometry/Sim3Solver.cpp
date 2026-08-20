@@ -18,7 +18,6 @@
 
 
 #include "geometry/Sim3Solver.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 
 #include <vector>
 #include <cmath>
@@ -85,8 +84,6 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> 
 
             if(pMP1->isBad() || pMP2->isBad())
             {
-                if(pMP1->isBad()) LT_PROBE_BAD("Sim3Solver.match", 'M', pMP1->mnId);
-                else LT_PROBE_BAD("Sim3Solver.match", 'M', pMP2->mnId);
                 continue;
             }
 

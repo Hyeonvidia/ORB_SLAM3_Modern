@@ -125,15 +125,13 @@ endif()
 # design §B.0/§B.5). ImuTypes is deliberately NOT snapshotted: shared float
 # path used live by both variants.
 set(EQUIV_SHARED_SOURCES
-  # FixFlags is SHARED since P11-F4: originally modern-only (P11-F1, for the
-  # live EdgeInertialGS ctor's .scaleJacobianChainRule cache, DIVERGENCES #9),
-  # but P11-F4 added a FixFlags::I().stereoMbInit cache to the shared
-  # src/map/Frame.cpp stereo ctor, so the vendored variant now links it too
-  # (caught 2026-08-11 alongside the P7-1b Verbose repair). The harness never
-  # calls FixFlags::Set, so BOTH variants run at the all-false level-0
-  # default — exactly the OFF contract the cross-variant gate proves; the ON
-  # properties live in tests/fixlevel/ instead.
-  ${REPO_ROOT}/src/core/FixFlags.cpp
+  # R4a: the FixLevel flag machinery (formerly a shared TU here) was retired
+  # when the eight flagged fixes were promoted to unconditional. NOTE: the live
+  # backend now carries the #9 scale-jacobian chain rule unconditionally
+  # while the frozen reference twin stays unfixed, so the cross-variant
+  # equivalence contract for scale-jacobian-sensitive fixtures is stale by
+  # design (the convergence property lives in tests/fixlevel/
+  # fl9_scale_convergence.cpp).
   ${REPO_ROOT}/src/backend/ImuTypes.cpp
   ${REPO_ROOT}/src/map/Frame.cpp
   ${REPO_ROOT}/src/map/KeyFrame.cpp

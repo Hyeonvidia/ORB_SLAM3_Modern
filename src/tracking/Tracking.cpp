@@ -18,7 +18,6 @@
 
 
 #include "tracking/Tracking.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include "features/ORBmatcher.hpp"
 #include "viz/FrameDrawer.hpp"
@@ -28,7 +27,6 @@
 #include "backend/ITrackingOptimizer.hpp"
 #include "camera/Pinhole.hpp"
 #include "camera/KannalaBrandt8.hpp"
-#include "core/FixFlags.hpp"        // P11-F6: Fix.LegacyImuResetWindow (newParameterLoader)
 #include "core/IResetRequester.hpp" // P7-1b: narrow System surface (reset latch)
 #include "core/System.hpp"          // P7-1b: for the System::eSensor enumerators only
 #include "geometry/MLPnPsolver.hpp"
@@ -647,17 +645,13 @@ void Tracking::newParameterLoader(Settings *settings) {
 
     mMinFrames = 0;
     mMaxFrames = settings->fps();
-    // P11-F6 (DIVERGENCES #3, Fix.LegacyImuResetWindow -- OFF by default):
-    // the legacy flat-key parser sized the post-relocalization IMU-reset
-    // window to one second of frames (mnFramesToResetIMU = mMaxFrames); the
-    // upstream V1.0 path never assigned the member at all (indeterminate),
-    // and the golden baseline's measured behavior (= 0, window disabled) is
-    // what the header initializer canonicalizes. The flag restores the
-    // legacy semantics as a config-time value only -- this ternary runs once
-    // per Tracking construction (System installs FixFlags::Set before this
-    // ctor), and none of the five read sites gains a branch: zero hot-path
-    // cost by construction.
-    mnFramesToResetIMU = FixFlags::I().legacyImuResetWindow ? mMaxFrames : 0;
+    // mnFramesToResetIMU stays at the canonical 0 (header initializer):
+    // the post-relocalization IMU-reset window is disabled. The legacy
+    // flat-key parser sized it to one second of frames (mMaxFrames), but
+    // the upstream V1.0 path never assigned the member at all, and the
+    // golden baseline's measured behavior is 0 (DIVERGENCES #3 — legacy
+    // semantics of debatable merit, NOT restored in the R4a promotion; the
+    // flag arm was deleted with the retired FixLevel machinery).
     mbRGB = settings->rgb();
 
     //ORB parameters
@@ -2638,7 +2632,6 @@ void Tracking::SearchLocalPoints()
         {
             if(pMP->isBad())
             {
-                LT_PROBE_BAD("TrkSearchLocalP.2638", 'M', pMP->mnId);
                 *vit = static_cast<MapPoint*>(NULL);
             }
             else
@@ -2662,7 +2655,6 @@ void Tracking::SearchLocalPoints()
             continue;
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("TrkSearchLocalP.2661", 'M', pMP->mnId);
             continue;
         }
         // Project (this fills MapPoint variables for matching)
@@ -2735,7 +2727,6 @@ void Tracking::UpdateLocalPoints()
                 continue;
             if(pMP->mnTrackReferenceForFrame==mCurrentFrame.mnId)
                 continue;
-            if(pMP->isBad()) LT_PROBE_BAD("TrkUpdateLocalP.2733", 'M', pMP->mnId);
             if(!pMP->isBad())
             {
                 count_pts++;
@@ -2758,7 +2749,6 @@ void Tracking::UpdateLocalKeyFrames()
             MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
             if(pMP)
             {
-                if(pMP->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2755", 'M', pMP->mnId);
                 if(!pMP->isBad())
                 {
                     const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
@@ -2782,7 +2772,6 @@ void Tracking::UpdateLocalKeyFrames()
                 MapPoint* pMP = mLastFrame.mvpMapPoints[i];
                 if(!pMP)
                     continue;
-                if(pMP->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2778", 'M', pMP->mnId);
                 if(!pMP->isBad())
                 {
                     const map<KeyFrame*,tuple<int,int>> observations = pMP->GetObservations();
@@ -2812,7 +2801,6 @@ void Tracking::UpdateLocalKeyFrames()
 
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("TrkUpdateLocalK.2805", 'K', pKF->mnId);
             continue;
         }
 
@@ -2841,7 +2829,6 @@ void Tracking::UpdateLocalKeyFrames()
         for(vector<KeyFrame*>::const_iterator itNeighKF=vNeighs.begin(), itEndNeighKF=vNeighs.end(); itNeighKF!=itEndNeighKF; itNeighKF++)
         {
             KeyFrame* pNeighKF = *itNeighKF;
-            if(pNeighKF->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2833", 'K', pNeighKF->mnId);
             if(!pNeighKF->isBad())
             {
                 if(pNeighKF->mnTrackReferenceForFrame!=mCurrentFrame.mnId)
@@ -2857,7 +2844,6 @@ void Tracking::UpdateLocalKeyFrames()
         for(set<KeyFrame*>::const_iterator sit=spChilds.begin(), send=spChilds.end(); sit!=send; sit++)
         {
             KeyFrame* pChildKF = *sit;
-            if(pChildKF->isBad()) LT_PROBE_BAD("TrkUpdateLocalK.2848", 'K', pChildKF->mnId);
             if(!pChildKF->isBad())
             {
                 if(pChildKF->mnTrackReferenceForFrame!=mCurrentFrame.mnId)
@@ -2943,7 +2929,6 @@ bool Tracking::Relocalization()
         KeyFrame* pKF = vpCandidateKFs[i];
         if(pKF->isBad())
         {
-            LT_PROBE_BAD("TrkRelocalizati.2931", 'K', pKF->mnId);
             vbDiscarded[i] = true;
         }
         else
@@ -3333,7 +3318,6 @@ void Tracking::UpdateFrameIMU(const float s, const IMU::Bias &b, KeyFrame* pCurr
 
         while(pKF->isBad())
         {
-            LT_PROBE_BAD("TrkUpdateFrameI.3318", 'K', pKF->mnId);
             pKF = pKF->GetParent();
         }
 

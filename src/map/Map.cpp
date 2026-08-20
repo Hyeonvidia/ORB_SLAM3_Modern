@@ -18,7 +18,6 @@
 
 
 #include "map/Map.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 
 #include<mutex>
 
@@ -64,7 +63,6 @@ Map::~Map()
 
 void Map::AddKeyFrame(KeyFrame *pKF)
 {
-    LT_SEQ_BUMP();  // L0-D1: map-op axis for seq_delta
     unique_lock<mutex> lock(mMutexMap);
     if(mspKeyFrames.empty()){
         cout << "First KF:" << pKF->mnId << "; Map init KF:" << mnInitKFid << endl;
@@ -369,7 +367,6 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
     {
         if(!pMPi || pMPi->isBad())
         {
-            if(pMPi) LT_PROBE_BAD("MapPreSave.mpClean", 'M', pMPi->mnId);
             continue;
         }
 
@@ -382,7 +379,6 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
         {
             if(it->first->GetMap() != this || it->first->isBad())
             {
-                if(it->first->isBad()) LT_PROBE_BAD("MapPreSave.obsErase", 'K', it->first->mnId);
                 pMPi->EraseObservation(it->first);
             }
 
@@ -404,7 +400,6 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
     {
         if(!pMPi || pMPi->isBad())
         {
-            if(pMPi) LT_PROBE_BAD("MapPreSave.mpBackup", 'M', pMPi->mnId);
             continue;
         }
 
@@ -418,7 +413,6 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi) LT_PROBE_BAD("MapPreSave.kfBackup", 'K', pKFi->mnId);
             continue;
         }
 
@@ -450,7 +444,6 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     {
         if(!pMPi || pMPi->isBad())
         {
-            if(pMPi) LT_PROBE_BAD("MapPostLoad.mp", 'M', pMPi->mnId);
             continue;
         }
 
@@ -463,7 +456,6 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi) LT_PROBE_BAD("MapPostLoad.kf", 'K', pKFi->mnId);
             continue;
         }
 
@@ -478,7 +470,6 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     {
         if(!pMPi || pMPi->isBad())
         {
-            if(pMPi) LT_PROBE_BAD("MapPostLoad.mpRef", 'M', pMPi->mnId);
             continue;
         }
 
@@ -489,7 +480,6 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi) LT_PROBE_BAD("MapPostLoad.kfRef", 'K', pKFi->mnId);
             continue;
         }
 

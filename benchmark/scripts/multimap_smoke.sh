@@ -6,8 +6,9 @@
 # 0 merge seeds). Exercises multi-map creation + visual cross-map merge
 # (the path the standard gates never reach — DIVERGENCES #21/L1/L2/D5
 # territory). Asserts via the [loopclosing] channel trace that at least one
-# merge was consumed. Runs with whatever yaml is passed (default = gate yaml
-# = level-0); pass a FixLevel yaml copy to screen the ON config.
+# merge was consumed. Runs with whatever yaml is passed (default = the
+# standard EuRoC stereo yaml; the state-hygiene fixes are unconditional
+# since R4a).
 #   ./benchmark/scripts/multimap_smoke.sh [settings_yaml_in_container]
 set -uo pipefail
 cd "$(dirname "$0")/../.."

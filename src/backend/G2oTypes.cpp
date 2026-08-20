@@ -18,7 +18,6 @@
 
 #include "backend/G2oTypes.hpp"
 #include "backend/ImuTypes.hpp"
-#include "core/FixFlags.hpp"     // P11-F1: EdgeInertialGS ctor caches Fix.ScaleJacobian
 #include "io/Converter.hpp"
 namespace ORB_SLAM3
 {
@@ -596,8 +595,7 @@ void EdgeInertial::linearizeOplus()
 
 EdgeInertialGS::EdgeInertialGS(IMU::Preintegrated *pInt):JRg(pInt->JRg.cast<double>()),
     JVg(pInt->JVg.cast<double>()), JPg(pInt->JPg.cast<double>()), JVa(pInt->JVa.cast<double>()),
-    JPa(pInt->JPa.cast<double>()), mpInt(pInt), dt(pInt->dT),
-    mbScaleJacCR(FixFlags::I().scaleJacobianChainRule)
+    JPa(pInt->JPa.cast<double>()), mpInt(pInt), dt(pInt->dT)
 {
     // This edge links 8 vertices
     resize(8);
@@ -713,28 +711,15 @@ void EdgeInertialGS::linearizeOplus()
     _jacobianOplus[6].block<3,2>(3,0) = -Rbw1*dGdTheta*dt;
     _jacobianOplus[6].block<3,2>(6,0) = -0.5*Rbw1*dGdTheta*dt*dt;
 
-    // Jacobians wrt scale factor
+    // Jacobians wrt scale factor. Chain rule for the MULTIPLICATIVE
+    // VertexScale update s <- s*exp(w): the vertex's local parameter is w,
+    // so dr/dw = (dr/ds)*s. Upstream shipped the additive dr/ds, making the
+    // GN fixed point s <- s*exp(s_true - s) — stalled at s_true = 2 and
+    // divergent beyond (DIVERGENCES #9; promoted unconditional in R4a,
+    // convergence property pinned by tests/fixlevel/fl9_scale_convergence).
     _jacobianOplus[7].setZero();
-    _jacobianOplus[7].block<3,1>(3,0) = Rbw1*(VV2->estimate()-VV1->estimate());
-    _jacobianOplus[7].block<3,1>(6,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb-VV1->estimate()*dt);
-    // P11-F1 (DIVERGENCES #9, Fix.ScaleJacobian — OFF by default): chain rule
-    // for the MULTIPLICATIVE VertexScale update s <- s*exp(w): the vertex's
-    // local parameter is w, so dr/dw = (dr/ds)*s. Upstream ships the additive
-    // dr/ds above, which makes the GN fixed point s <- s*exp(s_true - s) —
-    // stalling at s_true = 2 and divergent beyond (the #9 mechanism that
-    // strands badly-scaled mono-inertial inits). Shape is a test+branch on
-    // the ctor-cached bool, deliberately NOT "*(flag ? s : 1.0)": at level 0
-    // the unconditional extra multiply would perturb the instruction stream
-    // more than a predicted-not-taken test (#20 discipline, docs/P11_RECON.md
-    // 2부 §2). The frozen reference twin (tests/backend_equiv/
-    // reference_backend/G2oTypes.cpp) intentionally stays UNFIXED — it is the
-    // OFF-contract oracle: the s_true=1.1 twin-equivalence pair pins the OFF
-    // semantics, tests/fixlevel/fl9_scale_convergence.cpp pins the ON
-    // semantics (s_true=2.0 convergence property).
-    if (mbScaleJacCR) {
-        _jacobianOplus[7].block<3,1>(3,0) *= s;
-        _jacobianOplus[7].block<3,1>(6,0) *= s;
-    }
+    _jacobianOplus[7].block<3,1>(3,0) = s*Rbw1*(VV2->estimate()-VV1->estimate());
+    _jacobianOplus[7].block<3,1>(6,0) = s*Rbw1*(VP2->estimate().twb-VP1->estimate().twb-VV1->estimate()*dt);
 }
 
 EdgePriorPoseImu::EdgePriorPoseImu(ConstraintPoseImu *c)

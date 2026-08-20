@@ -18,10 +18,8 @@
 
 
 #include "closing/PlaceRecognition.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include "closing/LoopClosing.hpp"       // host state via the friend grant (P8-4 pattern)
-#include "core/FixFlags.hpp"             // P11-F2: Fix.ScaleJacobian rides into OptimizeSim3
 #include "core/System.hpp"               // System::eSensor enumerators
 #include "tracking/Tracking.hpp"         // mHost.mpTracker->mSensor reads
 #include "geometry/Sim3Solver.hpp"
@@ -109,15 +107,11 @@ bool PlaceRecognition::NewDetectCommonRegions()
         {
             bLoopDetectedInKF = false;
 
-            // Level 0: the loop channel does NOT clear detected on failure —
-            // the second half of the DIVERGENCES #21 poisoned-consume
-            // composite (the merge twin below passes true). P11-F3
-            // (Fix.LoopStateHygiene, OFF by default): clear it like the
-            // merge channel does, so a reffine-failed loop hypothesis cannot
-            // stay DETECTED and be consumed off a stale anchor. Per-LC-KF
-            // site, direct flag read (no ctor caching needed).
-            ChannelDecayStep("loop", mLoopCh,
-                             /*bClearDetected=*/FixFlags::I().loopStateHygiene);
+            // Clear detected on reffine failure, like the merge twin below:
+            // a reffine-failed loop hypothesis must not stay DETECTED and be
+            // consumed off a stale anchor (DIVERGENCES #21, promoted
+            // unconditional in R4a — upstream left the loop channel latched).
+            ChannelDecayStep("loop", mLoopCh, /*bClearDetected=*/true);
         }
     }
 
@@ -255,9 +249,10 @@ void PlaceRecognition::ChannelAdvance(const char* ch, DetectionChannel& c, const
 
 // Reffine failure step (upstream LC:409-424 / :451-465), including the decay
 // wipe at the second consecutive failure. The decay wipe does NOT clear
-// `detected` in either channel; the merge channel instead clears it up front
-// on EVERY failure, the loop channel never does (that latch is DIVERGENCES
-// #21's second half).
+// `detected`; instead both call sites clear it up front on EVERY failure
+// (bClearDetected=true — the loop channel joined the merge channel's shape
+// when DIVERGENCES #21's second half was fixed, promoted unconditional in
+// R4a).
 void PlaceRecognition::ChannelDecayStep(const char* ch, DetectionChannel& c, bool bClearDetected)
 {
     if(bClearDetected)
@@ -294,18 +289,18 @@ void PlaceRecognition::ChannelWipe(const char* ch, DetectionChannel& c, const ch
 }
 
 // BoW commit block (upstream LC:875-886, the tail of
-// DetectCommonRegionsFromBoW). Seeds -- or overwrites -- the hypothesis:
-// no SetErase on the previously latched anchor/matched KF (leak L1), can
-// seed numCoincidences == 0 (orphan latch L2), and numNotFound is carried
-// over from the dead hypothesis. All upstream, all preserved at level 0;
-// P11-F3 (Fix.LatchHygiene) arms the hygiene block below.
+// DetectCommonRegionsFromBoW). Seeds -- or overwrites -- the hypothesis.
+// Upstream did no SetErase on the previously latched anchor/matched KF
+// (leak L1), could seed numCoincidences == 0 (orphan latch L2), and carried
+// numNotFound over from the dead hypothesis; the hygiene block below fixes
+// all three (promoted unconditional in R4a).
 bool PlaceRecognition::ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFrame* pBestMatchedKF,
                                  int nBestNumCoincidences, const g2o::Sim3& g2oBestScw,
                                  const std::vector<MapPoint*>& vpBestMapPoints,
                                  const std::vector<MapPoint*>& vpBestMatchedMapPoints)
 {
-    // P11-F3 (OWNERSHIP L1/L2, docs/P9_RECON.md D2/D3; Fix.LatchHygiene,
-    // OFF by default; per-seed site, direct flag read):
+    // Latch hygiene (OWNERSHIP L1/L2, docs/P9_RECON.md D2/D3; promoted
+    // unconditional in R4a):
     //   L2 -- a seed with zero coincidences would latch a KF the decay path
     //   (guarded numCoincidences > 0 upstream) can never release: permanent
     //   orphan latch + stale-anchor carryover. Refuse the seed outright and
@@ -318,19 +313,16 @@ bool PlaceRecognition::ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFr
     //   against culling forever. Release them first (the current KF keeps
     //   its queue-pop latch), and zero the numNotFound carried over from
     //   the dead hypothesis so the fresh one starts clean.
-    if(FixFlags::I().latchHygiene)
+    if(nBestNumCoincidences == 0)
     {
-        if(nBestNumCoincidences == 0)
-        {
-            TraceChannel(ch, "bow-seed-refused-cnt0", c);
-            return false;
-        }
-        if(c.matchedKF)
-            c.matchedKF->SetErase();
-        if(c.lastCurrentKF && c.lastCurrentKF != mHost.mpCurrentKF)
-            c.lastCurrentKF->SetErase();
-        c.numNotFound = 0;
+        TraceChannel(ch, "bow-seed-refused-cnt0", c);
+        return false;
     }
+    if(c.matchedKF)
+        c.matchedKF->SetErase();
+    if(c.lastCurrentKF && c.lastCurrentKF != mHost.mpCurrentKF)
+        c.lastCurrentKF->SetErase();
+    c.numNotFound = 0;
 
     c.lastCurrentKF = mHost.mpCurrentKF;
     c.numCoincidences = nBestNumCoincidences;
@@ -410,7 +402,6 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
     {
         if(!pKFi || pKFi->isBad())
         {
-            if(pKFi && pKFi->isBad()) LT_PROBE_BAD("PRDetectCommon.406", 'K', pKFi->mnId);
             continue;
         }
 
@@ -458,7 +449,6 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
         {
             if(!vpCovKFi[j] || vpCovKFi[j]->isBad())
             {
-                if(vpCovKFi[j] && vpCovKFi[j]->isBad()) LT_PROBE_BAD("PRDetectCommon.451", 'K', vpCovKFi[j]->mnId);
                 continue;
             }
 
@@ -476,7 +466,6 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
                 MapPoint* pMPi_j = vvpMatchedMPs[j][k];
                 if(!pMPi_j || pMPi_j->isBad())
                 {
-                    if(pMPi_j && pMPi_j->isBad()) LT_PROBE_BAD("PRDetectCommon.466", 'M', pMPi_j->mnId);
                     continue;
                 }
 
@@ -528,7 +517,6 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
                     {
                         if(!pCovMPij || pCovMPij->isBad())
                         {
-                            if(pCovMPij && pCovMPij->isBad()) LT_PROBE_BAD("PRDetectCommon.515", 'M', pCovMPij->mnId);
                             continue;
                         }
 
@@ -558,19 +546,12 @@ bool PlaceRecognition::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowC
                     // Optimize Sim3 transformation with every matches
                     Eigen::Matrix<double, 7, 7> mHessian7x7;
 
-                    // Upstream passes raw mHost.mbFixScale here, without the
-                    // IMU_MONOCULAR pre-BA2 relaxation already computed above
-                    // (bFixedScale) and used by the other three OptimizeSim3
-                    // sites — preserved bug-for-bug at level 0 (DIVERGENCES
-                    // #24, docs/P9_RECON.md D6). P11-F2: Fix.ScaleJacobian
-                    // (#9's flag — same MI early-scale-window semantics, same
-                    // validation runs) passes the relaxed value instead.
-                    // Config-class site, not hot: direct FixFlags read, no
-                    // ctor caching needed (contrast EdgeInertialGS, P11-F1).
-                    const bool bSim3FixScale =
-                        FixFlags::I().scaleJacobianChainRule ? bFixedScale
-                                                             : mHost.mbFixScale;
-                    int numOptMatches = mHost.mpOptimizer->OptimizeSim3(mHost.mpCurrentKF, pKFi, vpMatchedMP, gScm, 10, bSim3FixScale, mHessian7x7, true);
+                    // Pass the IMU_MONOCULAR pre-BA2 relaxed bFixedScale
+                    // computed above, like the other three OptimizeSim3
+                    // sites — upstream passed raw mHost.mbFixScale here
+                    // (DIVERGENCES #24, docs/P9_RECON.md D6; promoted
+                    // unconditional in R4a).
+                    int numOptMatches = mHost.mpOptimizer->OptimizeSim3(mHost.mpCurrentKF, pKFi, vpMatchedMP, gScm, 10, bFixedScale, mHessian7x7, true);
 
                     if(numOptMatches >= nSim3Inliers)
                     {
@@ -685,7 +666,6 @@ int PlaceRecognition::FindMatchesByProjection(KeyFrame* pCurrentKF, KeyFrame* pM
         {
             if(!pMPij || pMPij->isBad())
             {
-                if(pMPij && pMPij->isBad()) LT_PROBE_BAD("PRFindMatchesB.669", 'M', pMPij->mnId);
                 continue;
             }
 
@@ -733,18 +713,17 @@ void PlaceRecognition::WipeMergeOnScaleAbort()
     ChannelWipe("merge", mMergeCh, "wipe-scale-abort");
 }
 
-// P11-F3 (OWNERSHIP D5, Fix.LcResetWipe): full machine wipe for
-// LoopClosing::ResetIfRequested -- both channels, called from both reset
-// branches, ONLY with the flag armed (level 0 preserves the upstream leak:
-// queue cleared, channels survive pointing into the torn-down map for up to
-// two KFs). ChannelWipe's shape derefs the KF latches unconditionally (all
-// its upstream call sites hold a live hypothesis), but a reset can fire
-// before any BoW seed ever ran, so guard on lastCurrentKF: the seed writes
-// lastCurrentKF and matchedKF together, so a null lastCurrentKF means a
-// never-seeded channel with nothing latched. A previously wiped channel
-// keeps stale non-null pointers by design; the repeated SetErase there is
-// idempotent latch release (and the #19 deferred-SetBadFlag completion
-// path), which is exactly the hygiene this flag buys.
+// Full machine wipe for LoopClosing::ResetIfRequested -- both channels,
+// called from both reset branches (OWNERSHIP D5; promoted unconditional in
+// R4a -- upstream only cleared the queue and let channels survive pointing
+// into the torn-down map). ChannelWipe's shape derefs the KF latches
+// unconditionally (all its upstream call sites hold a live hypothesis), but
+// a reset can fire before any BoW seed ever ran, so guard on lastCurrentKF:
+// the seed writes lastCurrentKF and matchedKF together, so a null
+// lastCurrentKF means a never-seeded channel with nothing latched. A
+// previously wiped channel keeps stale non-null pointers by design; the
+// repeated SetErase there is idempotent latch release (and the #19
+// deferred-SetBadFlag completion path).
 void PlaceRecognition::ResetChannels()
 {
     if(mLoopCh.lastCurrentKF)

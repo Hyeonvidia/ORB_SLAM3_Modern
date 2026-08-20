@@ -18,7 +18,6 @@
 
 
 #include "recognition/KeyFrameDatabase.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L2 class-4 probes (no-op unless LIFETIME_TRACE)
 
 #include "map/KeyFrame.hpp"
 #include "recognition/BowTypes.hpp"  // R3: upstream DBoW2 BowVector
@@ -228,7 +227,6 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
         KeyFrame* pKFi = it->second;
         if(pKFi->isBad())
         {
-            LT_PROBE_BAD("KFDBDetectNBestC.228", 'K', pKFi->mnId);
             // DIVERGENCES #23: upstream `continue`d here without advancing
             // i/it, spinning forever if a bad KF reached this list. Skip the
             // candidate instead of hanging.

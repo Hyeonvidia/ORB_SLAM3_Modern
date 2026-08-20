@@ -564,12 +564,6 @@ public:
     IMU::Preintegrated* mpInt;
     const double dt;
     Eigen::Vector3d g, gI;
-    // P11-F1 (DIVERGENCES #9, Fix.ScaleJacobian): FixFlags::I()
-    // .scaleJacobianChainRule cached at edge construction — hot-path
-    // discipline per docs/P11_RECON.md 2부 §2 (one predicted test per
-    // linearizeOplus instead of a global load in the per-edge
-    // per-iteration loop). Consumed only by linearizeOplus.
-    const bool mbScaleJacCR;
 
     Eigen::Matrix<double,27,27> GetHessian(){
         linearizeOplus();

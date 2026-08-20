@@ -17,7 +17,6 @@
 */
 
 #include "map/KeyFrame.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 #include "io/Converter.hpp"
 #include "backend/ImuTypes.hpp"
 #include<mutex>
@@ -219,7 +218,6 @@ void KeyFrame::UpdateBestCovisibles()
     list<int> lWs;
     for(size_t i=0, iend=vPairs.size(); i<iend;i++)
     {
-        if(vPairs[i].second->isBad()) LT_PROBE_BAD("KFUpdateBestCo.216", 'K', vPairs[i].second->mnId);
         if(!vPairs[i].second->isBad())
         {
             lKFs.push_front(vPairs[i].second);
@@ -337,7 +335,6 @@ set<MapPoint*> KeyFrame::GetMapPoints()
         if(!mvpMapPoints[i])
             continue;
         MapPoint* pMP = mvpMapPoints[i];
-        if(pMP->isBad()) LT_PROBE_BAD("KFGetMapPoints.333", 'M', pMP->mnId);
         if(!pMP->isBad())
             s.insert(pMP);
     }
@@ -355,7 +352,6 @@ int KeyFrame::TrackedMapPoints(const int &minObs)
         MapPoint* pMP = mvpMapPoints[i];
         if(pMP)
         {
-            if(pMP->isBad()) LT_PROBE_BAD("KFTrackedMapPo.350", 'M', pMP->mnId);
             if(!pMP->isBad())
             {
                 if(bCheckObs)
@@ -406,7 +402,6 @@ void KeyFrame::UpdateConnections(bool upParent)
 
         if(pMP->isBad())
         {
-            LT_PROBE_BAD("KFUpdateConnec.398", 'M', pMP->mnId);
             continue;
         }
 
@@ -416,7 +411,6 @@ void KeyFrame::UpdateConnections(bool upParent)
         {
             if(mit->first->mnId==mnId || mit->first->isBad() || mit->first->GetMap() != mpMap)
             {
-                if(mit->first->isBad()) LT_PROBE_BAD("KFUpdateConnec.405", 'K', mit->first->mnId);
                 continue;
             }
             KFcounter[mit->first]++;
@@ -639,7 +633,6 @@ void KeyFrame::SetBadFlag()
                 KeyFrame* pKF = *sit;
                 if(pKF->isBad())
                 {
-                    LT_PROBE_BAD("KFSetBadFlag.625", 'K', pKF->mnId);
                     continue;
                 }
 
@@ -688,7 +681,6 @@ void KeyFrame::SetBadFlag()
             mTcp = mTcw * mpParent->GetPoseInverse();
         }
         mbBad = true;
-        LT_STAMP_BAD('K', mnId);  // P12-L0-b
     }
 
 

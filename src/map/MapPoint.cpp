@@ -17,7 +17,6 @@
 */
 
 #include "map/MapPoint.hpp"
-#include "core/LifetimeLedger.hpp"  // P12-L0-b probes (no-op unless LIFETIME_TRACE)
 #include "features/ORBmatcher.hpp"
 
 #include<mutex>
@@ -224,7 +223,6 @@ void MapPoint::SetBadFlag()
         unique_lock<mutex> lock1(mMutexFeatures);
         unique_lock<mutex> lock2(mMutexPos);
         mbBad=true;
-        LT_STAMP_BAD('M', mnId);  // P12-L0-b
         obs = mObservations;
         mObservations.clear();
     }
@@ -263,7 +261,6 @@ void MapPoint::Replace(MapPoint* pMP)
         obs=mObservations;
         mObservations.clear();
         mbBad=true;
-        LT_STAMP_BAD('M', mnId);  // P12-L0-b (Replace tombstones too)
         nvisible = mnVisible;
         nfound = mnFound;
         mpReplaced = pMP;
@@ -355,7 +352,6 @@ void MapPoint::ComputeDistinctiveDescriptors()
     {
         KeyFrame* pKF = mit->first;
 
-        if(pKF->isBad()) LT_PROBE_BAD("MPComputeDisti.354", 'K', pKF->mnId);
         if(!pKF->isBad()){
             tuple<int,int> indexes = mit -> second;
             int leftIndex = get<0>(indexes), rightIndex = get<1>(indexes);
