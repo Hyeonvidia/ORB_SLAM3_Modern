@@ -40,7 +40,7 @@ struct FrameFixture {
 
     // Owned resources (Frame stores raw pointers only).
     std::unique_ptr<ORB_SLAM3::GeometricCamera> camera;
-    std::vector<std::unique_ptr<ORB_SLAM3::MapPoint>> mapPoints;
+    std::vector<ORB_SLAM3::MapPointPtr> mapPoints;  // R4b: shared_ptr-managed
 
     // Design bookkeeping (asserted by the runner / run_equiv.sh).
     int expectedInliers = 0;                 // 36 for mono_grid
@@ -280,7 +280,7 @@ struct PoseInertialFixture {
     ORB_SLAM3::Frame frame;
 
     std::unique_ptr<ORB_SLAM3::GeometricCamera> camera;
-    std::vector<std::unique_ptr<ORB_SLAM3::MapPoint>> mapPoints;
+    std::vector<ORB_SLAM3::MapPointPtr> mapPoints;  // R4b: shared_ptr-managed
     std::unique_ptr<KfChainBlock> kfBlock;   // exactly one KeyFrame
     std::unique_ptr<ORB_SLAM3::IMU::Preintegrated> preint;
 

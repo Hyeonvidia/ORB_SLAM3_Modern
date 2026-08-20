@@ -21,6 +21,7 @@
 #define TRACKING_H
 
 #include <opencv2/core/core.hpp>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include <opencv2/features2d/features2d.hpp>
 
 // P7-1b: this header no longer includes core/System.hpp (Tracking now holds
@@ -309,7 +310,7 @@ public:
     bool mFastInit = false;
 
 
-    std::vector<MapPoint*> GetLocalMapMPS();
+    std::vector<MapPointPtr> GetLocalMapMPS();
 
     bool mbWriteStats;
 
@@ -467,7 +468,7 @@ protected:
     //Local Map
     KeyFrame* mpReferenceKF;
     std::vector<KeyFrame*> mvpLocalKeyFrames;
-    std::vector<MapPoint*> mvpLocalMapPoints;
+    std::vector<MapPointPtr> mvpLocalMapPoints;
     
     // P7-1b: narrow reset-request interface, implemented by System (which
     // injects itself in System.cpp). Replaces the former `System* mpSystem`
@@ -551,7 +552,10 @@ protected:
     //Color order (true RGB, false BGR, ignored if grayscale)
     bool mbRGB;
 
-    std::list<MapPoint*> mlpTemporalPoints;
+    // R4b slice 1: temporal points are refcount-owned (no manual delete).
+    // They are never registered in the map; they die when the last holder
+    // (this list, mLastFrame's slots, FrameDrawer's copy) lets go.
+    std::list<MapPointPtr> mlpTemporalPoints;
 
     //int nMapChangeIndex;
 

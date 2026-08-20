@@ -116,9 +116,9 @@ FrameFixture MakeMonoGridFixture()
         const Eigen::Vector3d Pc(x, y, z);
         const Eigen::Vector3d Pw = TwcGT * Pc;
 
-        std::unique_ptr<ORB_SLAM3::MapPoint> pMP(new ORB_SLAM3::MapPoint());
+        auto pMP = std::make_shared<ORB_SLAM3::MapPoint>();
         pMP->SetWorldPos(Pw.cast<float>());
-        F.mvpMapPoints[i] = pMP.get();
+        F.mvpMapPoints[i] = pMP;
         fx.mapPoints.push_back(std::move(pMP));
 
         // Exact pinhole projection of the GT geometry (inlier chi2 ~ 0).
@@ -576,14 +576,14 @@ PoseInertialFixture MakePoseInertialFixture()
         const Eigen::Vector3d Pc(x, y, z);
         const Eigen::Vector3d Pw = TwcGT * Pc;
 
-        std::unique_ptr<ORB_SLAM3::MapPoint> pMP(new ORB_SLAM3::MapPoint());
+        auto pMP = std::make_shared<ORB_SLAM3::MapPoint>();
         pMP->SetWorldPos(Pw.cast<float>());
         // MapPoint's default ctor leaves mTrackDepth uninitialized and the
         // optimizer reads it (bClose branch, Optimizer.cpp:4739): pin it to
         // the true camera depth so every observation takes the same branch.
         pMP->mTrackDepth = static_cast<float>(z);
         pMP->mTrackDepthR = static_cast<float>(z);
-        F.mvpMapPoints[i] = pMP.get();
+        F.mvpMapPoints[i] = pMP;
         fx.mapPoints.push_back(std::move(pMP));
 
         double u = kFx * Pc.x() / Pc.z() + kCx;

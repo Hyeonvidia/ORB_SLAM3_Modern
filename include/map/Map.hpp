@@ -81,16 +81,16 @@ public:
     ~Map();
 
     void AddKeyFrame(KeyFrame* pKF);
-    void AddMapPoint(MapPoint* pMP);
-    void EraseMapPoint(MapPoint* pMP);
+    void AddMapPoint(const MapPointPtr& pMP);
+    void EraseMapPoint(const MapPointPtr& pMP);
     void EraseKeyFrame(KeyFrame* pKF);
-    void SetReferenceMapPoints(const std::vector<MapPoint*> &vpMPs);
+    void SetReferenceMapPoints(const std::vector<MapPointPtr> &vpMPs);
     void InformNewBigChange();
     int GetLastBigChangeIdx();
 
     std::vector<KeyFrame*> GetAllKeyFrames();
-    std::vector<MapPoint*> GetAllMapPoints();
-    std::vector<MapPoint*> GetReferenceMapPoints();
+    std::vector<MapPointPtr> GetAllMapPoints();
+    std::vector<MapPointPtr> GetReferenceMapPoints();
 
     long unsigned int MapPointsInMap();
     long unsigned  KeyFramesInMap();
@@ -166,10 +166,18 @@ protected:
 
     long unsigned int mnId;
 
-    std::set<MapPoint*> mspMapPoints;
+    // R4b slice 1: THE strong owner of all live MapPoints in this map.
+    // SetBadFlag() erases the entry; a bad MapPoint then survives only as
+    // long as other strong holders (KF slots, frames, pins) reference it.
+    std::set<MapPointPtr> mspMapPoints;
     std::set<KeyFrame*> mspKeyFrames;
 
     // Save/load, the set structure is broken in libboost 1.58 for ubuntu 16.04, a vector is serializated
+    // R4b slice 1 (2026-08-20): deliberately kept as RAW pointers so the boost
+    // archive layout (pointer-tracked vector) is byte-compatible with pre-R4b
+    // .osa sessions. PreSave() fills it with .get() of the owning shared_ptrs;
+    // on load, boost news the objects here and PostLoad() wraps each exactly
+    // once into the owning MapPointPtr, then clears this vector (non-owning).
     std::vector<MapPoint*> mvpBackupMapPoints;
     std::vector<KeyFrame*> mvpBackupKeyFrames;
 
@@ -179,7 +187,7 @@ protected:
     unsigned long int mnBackupKFinitialID;
     unsigned long int mnBackupKFlowerID;
 
-    std::vector<MapPoint*> mvpReferenceMapPoints;
+    std::vector<MapPointPtr> mvpReferenceMapPoints;
 
     bool mbImuInitialized;
 

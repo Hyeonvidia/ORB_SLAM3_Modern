@@ -75,11 +75,11 @@ protected:
     std::vector<std::pair<cv::Point2f, cv::Point2f> > mvTracks;
 
     Frame mCurrentFrame;
-    std::vector<MapPoint*> mvpLocalMap;
+    std::vector<MapPointPtr> mvpLocalMap;
     std::vector<cv::KeyPoint> mvMatchedKeys;
-    std::vector<MapPoint*> mvpMatchedMPs;
+    std::vector<MapPointPtr> mvpMatchedMPs;
     std::vector<cv::KeyPoint> mvOutlierKeys;
-    std::vector<MapPoint*> mvpOutlierMPs;
+    std::vector<MapPointPtr> mvpOutlierMPs;
 
     std::map<long unsigned int, cv::Point2f> mmProjectPoints;
     std::map<long unsigned int, cv::Point2f> mmMatchedInImage;

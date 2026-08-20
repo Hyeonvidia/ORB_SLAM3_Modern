@@ -130,7 +130,7 @@ void Atlas::AddKeyFrame(KeyFrame* pKF)
     pMapKF->AddKeyFrame(pKF);
 }
 
-void Atlas::AddMapPoint(MapPoint* pMP)
+void Atlas::AddMapPoint(const MapPointPtr& pMP)
 {
     unique_lock<mutex> lock(mMutexAtlas);
     Map* pMapMP = pMP->GetMap();
@@ -188,7 +188,7 @@ std::vector<GeometricCamera*> Atlas::GetAllCameras()
     return mvpCameras;
 }
 
-void Atlas::SetReferenceMapPoints(const std::vector<MapPoint*> &vpMPs)
+void Atlas::SetReferenceMapPoints(const std::vector<MapPointPtr> &vpMPs)
 {
     unique_lock<mutex> lock(mMutexAtlas);
     mpCurrentMap->SetReferenceMapPoints(vpMPs);
@@ -224,13 +224,13 @@ std::vector<KeyFrame*> Atlas::GetAllKeyFrames()
     return mpCurrentMap->GetAllKeyFrames();
 }
 
-std::vector<MapPoint*> Atlas::GetAllMapPoints()
+std::vector<MapPointPtr> Atlas::GetAllMapPoints()
 {
     unique_lock<mutex> lock(mMutexAtlas);
     return mpCurrentMap->GetAllMapPoints();
 }
 
-std::vector<MapPoint*> Atlas::GetReferenceMapPoints()
+std::vector<MapPointPtr> Atlas::GetReferenceMapPoints()
 {
     unique_lock<mutex> lock(mMutexAtlas);
     return mpCurrentMap->GetReferenceMapPoints();

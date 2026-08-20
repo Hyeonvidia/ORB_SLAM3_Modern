@@ -5,6 +5,51 @@
 이후의 백로그다. LocalMapping 큐/배압 프로토콜의 규범적 기술은
 `include/mapping/LocalMapping.hpp` 상단 주석(P8-2), 전체 정찰은 docs/P8_RECON.md.
 
+## R4b 슬라이스 1: MapPoint shared_ptr 이행 (2026-08-20)
+
+**MapPoint는 이제 `MapPointPtr = std::shared_ptr<MapPoint>` 관리다**
+(include/map/MapTypes.hpp). 목적은 유지보수성(타입으로 문서화된 소유권) —
+회수는 보너스다. **C-lite**: 모든 보유자가 의도적으로 strong이라 툼스톤
+수명 계약이 그대로 보존된다(bad MP는 참조가 남아 있는 동안 살아 있고,
+SetBadFlag가 여전히 제거 프로토콜). KeyFrame은 이 슬라이스에서 raw 유지
+(슬라이스 2 예정).
+
+### 소유권 표 (member → type → strong/weak → 근거)
+
+| 보유자 | 타입 | 강도 | 근거 |
+|---|---|---|---|
+| `Map::mspMapPoints` | `std::set<MapPointPtr>` | **strong (THE owner)** | 맵 수명 동안의 정본 소유자. SetBadFlag → EraseMapPoint가 여기서 제거 |
+| `KeyFrame::mvpMapPoints` | `std::vector<MapPointPtr>` | strong | 툼스톤 의미론: SetBadFlag와 슬롯 소거 사이(및 무락 리더의 사본)에 bad MP 생존 보장 |
+| `MapPoint::mObservations` 키 | `KeyFrame*` (raw) | — | KF는 슬라이스 2. 값이 아닌 키; KF 툼스톤 계약이 수명 보장 |
+| `MapPoint::mpRefKF`, `mpHostKF` | `KeyFrame*` (raw) | — | 슬라이스 2 |
+| `MapPoint::mpReplaced` | `MapPointPtr` | strong | Replace 체인 보존(궤적 복원·CheckReplacedInLastFrame). 순환 시 누수 = 툼스톤과 등가라 허용 |
+| `Frame::mvpMapPoints` | `std::vector<MapPointPtr>` | strong | 임시(temporal) MP의 유일한 장기 보유자이기도 함 |
+| `Tracking::mlpTemporalPoints` | `std::list<MapPointPtr>` | strong | **수동 delete 루프 은퇴** — 임시 MP는 refcount로 소멸. mLastFrame이 삭제된 임시 MP raw 포인터를 들고 있던 업스트림 댕글링 창 폐쇄 |
+| `Tracking::mvpLocalMapPoints` 등 로컬맵 | `std::vector<MapPointPtr>` | strong | 스레드-로컬 핀 |
+| `LocalMapping::mlpRecentAddedMapPoints` | `std::list<MapPointPtr>` | strong | 컬링 대기 핀 |
+| `LoopClosing::mvpLoopMapPoints` 등 | `std::vector<MapPointPtr>` | strong | LC 스레드 핀 |
+| `Map::mvpReferenceMapPoints`, drawer 사본 | strong | strong | Viewer가 든 사본이 곧 핀(임시 MP 뷰어 UAF도 함께 폐쇄) |
+| `BAEpochs::mpLocalForKF` / `GBAResult::mps` / `MergeScratch::mps` 키 | `MapPointPtr` | strong | **주소 재사용 방지**: 해제 가능해진 세계에서 raw 키가 남으면 stale 에포크 오판 가능 — strong 키는 툼스톤과 등가인 영구 핀 |
+| Optimizer 로컬(핀-셋) | `MapPointPtr` 컨테이너 | strong | 함수 진입 시 1회 핀, 반복 루프는 raw g2o 정점만 접촉(Optimizer.cpp 상단 주석) |
+| `Map::mvpBackupMapPoints` | `std::vector<MapPoint*>` (raw) | non-owning | **직렬화 전용**: boost 아카이브 레이아웃을 pre-R4b와 바이트 호환으로 유지. PreSave가 .get() 채움, PostLoad가 정확히 1회 shared_ptr로 래핑 후 clear |
+
+### 계약 변경/불변 사항
+
+- **무락 `isBad()` 참조 계약(152사이트)**: 불변 — 무락 리더가 들던 raw 사본이
+  이제 shared_ptr 사본(=핀)이라 수명이 구조적으로 보장된다. 단, **공유 컨테이너
+  슬롯 자체의 무락 동시 read/write는 금지**(shared_ptr 인스턴스 경합은 refcount
+  파손): 슬롯 접근은 기존 뮤텍스 규율(P8–P10 감사) 하에서만, 무락 통화는
+  스레드-로컬 사본으로.
+- **enable_shared_from_this**: SetBadFlag/Replace가 `Map::EraseMapPoint`에
+  `shared_from_this()`를 넘김. 모든 생성은 make_shared 6곳 + boost 로드 경로의
+  PostLoad 1회 래핑 — 생성자에서 shared_from_this 호출 없음.
+- **해제되는 것**: 맵 소멸/clear() 시 어떤 KF 슬롯에도 남지 않은 MP,
+  프레임 교체 시 임시 MP, 컬링된 bad MP(모든 핀 소멸 후). KF가 raw로 누수되는
+  동안 KF 슬롯이 든 MP는 계속 산다(실질 회수는 슬라이스 2에서 확대).
+- **.osa**: 형식 무변경(위 표의 backup 행 + src/core/System.cpp SaveAtlas 주석).
+- 기존(업스트림 계승) Map::PreSave의 순회-중-소거 self-invalidation 가능성은
+  raw 시절과 동일 클래스로 유지(신규 위험 아님).
+
 ## 할당·해제 지도
 
 | 객체 | 생성자(유일) | 정상 경로 해제 |

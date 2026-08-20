@@ -92,15 +92,15 @@ public:
 
     // Method for change components in the current map
     void AddKeyFrame(KeyFrame* pKF);
-    void AddMapPoint(MapPoint* pMP);
-    //void EraseMapPoint(MapPoint* pMP);
+    void AddMapPoint(const MapPointPtr& pMP);
+    //void EraseMapPoint(const MapPointPtr& pMP);
     //void EraseKeyFrame(KeyFrame* pKF);
 
     GeometricCamera* AddCamera(GeometricCamera* pCam);
     std::vector<GeometricCamera*> GetAllCameras();
 
     /* All methods without Map pointer work on current map */
-    void SetReferenceMapPoints(const std::vector<MapPoint*> &vpMPs);
+    void SetReferenceMapPoints(const std::vector<MapPointPtr> &vpMPs);
     void InformNewBigChange();
     int GetLastBigChangeIdx();
 
@@ -109,8 +109,8 @@ public:
 
     // Method for get data in current map
     std::vector<KeyFrame*> GetAllKeyFrames();
-    std::vector<MapPoint*> GetAllMapPoints();
-    std::vector<MapPoint*> GetReferenceMapPoints();
+    std::vector<MapPointPtr> GetAllMapPoints();
+    std::vector<MapPointPtr> GetReferenceMapPoints();
 
     std::vector<Map*> GetAllMaps();
 

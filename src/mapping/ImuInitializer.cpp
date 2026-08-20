@@ -276,18 +276,18 @@ void ImuInitializer::InitializeIMU(float priorG, float priorA, bool bFIBA)
     }
 
     // Correct MapPoints
-    const vector<MapPoint*> vpMPs = mHost.mpAtlas->GetCurrentMap()->GetAllMapPoints();
+    const vector<MapPointPtr> vpMPs = mHost.mpAtlas->GetCurrentMap()->GetAllMapPoints();
 
     for(size_t i=0; i<vpMPs.size(); i++)
     {
-        MapPoint* pMP = vpMPs[i];
+        MapPointPtr pMP = vpMPs[i];
 
         if(pMP->isBad())
         {
             continue;
         }
 
-        std::map<MapPoint*, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
+        std::map<MapPointPtr, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
         if(itMP != gbaResult.mps.end())
         {
             // If optimized by Global BA, just update

@@ -60,7 +60,7 @@ namespace ORB_SLAM3{
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-        MLPnPsolver(const Frame &F, const std::vector<MapPoint*> &vpMapPointMatches);
+        MLPnPsolver(const Frame &F, const std::vector<MapPointPtr> &vpMapPointMatches);
 
         ~MLPnPsolver();
 
@@ -185,7 +185,7 @@ namespace ORB_SLAM3{
         //----------------------------------------------------
         //Fields of the solver
         //----------------------------------------------------
-        std::vector<MapPoint*> mvpMapPointMatches;
+        std::vector<MapPointPtr> mvpMapPointMatches;
 
         // 2D Points
         std::vector<cv::Point2f> mvP2D;

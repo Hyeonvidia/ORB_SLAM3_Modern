@@ -20,6 +20,7 @@
 #define BAEPOCHS_H
 
 #include <map>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 
 namespace ORB_SLAM3
 {
@@ -53,13 +54,17 @@ struct BAEpochs
 {
     std::map<KeyFrame*, unsigned long> localForKF;   // was KeyFrame::mnBALocalForKF
     std::map<KeyFrame*, unsigned long> fixedForKF;   // was KeyFrame::mnBAFixedForKF
-    std::map<MapPoint*, unsigned long> mpLocalForKF; // was MapPoint::mnBALocalForKF
+    std::map<MapPointPtr, unsigned long> mpLocalForKF; // was MapPoint::mnBALocalForKF
 
     // Lookup with default 0: the old member fields were zero-initialized in
     // the KeyFrame/MapPoint constructors, so an absent entry must compare
     // exactly like a never-stamped field.
-    template<typename T>
-    static unsigned long get(const std::map<T*, unsigned long>& m, T* p)
+    // Key is either a raw KeyFrame* or a MapPointPtr (R4b slice 1). A
+    // MapPointPtr key is a deliberate STRONG pin: a tombstoned MapPoint
+    // stamped here stays alive with its epoch mark, so stale-entry address
+    // reuse (freed MP, new MP at the same address) cannot occur.
+    template<typename K>
+    static unsigned long get(const std::map<K, unsigned long>& m, const K& p)
     {
         auto it = m.find(p);
         return (it != m.end()) ? it->second : 0ul;

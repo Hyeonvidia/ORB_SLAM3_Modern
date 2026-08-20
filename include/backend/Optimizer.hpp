@@ -58,7 +58,7 @@ public:
     // pbStopFlag is const std::atomic<bool>* since P10-1 (cross-thread abort
     // request; g2o's bool* polling goes through the OrbLevenberg shadow
     // bridge — see include/backend/OrbLevenberg.hpp).
-    void static BundleAdjustment(const std::vector<KeyFrame*> &vpKF, const std::vector<MapPoint*> &vpMP,
+    void static BundleAdjustment(const std::vector<KeyFrame*> &vpKF, const std::vector<MapPointPtr> &vpMP,
                                  int nIterations = 5, const std::atomic<bool> *pbStopFlag=NULL, const unsigned long nLoopKF=0,
                                  const bool bRobust = true, GBAResult *pResult=NULL);
     void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, const std::atomic<bool> *pbStopFlag=NULL,
@@ -83,9 +83,9 @@ public:
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
                                        const std::map<KeyFrame *, std::set<KeyFrame *> > &LoopConnections,
                                        const bool &bFixScale,
-                                       const std::map<MapPoint*, unsigned long> &correctedRefs);
+                                       const std::map<MapPointPtr, unsigned long> &correctedRefs);
     void static OptimizeEssentialGraph(KeyFrame* pCurKF, std::vector<KeyFrame*> &vpFixedKFs, std::vector<KeyFrame*> &vpFixedCorrectedKFs,
-                                       std::vector<KeyFrame*> &vpNonFixedKFs, std::vector<MapPoint*> &vpNonCorrectedMPs,
+                                       std::vector<KeyFrame*> &vpNonFixedKFs, std::vector<MapPointPtr> &vpNonCorrectedMPs,
                                        MergeScratch& scratch);
 
     // For inertial loopclosing
@@ -96,7 +96,7 @@ public:
 
 
     // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono) (NEW)
-    static int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPoint *> &vpMatches1,
+    static int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPointPtr> &vpMatches1,
                             g2o::Sim3 &g2oS12, const float th2, const bool bFixScale,
                             Eigen::Matrix<double,7,7> &mAcumHessian, const bool bAllPoints=false);
 

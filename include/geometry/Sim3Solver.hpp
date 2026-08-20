@@ -21,6 +21,7 @@
 #define SIM3SOLVER_H
 
 #include <opencv2/opencv.hpp>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include <vector>
 
 #include "map/KeyFrame.hpp"
@@ -34,7 +35,7 @@ class Sim3Solver
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    Sim3Solver(KeyFrame* pKF1, KeyFrame* pKF2, const std::vector<MapPoint*> &vpMatched12, const bool bFixScale = true,
+    Sim3Solver(KeyFrame* pKF1, KeyFrame* pKF2, const std::vector<MapPointPtr> &vpMatched12, const bool bFixScale = true,
                const std::vector<KeyFrame*> vpKeyFrameMatchedMP = std::vector<KeyFrame*>());
 
     void SetRansacParameters(double probability = 0.99, int minInliers = 6 , int maxIterations = 300);
@@ -69,9 +70,9 @@ protected:
 
     std::vector<Eigen::Vector3f> mvX3Dc1;
     std::vector<Eigen::Vector3f> mvX3Dc2;
-    std::vector<MapPoint*> mvpMapPoints1;
-    std::vector<MapPoint*> mvpMapPoints2;
-    std::vector<MapPoint*> mvpMatches12;
+    std::vector<MapPointPtr> mvpMapPoints1;
+    std::vector<MapPointPtr> mvpMapPoints2;
+    std::vector<MapPointPtr> mvpMatches12;
     std::vector<size_t> mvnIndices1;
     std::vector<size_t> mvSigmaSquare1;
     std::vector<size_t> mvSigmaSquare2;

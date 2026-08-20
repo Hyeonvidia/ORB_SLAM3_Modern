@@ -22,6 +22,7 @@
 
 
 #include <unistd.h>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include<stdio.h>
 #include<stdlib.h>
 #include<atomic>
@@ -190,7 +191,7 @@ public:
     // Information from most recent processed frame
     // You can call this right after TrackMonocular (or stereo or RGBD)
     int GetTrackingState();
-    std::vector<MapPoint*> GetTrackedMapPoints();
+    std::vector<MapPointPtr> GetTrackedMapPoints();
     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
 
     // For debugging
@@ -302,7 +303,7 @@ private:
 
     // Tracking state
     int mTrackingState;
-    std::vector<MapPoint*> mTrackedMapPoints;
+    std::vector<MapPointPtr> mTrackedMapPoints;
     std::vector<cv::KeyPoint> mTrackedKeyPointsUn;
     std::mutex mMutexState;
 

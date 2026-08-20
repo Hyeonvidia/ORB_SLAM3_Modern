@@ -47,10 +47,11 @@ Map::Map(int initKFid):mnInitKFid(initKFid), mnMaxKFid(initKFid),/*mnLastLoopKFi
 
 Map::~Map()
 {
-    //TODO: erase all points from memory
+    // R4b slice 1: dropping the owning set releases every MapPoint that no
+    // other strong holder (leaked KeyFrame slots, frames, pins) references.
     mspMapPoints.clear();
 
-    //TODO: erase all keyframes from memory
+    //TODO: erase all keyframes from memory (KeyFrame is raw until slice 2)
     mspKeyFrames.clear();
 
     if(mThumbnail)
@@ -81,7 +82,7 @@ void Map::AddKeyFrame(KeyFrame *pKF)
     }
 }
 
-void Map::AddMapPoint(MapPoint *pMP)
+void Map::AddMapPoint(const MapPointPtr& pMP)
 {
     unique_lock<mutex> lock(mMutexMap);
     mspMapPoints.insert(pMP);
@@ -99,7 +100,7 @@ bool Map::isImuInitialized()
     return mbImuInitialized;
 }
 
-void Map::EraseMapPoint(MapPoint *pMP)
+void Map::EraseMapPoint(const MapPointPtr& pMP)
 {
     unique_lock<mutex> lock(mMutexMap);
     mspMapPoints.erase(pMP);
@@ -130,7 +131,7 @@ void Map::EraseKeyFrame(KeyFrame *pKF)
     // Delete the MapPoint
 }
 
-void Map::SetReferenceMapPoints(const vector<MapPoint *> &vpMPs)
+void Map::SetReferenceMapPoints(const vector<MapPointPtr> &vpMPs)
 {
     unique_lock<mutex> lock(mMutexMap);
     mvpReferenceMapPoints = vpMPs;
@@ -154,10 +155,10 @@ vector<KeyFrame*> Map::GetAllKeyFrames()
     return vector<KeyFrame*>(mspKeyFrames.begin(),mspKeyFrames.end());
 }
 
-vector<MapPoint*> Map::GetAllMapPoints()
+vector<MapPointPtr> Map::GetAllMapPoints()
 {
     unique_lock<mutex> lock(mMutexMap);
-    return vector<MapPoint*>(mspMapPoints.begin(),mspMapPoints.end());
+    return vector<MapPointPtr>(mspMapPoints.begin(),mspMapPoints.end());
 }
 
 long unsigned int Map::MapPointsInMap()
@@ -172,7 +173,7 @@ long unsigned int Map::KeyFramesInMap()
     return mspKeyFrames.size();
 }
 
-vector<MapPoint*> Map::GetReferenceMapPoints()
+vector<MapPointPtr> Map::GetReferenceMapPoints()
 {
     unique_lock<mutex> lock(mMutexMap);
     return mvpReferenceMapPoints;
@@ -217,8 +218,9 @@ void Map::SetStoredMap()
 
 void Map::clear()
 {
-//    for(set<MapPoint*>::iterator sit=mspMapPoints.begin(), send=mspMapPoints.end(); sit!=send; sit++)
-//        delete *sit;
+    // R4b slice 1: no manual delete — releasing the owning set is the drop.
+    // MapPoints still referenced by the (leaked, raw) KeyFrames stay alive
+    // through those KF slots, which preserves the upstream tombstone reality.
 
     for(set<KeyFrame*>::iterator sit=mspKeyFrames.begin(), send=mspKeyFrames.end(); sit!=send; sit++)
     {
@@ -277,9 +279,9 @@ void Map::ApplyScaledRotation(const Sophus::SE3f &T, const float s, const bool b
             pKF->SetVelocity(Ryw*Vw*s);
 
     }
-    for(set<MapPoint*>::iterator sit=mspMapPoints.begin(); sit!=mspMapPoints.end(); sit++)
+    for(set<MapPointPtr>::iterator sit=mspMapPoints.begin(); sit!=mspMapPoints.end(); sit++)
     {
-        MapPoint* pMP = *sit;
+        MapPointPtr pMP = *sit;
         pMP->SetWorldPos(s * Ryw * pMP->GetWorldPos() + tyw);
         pMP->UpdateNormalAndDepth();
     }
@@ -363,7 +365,7 @@ void Map::SetLastMapChange(int currentChangeId)
 void Map::PreSave(std::set<GeometricCamera*> &spCams)
 {
     int nMPWithoutObs = 0;
-    for(MapPoint* pMPi : mspMapPoints)
+    for(const MapPointPtr& pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
         {
@@ -396,14 +398,16 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
 
     // Backup of MapPoints
     mvpBackupMapPoints.clear();
-    for(MapPoint* pMPi : mspMapPoints)
+    for(const MapPointPtr& pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
         {
             continue;
         }
 
-        mvpBackupMapPoints.push_back(pMPi);
+        // Raw .get(): the backup vector keeps the pre-R4b archive layout
+        // (see Map.hpp); the owning shared_ptr lives in mspMapPoints.
+        mvpBackupMapPoints.push_back(pMPi.get());
         pMPi->PreSave(mspKeyFrames,mspMapPoints);
     }
 
@@ -436,11 +440,15 @@ void Map::PreSave(std::set<GeometricCamera*> &spCams)
 
 void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long unsigned int, KeyFrame*>& mpKeyFrameId*/, map<unsigned int, GeometricCamera*> &mpCams)
 {
-    std::copy(mvpBackupMapPoints.begin(), mvpBackupMapPoints.end(), std::inserter(mspMapPoints, mspMapPoints.begin()));
+    // R4b slice 1: boost allocated the MapPoints raw into the backup vector;
+    // wrap each exactly ONCE into its owning shared_ptr here (this is the
+    // single ownership hand-off point of the load path).
+    for(MapPoint* pMPraw : mvpBackupMapPoints)
+        mspMapPoints.insert(MapPointPtr(pMPraw));
     std::copy(mvpBackupKeyFrames.begin(), mvpBackupKeyFrames.end(), std::inserter(mspKeyFrames, mspKeyFrames.begin()));
 
-    map<long unsigned int,MapPoint*> mpMapPointId;
-    for(MapPoint* pMPi : mspMapPoints)
+    map<long unsigned int,MapPointPtr> mpMapPointId;
+    for(const MapPointPtr& pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
         {
@@ -466,7 +474,7 @@ void Map::PostLoad(KeyFrameDatabase* pKFDB, ORBVocabulary* pORBVoc/*, map<long u
     }
 
     // References reconstruction between different instances
-    for(MapPoint* pMPi : mspMapPoints)
+    for(const MapPointPtr& pMPi : mspMapPoints)
     {
         if(!pMPi || pMPi->isBad())
         {

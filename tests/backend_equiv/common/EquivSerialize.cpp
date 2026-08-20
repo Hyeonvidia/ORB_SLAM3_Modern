@@ -384,7 +384,7 @@ std::string SerializePoseInertialInput(const PoseInertialFixture& fx)
 
     // Observations, ascending index.
     for (int i = 0; i < F.N; i++) {
-        ORB_SLAM3::MapPoint* pMP = F.mvpMapPoints[i];
+        ORB_SLAM3::MapPointPtr pMP = F.mvpMapPoints[i];
         const Eigen::Vector3d Xw = pMP->GetWorldPos().cast<double>();
         const cv::KeyPoint& kp = F.mvKeysUn[i];
         os << "obs " << i << ' ' << FormatDouble(Xw.x()) << ' '

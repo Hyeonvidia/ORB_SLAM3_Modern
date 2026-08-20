@@ -451,7 +451,7 @@ void LoopClosing::CorrectLoop()
     // Map points corrected by this loop closure. The value is the id of the keyframe
     // whose corrected pose was used as reference; key presence marks a point as already
     // corrected (this replaces the former per-MapPoint correction stamp fields).
-    std::map<MapPoint*, unsigned long> mCorrectedRefs;
+    std::map<MapPointPtr, unsigned long> mCorrectedRefs;
 
     {
         // Get Map Mutex
@@ -491,10 +491,10 @@ void LoopClosing::CorrectLoop()
 
             g2o::Sim3 g2oSiw =NonCorrectedSim3[pKFi];
 
-            vector<MapPoint*> vpMPsi = pKFi->GetMapPointMatches();
+            vector<MapPointPtr> vpMPsi = pKFi->GetMapPointMatches();
             for(size_t iMP=0, endMPi = vpMPsi.size(); iMP<endMPi; iMP++)
             {
-                MapPoint* pMPi = vpMPsi[iMP];
+                MapPointPtr pMPi = vpMPsi[iMP];
                 if(!pMPi)
                     continue;
                 if(pMPi->isBad())
@@ -533,8 +533,8 @@ void LoopClosing::CorrectLoop()
         {
             if(mPlaceRec.LoopCh().matchedMps[i])
             {
-                MapPoint* pLoopMP = mPlaceRec.LoopCh().matchedMps[i];
-                MapPoint* pCurMP = mpCurrentKF->GetMapPoint(i);
+                MapPointPtr pLoopMP = mPlaceRec.LoopCh().matchedMps[i];
+                MapPointPtr pCurMP = mpCurrentKF->GetMapPoint(i);
                 if(pCurMP)
                     pCurMP->Replace(pLoopMP);
                 else
@@ -687,7 +687,7 @@ void LoopClosing::MergeLocal()
     //Get the current KF and its neighbors(visual->covisibles; inertial->temporal+covisibles)
     set<KeyFrame*> spLocalWindowKFs;
     //Get MPs in the welding area from the current map
-    set<MapPoint*> spLocalWindowMPs;
+    set<MapPointPtr> spLocalWindowMPs;
     if(pCurrentMap->IsInertial() && pMergeMap->IsInertial()) //TODO Check the correct initialization
     {
         KeyFrame* pKFi = mpCurrentKF;
@@ -698,7 +698,7 @@ void LoopClosing::MergeLocal()
             pKFi = mpCurrentKF->mPrevKF;
             nInserted++;
 
-            set<MapPoint*> spMPi = pKFi->GetMapPoints();
+            set<MapPointPtr> spMPi = pKFi->GetMapPoints();
             spLocalWindowMPs.insert(spMPi.begin(), spMPi.end());
         }
 
@@ -707,7 +707,7 @@ void LoopClosing::MergeLocal()
         {
             spLocalWindowKFs.insert(pKFi);
 
-            set<MapPoint*> spMPi = pKFi->GetMapPoints();
+            set<MapPointPtr> spMPi = pKFi->GetMapPoints();
             spLocalWindowMPs.insert(spMPi.begin(), spMPi.end());
 
             pKFi = mpCurrentKF->mNextKF;
@@ -750,7 +750,7 @@ void LoopClosing::MergeLocal()
             continue;
         }
 
-        set<MapPoint*> spMPs = pKFi->GetMapPoints();
+        set<MapPointPtr> spMPs = pKFi->GetMapPoints();
         spLocalWindowMPs.insert(spMPs.begin(), spMPs.end());
     }
 
@@ -802,14 +802,14 @@ void LoopClosing::MergeLocal()
         nNumTries++;
     }
 
-    set<MapPoint*> spMapPointMerge;
+    set<MapPointPtr> spMapPointMerge;
     for(KeyFrame* pKFi : spMergeConnectedKFs)
     {
-        set<MapPoint*> vpMPs = pKFi->GetMapPoints();
+        set<MapPointPtr> vpMPs = pKFi->GetMapPoints();
         spMapPointMerge.insert(vpMPs.begin(),vpMPs.end());
     }
 
-    vector<MapPoint*> vpCheckFuseMapPoint;
+    vector<MapPointPtr> vpCheckFuseMapPoint;
     vpCheckFuseMapPoint.reserve(spMapPointMerge.size());
     std::copy(spMapPointMerge.begin(), spMapPointMerge.end(), std::back_inserter(vpCheckFuseMapPoint));
 
@@ -879,10 +879,10 @@ void LoopClosing::MergeLocal()
         //TODO DEBUG to know which are the KFs that had been moved to the other map
     }
 
-    set<MapPoint*>::iterator itMP = spLocalWindowMPs.begin();
+    set<MapPointPtr>::iterator itMP = spLocalWindowMPs.begin();
     while(itMP != spLocalWindowMPs.end())
     {
-        MapPoint* pMPi = *itMP;
+        MapPointPtr pMPi = *itMP;
         if(!pMPi || pMPi->isBad())
         {
             itMP = spLocalWindowMPs.erase(itMP);
@@ -937,7 +937,7 @@ void LoopClosing::MergeLocal()
             }
         }
 
-        for(MapPoint* pMPi : spLocalWindowMPs)
+        for(const MapPointPtr& pMPi : spLocalWindowMPs)
         {
             if(!pMPi || pMPi->isBad())
             {
@@ -1043,7 +1043,7 @@ void LoopClosing::MergeLocal()
 
     //Update the non critical area from the current map to the merged map
     vector<KeyFrame*> vpCurrentMapKFs = pCurrentMap->GetAllKeyFrames();
-    vector<MapPoint*> vpCurrentMapMPs = pCurrentMap->GetAllMapPoints();
+    vector<MapPointPtr> vpCurrentMapMPs = pCurrentMap->GetAllMapPoints();
 
     if(vpCurrentMapKFs.size() != 0)
     {
@@ -1089,7 +1089,7 @@ void LoopClosing::MergeLocal()
                 }
 
             }
-            for(MapPoint* pMPi : vpCurrentMapMPs)
+            for(const MapPointPtr& pMPi : vpCurrentMapMPs)
             {
                 if(!pMPi || pMPi->isBad()|| pMPi->GetMap() != pCurrentMap)
                 {
@@ -1139,7 +1139,7 @@ void LoopClosing::MergeLocal()
                 pCurrentMap->EraseKeyFrame(pKFi);
             }
 
-            for(MapPoint* pMPi : vpCurrentMapMPs)
+            for(const MapPointPtr& pMPi : vpCurrentMapMPs)
             {
                 if(!pMPi || pMPi->isBad())
                 {
@@ -1297,7 +1297,7 @@ void LoopClosing::MergeLocal2()
 
 
         vector<KeyFrame*> vpMergeMapKFs = pMergeMap->GetAllKeyFrames();
-        vector<MapPoint*> vpMergeMapMPs = pMergeMap->GetAllMapPoints();
+        vector<MapPointPtr> vpMergeMapMPs = pMergeMap->GetAllMapPoints();
 
 
         for(KeyFrame* pKFi : vpMergeMapKFs)
@@ -1313,7 +1313,7 @@ void LoopClosing::MergeLocal2()
             pMergeMap->EraseKeyFrame(pKFi);
         }
 
-        for(MapPoint* pMPi : vpMergeMapMPs)
+        for(const MapPointPtr& pMPi : vpMergeMapMPs)
         {
             if(!pMPi || pMPi->isBad() || pMPi->GetMap() != pMergeMap)
             {
@@ -1343,7 +1343,7 @@ void LoopClosing::MergeLocal2()
     }
 
 
-    vector<MapPoint*> vpCheckFuseMapPoint; // MapPoint vector from current map to allow to fuse duplicated points with the old map (merge)
+    vector<MapPointPtr> vpCheckFuseMapPoint; // MapPoint vector from current map to allow to fuse duplicated points with the old map (merge)
     vector<KeyFrame*> vpCurrentConnectedKFs;
 
     mvpMergeConnectedKFs.push_back(mPlaceRec.MergeCh().matchedKF);
@@ -1363,10 +1363,10 @@ void LoopClosing::MergeLocal2()
     if (vpCurrentConnectedKFs.size()>6)
         vpCurrentConnectedKFs.erase(vpCurrentConnectedKFs.begin()+6,vpCurrentConnectedKFs.end());
 
-    set<MapPoint*> spMapPointMerge;
+    set<MapPointPtr> spMapPointMerge;
     for(KeyFrame* pKFi : mvpMergeConnectedKFs)
     {
-        set<MapPoint*> vpMPs = pKFi->GetMapPoints();
+        set<MapPointPtr> vpMPs = pKFi->GetMapPoints();
         spMapPointMerge.insert(vpMPs.begin(),vpMPs.end());
         if(spMapPointMerge.size()>1000)
             break;
@@ -1415,7 +1415,7 @@ void LoopClosing::MergeLocal2()
     mpLocalMapper->Release();
 }
 
-void LoopClosing::SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector<MapPoint*> &vpMapPoints)
+void LoopClosing::SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector<MapPointPtr> &vpMapPoints)
 {
     ORBmatcher matcher(0.8);
 
@@ -1427,7 +1427,7 @@ void LoopClosing::SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector
         g2o::Sim3 g2oScw = mit->second;
         Sophus::Sim3f Scw = Converter::toSophus(g2oScw);
 
-        vector<MapPoint*> vpReplacePoints(vpMapPoints.size(),static_cast<MapPoint*>(NULL));
+        vector<MapPointPtr> vpReplacePoints(vpMapPoints.size(),nullptr);
         matcher.Fuse(pKFi,Scw,vpMapPoints,4,vpReplacePoints);
 
         // Get Map Mutex
@@ -1435,7 +1435,7 @@ void LoopClosing::SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector
         const int nLP = vpMapPoints.size();
         for(int i=0; i<nLP;i++)
         {
-            MapPoint* pRep = vpReplacePoints[i];
+            MapPointPtr pRep = vpReplacePoints[i];
             if(pRep)
             {
                 pRep->Replace(vpMapPoints[i]);
@@ -1445,7 +1445,7 @@ void LoopClosing::SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector
 }
 
 
-void LoopClosing::SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<MapPoint*> &vpMapPoints)
+void LoopClosing::SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<MapPointPtr> &vpMapPoints)
 {
     ORBmatcher matcher(0.8);
 
@@ -1456,7 +1456,7 @@ void LoopClosing::SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<Ma
         Sophus::SE3f Tcw = pKF->GetPose();
         Sophus::Sim3f Scw(Tcw.unit_quaternion(),Tcw.translation());
         Scw.setScale(1.f);
-        vector<MapPoint*> vpReplacePoints(vpMapPoints.size(),static_cast<MapPoint*>(NULL));
+        vector<MapPointPtr> vpReplacePoints(vpMapPoints.size(),nullptr);
         matcher.Fuse(pKF,Scw,vpMapPoints,4,vpReplacePoints);
 
         // Get Map Mutex
@@ -1464,7 +1464,7 @@ void LoopClosing::SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<Ma
         const int nLP = vpMapPoints.size();
         for(int i=0; i<nLP;i++)
         {
-            MapPoint* pRep = vpReplacePoints[i];
+            MapPointPtr pRep = vpReplacePoints[i];
             if(pRep)
             {
                 pRep->Replace(vpMapPoints[i]);
@@ -1735,18 +1735,18 @@ void LoopClosing::RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoop
             }
 
             // Correct MapPoints
-            const vector<MapPoint*> vpMPs = pActiveMap->GetAllMapPoints();
+            const vector<MapPointPtr> vpMPs = pActiveMap->GetAllMapPoints();
 
             for(size_t i=0; i<vpMPs.size(); i++)
             {
-                MapPoint* pMP = vpMPs[i];
+                MapPointPtr pMP = vpMPs[i];
 
                 if(pMP->isBad())
                 {
                     continue;
                 }
 
-                std::map<MapPoint*, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
+                std::map<MapPointPtr, Eigen::Vector3f>::const_iterator itMP = gbaResult.mps.find(pMP);
                 if(itMP != gbaResult.mps.end())
                 {
                     // If optimized by Global BA, just update

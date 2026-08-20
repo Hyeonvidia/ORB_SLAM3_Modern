@@ -21,6 +21,7 @@
 #define PLACERECOGNITION_H
 
 #include "g2o/types/sim3/types_seven_dof_expmap.h"
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 
 #include <set>
 #include <vector>
@@ -113,8 +114,8 @@ public:
         KeyFrame* lastCurrentKF = nullptr;   // upstream left these uninitialized;
         KeyFrame* matchedKF = nullptr;       // nullptr init is strictly safer and unobservable
         g2o::Sim3 slw;
-        std::vector<MapPoint*> mps;
-        std::vector<MapPoint*> matchedMps;
+        std::vector<MapPointPtr> mps;
+        std::vector<MapPointPtr> matchedMps;
     };
 
     // Detection entry point, called from LoopClosing::Run() only (still the
@@ -154,10 +155,10 @@ private:
 
     //Methods to implement the new place recognition algorithm
     bool DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
-                                        std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
+                                        std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs);
     bool DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, const char* chName, DetectionChannel &ch);
     bool DetectCommonRegionsFromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
-                                            std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
+                                            std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs);
 
     // P9-4: the ONLY mutators of DetectionChannel state after construction
     // (1:1 with the upstream mutation sites; each emits one stderr trace
@@ -169,7 +170,7 @@ private:
     // to mpCurrentKF, hypothesis update, detected = cnt>=3. bResetNotFound
     // is true only for the loop channel (merge success does NOT reset it).
     void ChannelAdvance(const char* ch, DetectionChannel& c, const g2o::Sim3& gScw,
-                        const std::vector<MapPoint*>& vpMatchedMPs, bool bResetNotFound);
+                        const std::vector<MapPointPtr>& vpMatchedMPs, bool bResetNotFound);
     // Reffine failure ("reffine-fail"): notFound++, then the decay wipe at
     // >=2 ("wipe-decay", does NOT clear detected). bClearDetected is true
     // only for the merge channel (loop failure does NOT clear the flag).
@@ -182,11 +183,11 @@ private:
     // and does NOT reset numNotFound. Returns the new detected flag.
     bool ChannelBoWSeed(const char* ch, DetectionChannel& c, KeyFrame* pBestMatchedKF,
                         int nBestNumCoincidences, const g2o::Sim3& g2oBestScw,
-                        const std::vector<MapPoint*>& vpBestMapPoints,
-                        const std::vector<MapPoint*>& vpBestMatchedMapPoints);
+                        const std::vector<MapPointPtr>& vpBestMapPoints,
+                        const std::vector<MapPointPtr>& vpBestMatchedMapPoints);
     int FindMatchesByProjection(KeyFrame* pCurrentKF, KeyFrame* pMatchedKFw, g2o::Sim3 &g2oScw,
-                                std::set<MapPoint*> &spMatchedMPinOrigin, std::vector<MapPoint*> &vpMapPoints,
-                                std::vector<MapPoint*> &vpMatchedMapPoints);
+                                std::set<MapPointPtr> &spMatchedMPinOrigin, std::vector<MapPointPtr> &vpMapPoints,
+                                std::vector<MapPointPtr> &vpMatchedMapPoints);
 
     // P9-4: the two detection channels of the place-recognition machine
     // (struct + mutator docs above).

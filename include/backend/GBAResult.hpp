@@ -20,6 +20,7 @@
 #define GBARESULT_H
 
 #include <map>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 
 #include <Eigen/Core>
 #include <sophus/se3.hpp>
@@ -52,7 +53,7 @@ struct KeyFrameGBAResult
 struct GBAResult
 {
     std::map<KeyFrame*, KeyFrameGBAResult> kfs;
-    std::map<MapPoint*, Eigen::Vector3f> mps;   // was MapPoint::mPosGBA
+    std::map<MapPointPtr, Eigen::Vector3f> mps;   // was MapPoint::mPosGBA
 };
 
 } // namespace ORB_SLAM3

@@ -20,6 +20,7 @@
 #define ILOOPOPTIMIZER_H
 
 #include <atomic>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include <map>
 #include <set>
 #include <utility>
@@ -67,7 +68,7 @@ public:
     virtual ~ILoopOptimizer() = default;
 
     // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono)
-    virtual int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPoint*>& vpMatches1,
+    virtual int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPointPtr>& vpMatches1,
                              g2o::Sim3& g2oS12, float th2, bool bFixScale,
                              Eigen::Matrix<double,7,7>& mAcumHessian, bool bAllPoints = false) const = 0;
 
@@ -79,13 +80,13 @@ public:
                                         const KeyFrameAndPose& CorrectedSim3,
                                         const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections,
                                         const bool& bFixScale,
-                                        const std::map<MapPoint*, unsigned long>& correctedRefs) const = 0;
+                                        const std::map<MapPointPtr, unsigned long>& correctedRefs) const = 0;
 
     // Merge variant (per-call MergeScratch, P5-G).
     virtual void OptimizeEssentialGraph(KeyFrame* pCurKF, std::vector<KeyFrame*>& vpFixedKFs,
                                         std::vector<KeyFrame*>& vpFixedCorrectedKFs,
                                         std::vector<KeyFrame*>& vpNonFixedKFs,
-                                        std::vector<MapPoint*>& vpNonCorrectedMPs,
+                                        std::vector<MapPointPtr>& vpNonCorrectedMPs,
                                         MergeScratch& scratch) const = 0;
 
     // For inertial loopclosing.

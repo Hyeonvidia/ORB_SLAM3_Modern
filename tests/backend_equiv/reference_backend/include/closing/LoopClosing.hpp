@@ -21,6 +21,7 @@
 #define LOOPCLOSING_H
 
 #include "map/KeyFrame.hpp"
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include "mapping/LocalMapping.hpp"
 #include "map/Atlas.hpp"
 #include "features/ORBVocabulary.hpp"
@@ -126,18 +127,18 @@ protected:
     //Methods to implement the new place recognition algorithm
     bool NewDetectCommonRegions();
     bool DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
-                                        std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
+                                        std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs);
     bool DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, KeyFrame* &pMatchedKF, KeyFrame* &pLastCurrentKF, g2o::Sim3 &g2oScw,
-                                     int &nNumCoincidences, std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
+                                     int &nNumCoincidences, std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs);
     bool DetectCommonRegionsFromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
-                                            std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
+                                            std::vector<MapPointPtr> &vpMPs, std::vector<MapPointPtr> &vpMatchedMPs);
     int FindMatchesByProjection(KeyFrame* pCurrentKF, KeyFrame* pMatchedKFw, g2o::Sim3 &g2oScw,
-                                set<MapPoint*> &spMatchedMPinOrigin, vector<MapPoint*> &vpMapPoints,
-                                vector<MapPoint*> &vpMatchedMapPoints);
+                                set<MapPointPtr> &spMatchedMPinOrigin, vector<MapPointPtr> &vpMapPoints,
+                                vector<MapPointPtr> &vpMatchedMapPoints);
 
 
-    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector<MapPoint*> &vpMapPoints);
-    void SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<MapPoint*> &vpMapPoints);
+    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector<MapPointPtr> &vpMapPoints);
+    void SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<MapPointPtr> &vpMapPoints);
 
     void CorrectLoop();
 
@@ -189,8 +190,8 @@ protected:
     std::vector<ConsistentGroup> mvConsistentGroups;
     std::vector<KeyFrame*> mvpEnoughConsistentCandidates;
     std::vector<KeyFrame*> mvpCurrentConnectedKFs;
-    std::vector<MapPoint*> mvpCurrentMatchedPoints;
-    std::vector<MapPoint*> mvpLoopMapPoints;
+    std::vector<MapPointPtr> mvpCurrentMatchedPoints;
+    std::vector<MapPointPtr> mvpLoopMapPoints;
     cv::Mat mScw;
     g2o::Sim3 mg2oScw;
 
@@ -204,8 +205,8 @@ protected:
     g2o::Sim3 mg2oLoopSlw;
     g2o::Sim3 mg2oLoopScw;
     KeyFrame* mpLoopMatchedKF;
-    std::vector<MapPoint*> mvpLoopMPs;
-    std::vector<MapPoint*> mvpLoopMatchedMPs;
+    std::vector<MapPointPtr> mvpLoopMPs;
+    std::vector<MapPointPtr> mvpLoopMatchedMPs;
     bool mbMergeDetected;
     int mnMergeNumCoincidences;
     int mnMergeNumNotFound;
@@ -214,8 +215,8 @@ protected:
     g2o::Sim3 mg2oMergeSmw;
     g2o::Sim3 mg2oMergeScw;
     KeyFrame* mpMergeMatchedKF;
-    std::vector<MapPoint*> mvpMergeMPs;
-    std::vector<MapPoint*> mvpMergeMatchedMPs;
+    std::vector<MapPointPtr> mvpMergeMPs;
+    std::vector<MapPointPtr> mvpMergeMatchedMPs;
     std::vector<KeyFrame*> mvpMergeConnectedKFs;
 
     g2o::Sim3 mSold_new;

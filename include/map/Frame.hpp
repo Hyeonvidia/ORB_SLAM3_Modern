@@ -21,6 +21,7 @@
 #define FRAME_H
 
 #include<vector>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 
 // R3: upstream DBoW2 submodule + our serialization shim / wrapper layer
 #include "recognition/BowTypes.hpp"
@@ -100,9 +101,9 @@ public:
 
     // Check if a MapPoint is in the frustum of the camera
     // and fill variables of the MapPoint to be used by the tracking
-    bool isInFrustum(MapPoint* pMP, float viewingCosLimit);
+    bool isInFrustum(const MapPointPtr& pMP, float viewingCosLimit);
 
-    bool ProjectPointDistort(MapPoint* pMP, cv::Point2f &kp, float &u, float &v);
+    bool ProjectPointDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v);
 
     Eigen::Vector3f inRefCoordinates(Eigen::Vector3f pCw);
 
@@ -234,7 +235,7 @@ public:
     std::vector<cv::KeyPoint> mvKeysUn;
 
     // Corresponding stereo coordinate and depth for each keypoint.
-    std::vector<MapPoint*> mvpMapPoints;
+    std::vector<MapPointPtr> mvpMapPoints;
     // "Monocular" keypoints have a negative value.
     std::vector<float> mvuRight;
     std::vector<float> mvDepth;
@@ -360,7 +361,7 @@ public:
     //Stereo fisheye
     void ComputeStereoFishEyeMatches();
 
-    bool isInFrustumChecks(MapPoint* pMP, float viewingCosLimit, bool bRight = false);
+    bool isInFrustumChecks(const MapPointPtr& pMP, float viewingCosLimit, bool bRight = false);
 
     Eigen::Vector3f UnprojectStereoFishEye(const int &i);
 

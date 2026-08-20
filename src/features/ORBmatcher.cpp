@@ -37,7 +37,7 @@ namespace ORB_SLAM3
     {
     }
 
-    int ORBmatcher::SearchByProjection(Frame &F, const vector<MapPoint*> &vpMapPoints, const float th, const bool bFarPoints, const float thFarPoints)
+    int ORBmatcher::SearchByProjection(Frame &F, const vector<MapPointPtr> &vpMapPoints, const float th, const bool bFarPoints, const float thFarPoints)
     {
         int nmatches=0, left = 0, right = 0;
 
@@ -45,7 +45,7 @@ namespace ORB_SLAM3
 
         for(size_t iMP=0; iMP<vpMapPoints.size(); iMP++)
         {
-            MapPoint* pMP = vpMapPoints[iMP];
+            MapPointPtr pMP = vpMapPoints[iMP];
             if(!pMP->mbTrackInView && !pMP->mbTrackInViewR)
                 continue;
 
@@ -219,11 +219,11 @@ namespace ORB_SLAM3
             return 4.0;
     }
 
-    int ORBmatcher::SearchByBoW(KeyFrame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMatches)
+    int ORBmatcher::SearchByBoW(KeyFrame* pKF,Frame &F, vector<MapPointPtr> &vpMapPointMatches)
     {
-        const vector<MapPoint*> vpMapPointsKF = pKF->GetMapPointMatches();
+        const vector<MapPointPtr> vpMapPointsKF = pKF->GetMapPointMatches();
 
-        vpMapPointMatches = vector<MapPoint*>(F.N,static_cast<MapPoint*>(NULL));
+        vpMapPointMatches = vector<MapPointPtr>(F.N,nullptr);
 
         const DBoW2::FeatureVector &vFeatVecKF = pKF->mFeatVec;
 
@@ -251,7 +251,7 @@ namespace ORB_SLAM3
                 {
                     const unsigned int realIdxKF = vIndicesKF[iKF];
 
-                    MapPoint* pMP = vpMapPointsKF[realIdxKF];
+                    MapPointPtr pMP = vpMapPointsKF[realIdxKF];
 
                     if(!pMP)
                         continue;
@@ -416,7 +416,7 @@ namespace ORB_SLAM3
                     continue;
                 for(size_t j=0, jend=rotHist[i].size(); j<jend; j++)
                 {
-                    vpMapPointMatches[rotHist[i][j]]=static_cast<MapPoint*>(NULL);
+                    vpMapPointMatches[rotHist[i][j]]=nullptr;
                     nmatches--;
                 }
             }
@@ -425,8 +425,8 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByProjection(KeyFrame* pKF, Sophus::Sim3f &Scw, const vector<MapPoint*> &vpPoints,
-                                       vector<MapPoint*> &vpMatched, int th, float ratioHamming)
+    int ORBmatcher::SearchByProjection(KeyFrame* pKF, Sophus::Sim3f &Scw, const vector<MapPointPtr> &vpPoints,
+                                       vector<MapPointPtr> &vpMatched, int th, float ratioHamming)
     {
         // Get Calibration Parameters for later projection
         const float &fx = pKF->fx;
@@ -438,15 +438,15 @@ namespace ORB_SLAM3
         Eigen::Vector3f Ow = Tcw.inverse().translation();
 
         // Set of MapPoints already found in the KeyFrame
-        set<MapPoint*> spAlreadyFound(vpMatched.begin(), vpMatched.end());
-        spAlreadyFound.erase(static_cast<MapPoint*>(NULL));
+        set<MapPointPtr> spAlreadyFound(vpMatched.begin(), vpMatched.end());
+        spAlreadyFound.erase(nullptr);
 
         int nmatches=0;
 
         // For each Candidate MapPoint Project and Match
         for(int iMP=0, iendMP=vpPoints.size(); iMP<iendMP; iMP++)
         {
-            MapPoint* pMP = vpPoints[iMP];
+            MapPointPtr pMP = vpPoints[iMP];
 
             // Discard Bad MapPoints and already found
             if(pMP->isBad() || spAlreadyFound.count(pMP))
@@ -534,8 +534,8 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByProjection(KeyFrame* pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPoint*> &vpPoints, const std::vector<KeyFrame*> &vpPointsKFs,
-                                       std::vector<MapPoint*> &vpMatched, std::vector<KeyFrame*> &vpMatchedKF, int th, float ratioHamming)
+    int ORBmatcher::SearchByProjection(KeyFrame* pKF, Sophus::Sim3<float> &Scw, const std::vector<MapPointPtr> &vpPoints, const std::vector<KeyFrame*> &vpPointsKFs,
+                                       std::vector<MapPointPtr> &vpMatched, std::vector<KeyFrame*> &vpMatchedKF, int th, float ratioHamming)
     {
         // Get Calibration Parameters for later projection
         const float &fx = pKF->fx;
@@ -547,15 +547,15 @@ namespace ORB_SLAM3
         Eigen::Vector3f Ow = Tcw.inverse().translation();
 
         // Set of MapPoints already found in the KeyFrame
-        set<MapPoint*> spAlreadyFound(vpMatched.begin(), vpMatched.end());
-        spAlreadyFound.erase(static_cast<MapPoint*>(NULL));
+        set<MapPointPtr> spAlreadyFound(vpMatched.begin(), vpMatched.end());
+        spAlreadyFound.erase(nullptr);
 
         int nmatches=0;
 
         // For each Candidate MapPoint Project and Match
         for(int iMP=0, iendMP=vpPoints.size(); iMP<iendMP; iMP++)
         {
-            MapPoint* pMP = vpPoints[iMP];
+            MapPointPtr pMP = vpPoints[iMP];
             KeyFrame* pKFi = vpPointsKFs[iMP];
 
             // Discard Bad MapPoints and already found
@@ -767,19 +767,19 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &vpMatches12)
+    int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPointPtr> &vpMatches12)
     {
         const vector<cv::KeyPoint> &vKeysUn1 = pKF1->mvKeysUn;
         const DBoW2::FeatureVector &vFeatVec1 = pKF1->mFeatVec;
-        const vector<MapPoint*> vpMapPoints1 = pKF1->GetMapPointMatches();
+        const vector<MapPointPtr> vpMapPoints1 = pKF1->GetMapPointMatches();
         const cv::Mat &Descriptors1 = pKF1->mDescriptors;
 
         const vector<cv::KeyPoint> &vKeysUn2 = pKF2->mvKeysUn;
         const DBoW2::FeatureVector &vFeatVec2 = pKF2->mFeatVec;
-        const vector<MapPoint*> vpMapPoints2 = pKF2->GetMapPointMatches();
+        const vector<MapPointPtr> vpMapPoints2 = pKF2->GetMapPointMatches();
         const cv::Mat &Descriptors2 = pKF2->mDescriptors;
 
-        vpMatches12 = vector<MapPoint*>(vpMapPoints1.size(),static_cast<MapPoint*>(NULL));
+        vpMatches12 = vector<MapPointPtr>(vpMapPoints1.size(),nullptr);
         vector<bool> vbMatched2(vpMapPoints2.size(),false);
 
         vector<int> rotHist[HISTO_LENGTH];
@@ -806,7 +806,7 @@ namespace ORB_SLAM3
                         continue;
                     }
 
-                    MapPoint* pMP1 = vpMapPoints1[idx1];
+                    MapPointPtr pMP1 = vpMapPoints1[idx1];
                     if(!pMP1)
                         continue;
                     if(pMP1->isBad())
@@ -828,7 +828,7 @@ namespace ORB_SLAM3
                             continue;
                         }
 
-                        MapPoint* pMP2 = vpMapPoints2[idx2];
+                        MapPointPtr pMP2 = vpMapPoints2[idx2];
 
                         if(vbMatched2[idx2] || !pMP2)
                             continue;
@@ -904,7 +904,7 @@ namespace ORB_SLAM3
                     continue;
                 for(size_t j=0, jend=rotHist[i].size(); j<jend; j++)
                 {
-                    vpMatches12[rotHist[i][j]]=static_cast<MapPoint*>(NULL);
+                    vpMatches12[rotHist[i][j]]=nullptr;
                     nmatches--;
                 }
             }
@@ -977,7 +977,7 @@ namespace ORB_SLAM3
                 {
                     const size_t idx1 = f1it->second[i1];
 
-                    MapPoint* pMP1 = pKF1->GetMapPoint(idx1);
+                    MapPointPtr pMP1 = pKF1->GetMapPoint(idx1);
 
                     // If there is already a MapPoint skip
                     if(pMP1)
@@ -1007,7 +1007,7 @@ namespace ORB_SLAM3
                     {
                         size_t idx2 = f2it->second[i2];
 
-                        MapPoint* pMP2 = pKF2->GetMapPoint(idx2);
+                        MapPointPtr pMP2 = pKF2->GetMapPoint(idx2);
 
                         // If we have already matched or there is a MapPoint skip
                         if(vbMatched2[idx2] || pMP2)
@@ -1154,7 +1154,7 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const float th, const bool bRight)
+    int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPointPtr> &vpMapPoints, const float th, const bool bRight)
     {
         GeometricCamera* pCamera;
         Sophus::SE3f Tcw;
@@ -1185,7 +1185,7 @@ namespace ORB_SLAM3
         int count_notMP = 0, count_bad=0, count_isinKF = 0, count_negdepth = 0, count_notinim = 0, count_dist = 0, count_normal=0, count_notidx = 0, count_thcheck = 0;
         for(int i=0; i<nMPs; i++)
         {
-            MapPoint* pMP = vpMapPoints[i];
+            MapPointPtr pMP = vpMapPoints[i];
 
             if(!pMP)
             {
@@ -1320,7 +1320,7 @@ namespace ORB_SLAM3
             // If there is already a MapPoint replace otherwise add new measurement
             if(bestDist<=TH_LOW)
             {
-                MapPoint* pMPinKF = pKF->GetMapPoint(bestIdx);
+                MapPointPtr pMPinKF = pKF->GetMapPoint(bestIdx);
                 if(pMPinKF)
                 {
                     if(!pMPinKF->isBad())
@@ -1346,7 +1346,7 @@ namespace ORB_SLAM3
         return nFused;
     }
 
-    int ORBmatcher::Fuse(KeyFrame *pKF, Sophus::Sim3f &Scw, const vector<MapPoint *> &vpPoints, float th, vector<MapPoint *> &vpReplacePoint)
+    int ORBmatcher::Fuse(KeyFrame *pKF, Sophus::Sim3f &Scw, const vector<MapPointPtr> &vpPoints, float th, vector<MapPointPtr> &vpReplacePoint)
     {
         // Get Calibration Parameters for later projection
         const float &fx = pKF->fx;
@@ -1359,7 +1359,7 @@ namespace ORB_SLAM3
         Eigen::Vector3f Ow = Tcw.inverse().translation();
 
         // Set of MapPoints already found in the KeyFrame
-        const set<MapPoint*> spAlreadyFound = pKF->GetMapPoints();
+        const set<MapPointPtr> spAlreadyFound = pKF->GetMapPoints();
 
         int nFused=0;
 
@@ -1368,7 +1368,7 @@ namespace ORB_SLAM3
         // For each candidate MapPoint project and match
         for(int iMP=0; iMP<nPoints; iMP++)
         {
-            MapPoint* pMP = vpPoints[iMP];
+            MapPointPtr pMP = vpPoints[iMP];
 
             // Discard Bad MapPoints and already found
             if(pMP->isBad() || spAlreadyFound.count(pMP))
@@ -1447,7 +1447,7 @@ namespace ORB_SLAM3
             // If there is already a MapPoint replace otherwise add new measurement
             if(bestDist<=TH_LOW)
             {
-                MapPoint* pMPinKF = pKF->GetMapPoint(bestIdx);
+                MapPointPtr pMPinKF = pKF->GetMapPoint(bestIdx);
                 if(pMPinKF)
                 {
                     if(!pMPinKF->isBad())
@@ -1488,7 +1488,7 @@ namespace ORB_SLAM3
 
         for(int i=0; i<LastFrame.N; i++)
         {
-            MapPoint* pMP = LastFrame.mvpMapPoints[i];
+            MapPointPtr pMP = LastFrame.mvpMapPoints[i];
             if(pMP)
             {
                 if(!LastFrame.mvbOutlier[i])
@@ -1670,7 +1670,7 @@ namespace ORB_SLAM3
                 {
                     for(size_t j=0, jend=rotHist[i].size(); j<jend; j++)
                     {
-                        CurrentFrame.mvpMapPoints[rotHist[i][j]]=static_cast<MapPoint*>(NULL);
+                        CurrentFrame.mvpMapPoints[rotHist[i][j]]=nullptr;
                         nmatches--;
                     }
                 }
@@ -1680,7 +1680,7 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchByProjection(Frame &CurrentFrame, KeyFrame *pKF, const set<MapPoint*> &sAlreadyFound, const float th , const int ORBdist)
+    int ORBmatcher::SearchByProjection(Frame &CurrentFrame, KeyFrame *pKF, const set<MapPointPtr> &sAlreadyFound, const float th , const int ORBdist)
     {
         int nmatches = 0;
 
@@ -1693,11 +1693,11 @@ namespace ORB_SLAM3
             rotHist[i].reserve(500);
         const float factor = 1.0f/HISTO_LENGTH;
 
-        const vector<MapPoint*> vpMPs = pKF->GetMapPointMatches();
+        const vector<MapPointPtr> vpMPs = pKF->GetMapPointMatches();
 
         for(size_t i=0, iend=vpMPs.size(); i<iend; i++)
         {
-            MapPoint* pMP = vpMPs[i];
+            MapPointPtr pMP = vpMPs[i];
 
             if(pMP)
             {

@@ -20,6 +20,7 @@
 #define G2OBACKEND_H
 
 #include "backend/ITrackingOptimizer.hpp"
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include "backend/IMappingOptimizer.hpp"
 #include "backend/ILoopOptimizer.hpp"
 
@@ -72,7 +73,7 @@ public:
                         GBAResult* pResult, BAEpochs& epochs) const override;
 
     // ---- ILoopOptimizer -----------------------------------------------------
-    int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPoint*>& vpMatches1,
+    int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPointPtr>& vpMatches1,
                      g2o::Sim3& g2oS12, float th2, bool bFixScale,
                      Eigen::Matrix<double,7,7>& mAcumHessian, bool bAllPoints) const override;
     void OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
@@ -80,11 +81,11 @@ public:
                                 const KeyFrameAndPose& CorrectedSim3,
                                 const std::map<KeyFrame*, std::set<KeyFrame*> >& LoopConnections,
                                 const bool& bFixScale,
-                                const std::map<MapPoint*, unsigned long>& correctedRefs) const override;
+                                const std::map<MapPointPtr, unsigned long>& correctedRefs) const override;
     void OptimizeEssentialGraph(KeyFrame* pCurKF, std::vector<KeyFrame*>& vpFixedKFs,
                                 std::vector<KeyFrame*>& vpFixedCorrectedKFs,
                                 std::vector<KeyFrame*>& vpNonFixedKFs,
-                                std::vector<MapPoint*>& vpNonCorrectedMPs,
+                                std::vector<MapPointPtr>& vpNonCorrectedMPs,
                                 MergeScratch& scratch) const override;
     void OptimizeEssentialGraph4DoF(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
                                     const KeyFrameAndPose& NonCorrectedSim3,

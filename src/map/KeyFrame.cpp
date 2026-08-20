@@ -298,7 +298,7 @@ int KeyFrame::GetNumberMPs()
     return numberMPs;
 }
 
-void KeyFrame::AddMapPoint(MapPoint *pMP, const size_t &idx)
+void KeyFrame::AddMapPoint(const MapPointPtr& pMP, const size_t &idx)
 {
     unique_lock<mutex> lock(mMutexFeatures);
     mvpMapPoints[idx]=pMP;
@@ -307,34 +307,34 @@ void KeyFrame::AddMapPoint(MapPoint *pMP, const size_t &idx)
 void KeyFrame::EraseMapPointMatch(const int &idx)
 {
     unique_lock<mutex> lock(mMutexFeatures);
-    mvpMapPoints[idx]=static_cast<MapPoint*>(NULL);
+    mvpMapPoints[idx]=nullptr;
 }
 
-void KeyFrame::EraseMapPointMatch(MapPoint* pMP)
+void KeyFrame::EraseMapPointMatch(const MapPointPtr& pMP)
 {
     tuple<size_t,size_t> indexes = pMP->GetIndexInKeyFrame(this);
     size_t leftIndex = get<0>(indexes), rightIndex = get<1>(indexes);
     if(leftIndex != -1)
-        mvpMapPoints[leftIndex]=static_cast<MapPoint*>(NULL);
+        mvpMapPoints[leftIndex]=nullptr;
     if(rightIndex != -1)
-        mvpMapPoints[rightIndex]=static_cast<MapPoint*>(NULL);
+        mvpMapPoints[rightIndex]=nullptr;
 }
 
 
-void KeyFrame::ReplaceMapPointMatch(const int &idx, MapPoint* pMP)
+void KeyFrame::ReplaceMapPointMatch(const int &idx, const MapPointPtr& pMP)
 {
     mvpMapPoints[idx]=pMP;
 }
 
-set<MapPoint*> KeyFrame::GetMapPoints()
+set<MapPointPtr> KeyFrame::GetMapPoints()
 {
     unique_lock<mutex> lock(mMutexFeatures);
-    set<MapPoint*> s;
+    set<MapPointPtr> s;
     for(size_t i=0, iend=mvpMapPoints.size(); i<iend; i++)
     {
         if(!mvpMapPoints[i])
             continue;
-        MapPoint* pMP = mvpMapPoints[i];
+        MapPointPtr pMP = mvpMapPoints[i];
         if(!pMP->isBad())
             s.insert(pMP);
     }
@@ -349,7 +349,7 @@ int KeyFrame::TrackedMapPoints(const int &minObs)
     const bool bCheckObs = minObs>0;
     for(int i=0; i<N; i++)
     {
-        MapPoint* pMP = mvpMapPoints[i];
+        MapPointPtr pMP = mvpMapPoints[i];
         if(pMP)
         {
             if(!pMP->isBad())
@@ -368,13 +368,13 @@ int KeyFrame::TrackedMapPoints(const int &minObs)
     return nPoints;
 }
 
-vector<MapPoint*> KeyFrame::GetMapPointMatches()
+vector<MapPointPtr> KeyFrame::GetMapPointMatches()
 {
     unique_lock<mutex> lock(mMutexFeatures);
     return mvpMapPoints;
 }
 
-MapPoint* KeyFrame::GetMapPoint(const size_t &idx)
+MapPointPtr KeyFrame::GetMapPoint(const size_t &idx)
 {
     unique_lock<mutex> lock(mMutexFeatures);
     return mvpMapPoints[idx];
@@ -384,7 +384,7 @@ void KeyFrame::UpdateConnections(bool upParent)
 {
     map<KeyFrame*,int> KFcounter;
 
-    vector<MapPoint*> vpMP;
+    vector<MapPointPtr> vpMP;
 
     {
         unique_lock<mutex> lockMPs(mMutexFeatures);
@@ -393,9 +393,9 @@ void KeyFrame::UpdateConnections(bool upParent)
 
     //For all map points in keyframe check in which other keyframes are they seen
     //Increase counter for those keyframes
-    for(vector<MapPoint*>::iterator vit=vpMP.begin(), vend=vpMP.end(); vit!=vend; vit++)
+    for(vector<MapPointPtr>::iterator vit=vpMP.begin(), vend=vpMP.end(); vit!=vend; vit++)
     {
-        MapPoint* pMP = *vit;
+        MapPointPtr pMP = *vit;
 
         if(!pMP)
             continue;
@@ -786,7 +786,7 @@ float KeyFrame::ComputeSceneMedianDepth(const int q)
     if(N==0)
         return -1.0;
 
-    vector<MapPoint*> vpMapPoints;
+    vector<MapPointPtr> vpMapPoints;
     Eigen::Matrix3f Rcw;
     Eigen::Vector3f tcw;
     {
@@ -804,7 +804,7 @@ float KeyFrame::ComputeSceneMedianDepth(const int q)
     for(int i=0; i<N; i++) {
         if(mvpMapPoints[i])
         {
-            MapPoint* pMP = mvpMapPoints[i];
+            MapPointPtr pMP = mvpMapPoints[i];
             Eigen::Vector3f x3Dw = pMP->GetWorldPos();
             float z = Rcw2.dot(x3Dw) + zcw;
             vDepths.push_back(z);
@@ -854,7 +854,7 @@ void KeyFrame::UpdateMap(Map* pMap)
     mpMap = pMap;
 }
 
-void KeyFrame::PreSave(set<KeyFrame*>& spKF,set<MapPoint*>& spMP, set<GeometricCamera*>& spCam)
+void KeyFrame::PreSave(set<KeyFrame*>& spKF,set<MapPointPtr>& spMP, set<GeometricCamera*>& spCam)
 {
     // Save the id of each MapPoint in this KF, there can be null pointer in the vector
     mvBackupMapPointsId.clear();
@@ -929,7 +929,7 @@ void KeyFrame::PreSave(set<KeyFrame*>& spKF,set<MapPoint*>& spMP, set<GeometricC
         mBackupImuPreintegrated.CopyFrom(mpImuPreintegrated);
 }
 
-void KeyFrame::PostLoad(map<long unsigned int, KeyFrame*>& mpKFid, map<long unsigned int, MapPoint*>& mpMPid, map<unsigned int, GeometricCamera*>& mpCamId){
+void KeyFrame::PostLoad(map<long unsigned int, KeyFrame*>& mpKFid, map<long unsigned int, MapPointPtr>& mpMPid, map<unsigned int, GeometricCamera*>& mpCamId){
     // Rebuild the empty variables
 
     // Pose
@@ -946,7 +946,7 @@ void KeyFrame::PostLoad(map<long unsigned int, KeyFrame*>& mpKFid, map<long unsi
         if(mvBackupMapPointsId[i] != -1)
             mvpMapPoints[i] = mpMPid[mvBackupMapPointsId[i]];
         else
-            mvpMapPoints[i] = static_cast<MapPoint*>(NULL);
+            mvpMapPoints[i] = nullptr;
     }
 
     // Conected KeyFrames with him weight
@@ -1018,7 +1018,7 @@ void KeyFrame::PostLoad(map<long unsigned int, KeyFrame*>& mpKFid, map<long unsi
     UpdateBestCovisibles();
 }
 
-bool KeyFrame::ProjectPointDistort(MapPoint* pMP, cv::Point2f &kp, float &u, float &v)
+bool KeyFrame::ProjectPointDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v)
 {
 
     // 3D in absolute coordinates
@@ -1081,7 +1081,7 @@ bool KeyFrame::ProjectPointDistort(MapPoint* pMP, cv::Point2f &kp, float &u, flo
     return true;
 }
 
-bool KeyFrame::ProjectPointUnDistort(MapPoint* pMP, cv::Point2f &kp, float &u, float &v)
+bool KeyFrame::ProjectPointUnDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v)
 {
 
     // 3D in absolute coordinates

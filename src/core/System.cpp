@@ -1332,7 +1332,7 @@ int System::GetTrackingState()
     return mTrackingState;
 }
 
-vector<MapPoint*> System::GetTrackedMapPoints()
+vector<MapPointPtr> System::GetTrackedMapPoints()
 {
     unique_lock<mutex> lock(mMutexState);
     return mTrackedMapPoints;
@@ -1449,6 +1449,13 @@ bool System::LoadVocabulary(const std::string &strVocFile)
     return true;
 }
 
+// R4b slice 1 (2026-08-20) .osa disposition: the archive layout is
+// deliberately UNCHANGED by the MapPoint shared_ptr migration. Map still
+// serializes a raw-pointer backup vector (filled with .get() in PreSave;
+// wrapped exactly once into the owning MapPointPtr in Map::PostLoad), and
+// MapPoint's field list is untouched, so pre-R4b session files remain
+// format-compatible. If serialization ever moves to
+// boost/serialization/shared_ptr.hpp, that IS an archive break — bump then.
 void System::SaveAtlas(int type){
     if(!mStrSaveAtlasToFile.empty())
     {

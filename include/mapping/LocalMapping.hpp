@@ -24,6 +24,7 @@
 // Tracking/LoopClosing are forward-declared below, cutting the two mutual
 // include cycles LocalMapping.hpp <-> Tracking.hpp / LoopClosing.hpp.
 #include "map/KeyFrame.hpp"
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include "map/Atlas.hpp"
 #include "mapping/ImuInitializer.hpp"
 
@@ -232,7 +233,7 @@ protected:
     // (LM) uses are relaxed loads.
     std::atomic<KeyFrame*> mpCurrentKeyFrame;
 
-    std::list<MapPoint*> mlpRecentAddedMapPoints;
+    std::list<MapPointPtr> mlpRecentAddedMapPoints;
 
     std::mutex mMutexNewKFs;
     // P10-4: queue CV (paired with mMutexNewKFs). InsertKeyFrame notifies

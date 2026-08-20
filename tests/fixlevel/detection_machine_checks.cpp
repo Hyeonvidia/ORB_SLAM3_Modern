@@ -86,7 +86,7 @@ struct DetectionMachineTestAccess {
     {
         return lc.mPlaceRec.ChannelBoWSeed(
             ch, c, pMatched, nCoincidences, g2o::Sim3(),
-            std::vector<MapPoint*>(), std::vector<MapPoint*>());
+            std::vector<MapPointPtr>(), std::vector<MapPointPtr>());
     }
 
     static void Decay(LoopClosing& lc, const char* ch, Channel& c,

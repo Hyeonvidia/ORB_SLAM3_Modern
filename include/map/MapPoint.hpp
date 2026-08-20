@@ -18,15 +18,18 @@
 
 
 /**
- * Ownership/lifetime: raw pointers by upstream design — KeyFrame/MapPoint are
- * NEVER deleted on the normal path; removal is SetBadFlag() + tombstone
- * (a lock-free concurrency contract, not a leak bug). See docs/OWNERSHIP.md
- * before changing any lifetime or lock-order behavior here. (P5-3)
+ * Ownership/lifetime (R4b slice 1, 2026-08-20): MapPoint is shared_ptr-managed
+ * (MapPointPtr, see map/MapTypes.hpp). Map::mspMapPoints is the owner; every
+ * other holder is deliberately strong so tombstone liveness is preserved:
+ * a bad MapPoint stays alive while anything references it. SetBadFlag() is
+ * still the removal protocol (KeyFrame is still a raw pointer — slice 2).
+ * See docs/OWNERSHIP.md before changing any lifetime or lock-order behavior.
  */
 
 #ifndef MAPPOINT_H
 #define MAPPOINT_H
 
+#include "map/MapTypes.hpp"
 #include "map/KeyFrame.hpp"
 #include "map/Frame.hpp"
 #include "map/Map.hpp"
@@ -35,6 +38,7 @@
 #include "io/SerializationUtils.hpp"
 
 #include <opencv2/core/core.hpp>
+#include <memory>
 #include <mutex>
 
 #include <boost/serialization/serialization.hpp>
@@ -48,7 +52,11 @@ class KeyFrame;
 class Map;
 class Frame;
 
-class MapPoint
+// enable_shared_from_this: SetBadFlag()/Replace() must hand `this` to
+// Map::EraseMapPoint as a MapPointPtr. Every MapPoint is created through
+// std::make_shared (or wrapped exactly once in Map::PostLoad on the boost
+// load path) before either can run, so shared_from_this() is always valid.
+class MapPoint : public std::enable_shared_from_this<MapPoint>
 {
 
     friend class boost::serialization::access;
@@ -124,8 +132,8 @@ public:
     void SetBadFlag();
     bool isBad();
 
-    void Replace(MapPoint* pMP);    
-    MapPoint* GetReplaced();
+    void Replace(const MapPointPtr& pMP);    
+    MapPointPtr GetReplaced();
 
     void IncreaseVisible(int n=1);
     void IncreaseFound(int n=1);
@@ -150,8 +158,8 @@ public:
 
     void PrintObservations();
 
-    void PreSave(std::set<KeyFrame*>& spKF,std::set<MapPoint*>& spMP);
-    void PostLoad(std::map<long unsigned int, KeyFrame*>& mpKFid, std::map<long unsigned int, MapPoint*>& mpMPid);
+    void PreSave(std::set<KeyFrame*>& spKF,std::set<MapPointPtr>& spMP);
+    void PostLoad(std::map<long unsigned int, KeyFrame*>& mpKFid, std::map<long unsigned int, MapPointPtr>& mpMPid);
 
 public:
     long unsigned int mnId;
@@ -220,9 +228,13 @@ protected:
      int mnVisible;
      int mnFound;
 
-     // Bad flag (we do not currently erase MapPoint from memory)
+     // Bad flag (tombstone marker; the object lives while referenced)
      bool mbBad;
-     MapPoint* mpReplaced;
+     // R4b slice 1: STRONG — Replace() chains must stay walkable for
+     // CheckReplacedInLastFrame and trajectory recovery. A hypothetical
+     // replace cycle would leak, which is exactly the pre-migration
+     // tombstone behavior (leak-equivalent, accepted).
+     MapPointPtr mpReplaced;
      // For save relation without pointer, this is necessary for save/load function
      long long int mBackupReplacedId;
 

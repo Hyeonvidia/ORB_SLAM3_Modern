@@ -218,14 +218,14 @@ public:
 
     // MapPoint observation functions
     int GetNumberMPs();
-    void AddMapPoint(MapPoint* pMP, const size_t &idx);
+    void AddMapPoint(const MapPointPtr& pMP, const size_t &idx);
     void EraseMapPointMatch(const int &idx);
-    void EraseMapPointMatch(MapPoint* pMP);
-    void ReplaceMapPointMatch(const int &idx, MapPoint* pMP);
-    std::set<MapPoint*> GetMapPoints();
-    std::vector<MapPoint*> GetMapPointMatches();
+    void EraseMapPointMatch(const MapPointPtr& pMP);
+    void ReplaceMapPointMatch(const int &idx, const MapPointPtr& pMP);
+    std::set<MapPointPtr> GetMapPoints();
+    std::vector<MapPointPtr> GetMapPointMatches();
     int TrackedMapPoints(const int &minObs);
-    MapPoint* GetMapPoint(const size_t &idx);
+    MapPointPtr GetMapPoint(const size_t &idx);
 
     // KeyPoint functions
     std::vector<size_t> GetFeaturesInArea(const float &x, const float  &y, const float  &r, const bool bRight = false) const;
@@ -263,11 +263,11 @@ public:
 
     IMU::Bias GetImuBias();
 
-    bool ProjectPointDistort(MapPoint* pMP, cv::Point2f &kp, float &u, float &v);
-    bool ProjectPointUnDistort(MapPoint* pMP, cv::Point2f &kp, float &u, float &v);
+    bool ProjectPointDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v);
+    bool ProjectPointUnDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v);
 
-    void PreSave(std::set<KeyFrame*>& spKF,std::set<MapPoint*>& spMP, std::set<GeometricCamera*>& spCam);
-    void PostLoad(std::map<long unsigned int, KeyFrame*>& mpKFid, std::map<long unsigned int, MapPoint*>& mpMPid, std::map<unsigned int, GeometricCamera*>& mpCamId);
+    void PreSave(std::set<KeyFrame*>& spKF,std::set<MapPointPtr>& spMP, std::set<GeometricCamera*>& spCam);
+    void PostLoad(std::map<long unsigned int, KeyFrame*>& mpKFid, std::map<long unsigned int, MapPointPtr>& mpMPid, std::map<unsigned int, GeometricCamera*>& mpCamId);
 
 
     void SetORBVocabulary(ORBVocabulary* pORBVoc);
@@ -394,8 +394,11 @@ protected:
     // Imu bias
     IMU::Bias mImuBias;
 
-    // MapPoints associated to keypoints
-    std::vector<MapPoint*> mvpMapPoints;
+    // MapPoints associated to keypoints.
+    // R4b slice 1: STRONG on purpose (tombstone semantics) — a slot can hold
+    // a bad MapPoint between its SetBadFlag() and this KF's EraseMapPointMatch,
+    // and that point must stay alive for the lock-free readers that copied it.
+    std::vector<MapPointPtr> mvpMapPoints;
     // For save relation without pointer, this is necessary for save/load function
     std::vector<long long int> mvBackupMapPointsId;
 

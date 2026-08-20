@@ -20,6 +20,7 @@
 #define MERGESCRATCH_H
 
 #include <map>
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 
 #include <Eigen/Core>
 #include <sophus/se3.hpp>
@@ -51,7 +52,7 @@ struct MapPointMergeScratch
 struct MergeScratch
 {
     std::map<KeyFrame*, KeyFrameMergeScratch> kfs;
-    std::map<MapPoint*, MapPointMergeScratch> mps;
+    std::map<MapPointPtr, MapPointMergeScratch> mps;
 };
 
 } // namespace ORB_SLAM3

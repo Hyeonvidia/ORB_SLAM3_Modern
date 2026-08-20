@@ -154,7 +154,7 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mTimeStereoMatch = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndStereoMatches - time_StartStereoMatches).count();
 #endif
 
-    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+    mvpMapPoints = vector<MapPointPtr>(N,nullptr);
     mvbOutlier = vector<bool>(N,false);
     mmProjectPoints.clear();
     mmMatchedInImage.clear();
@@ -238,7 +238,7 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
 
     ComputeStereoFromRGBD(imDepth);
 
-    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+    mvpMapPoints = vector<MapPointPtr>(N,nullptr);
 
     mmProjectPoints.clear();
     mmMatchedInImage.clear();
@@ -323,7 +323,7 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
     mvDepth = vector<float>(N,-1);
     mnCloseMPs = 0;
 
-    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+    mvpMapPoints = vector<MapPointPtr>(N,nullptr);
 
     mmProjectPoints.clear();// = map<long unsigned int, cv::Point2f>(N, static_cast<cv::Point2f>(NULL));
     mmMatchedInImage.clear();
@@ -499,7 +499,7 @@ Eigen::Vector3f Frame::GetRelativePoseTlr_translation() {
 }
 
 
-bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
+bool Frame::isInFrustum(const MapPointPtr& pMP, float viewingCosLimit)
 {
     if(Nleft == -1){
         pMP->mbTrackInView = false;
@@ -575,7 +575,7 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
     }
 }
 
-bool Frame::ProjectPointDistort(MapPoint* pMP, cv::Point2f &kp, float &u, float &v)
+bool Frame::ProjectPointDistort(const MapPointPtr& pMP, cv::Point2f &kp, float &u, float &v)
 {
 
     // 3D in absolute coordinates
@@ -1096,7 +1096,7 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     //Put all descriptors in the same matrix
     cv::vconcat(mDescriptors,mDescriptorsRight,mDescriptors);
 
-    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(nullptr));
+    mvpMapPoints = vector<MapPointPtr>(N,nullptr);
     mvbOutlier = vector<bool>(N,false);
 
     AssignFeaturesToGrid();
@@ -1149,7 +1149,7 @@ void Frame::ComputeStereoFishEyeMatches() {
     }
 }
 
-bool Frame::isInFrustumChecks(MapPoint *pMP, float viewingCosLimit, bool bRight) {
+bool Frame::isInFrustumChecks(const MapPointPtr& pMP, float viewingCosLimit, bool bRight) {
     // 3D in absolute coordinates
     Eigen::Vector3f P = pMP->GetWorldPos();
 

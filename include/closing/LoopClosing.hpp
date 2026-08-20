@@ -21,6 +21,7 @@
 #define LOOPCLOSING_H
 
 #include "map/KeyFrame.hpp"
+#include "map/MapTypes.hpp"  // R4b: MapPointPtr
 #include "mapping/LocalMapping.hpp"
 #include "map/Atlas.hpp"
 #include "recognition/OrbVocabulary.hpp"
@@ -131,8 +132,8 @@ protected:
     // called by PlaceRecognition::NewDetectCommonRegions via mHost.
     void PopNewKeyFrame();
 
-    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, std::vector<MapPoint*> &vpMapPoints);
-    void SearchAndFuse(const std::vector<KeyFrame*> &vConectedKFs, std::vector<MapPoint*> &vpMapPoints);
+    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, std::vector<MapPointPtr> &vpMapPoints);
+    void SearchAndFuse(const std::vector<KeyFrame*> &vConectedKFs, std::vector<MapPointPtr> &vpMapPoints);
 
     void CorrectLoop();
 
@@ -202,7 +203,7 @@ protected:
     KeyFrame* mpCurrentKF;
     KeyFrame* mpLastCurrentKF;
     std::vector<KeyFrame*> mvpCurrentConnectedKFs;
-    std::vector<MapPoint*> mvpLoopMapPoints;
+    std::vector<MapPointPtr> mvpLoopMapPoints;
 
     //-------
     Map* mpLastMap;
