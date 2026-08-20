@@ -105,7 +105,15 @@ add_library(orbslam3_core SHARED
   src/map/KeyFrame.cpp
   src/map/MapPoint.cpp
   src/map/Frame.cpp
-  src/backend/Optimizer.cpp
+  # R5: the ~5,800-line monolithic Optimizer.cpp is split into function-family
+  # TUs; OptimizerCommon holds the shared observability helpers, Marginalize,
+  # and the g2o graph-builder helpers (src/backend/OptimizerCommon.hpp).
+  src/backend/OptimizerCommon.cpp
+  src/backend/OptimizerGlobal.cpp
+  src/backend/OptimizerPose.cpp
+  src/backend/OptimizerLocal.cpp
+  src/backend/OptimizerInertialInit.cpp
+  src/backend/OptimizerSim3Graph.cpp
   src/backend/OrbLevenberg.cpp
   src/backend/G2oBackend.cpp
   src/backend/G2oTypes.cpp

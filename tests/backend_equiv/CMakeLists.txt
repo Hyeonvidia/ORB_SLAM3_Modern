@@ -103,7 +103,14 @@ elseif(EQUIV_BACKEND STREQUAL "modern")
   add_subdirectory(${REPO_ROOT}/third_party/g2o ${CMAKE_BINARY_DIR}/third_party/g2o)
 
   set(EQUIV_BACKEND_SOURCES
-    ${REPO_ROOT}/src/backend/Optimizer.cpp
+    # R5: monolithic Optimizer.cpp split into function-family TUs (same list
+    # as the root CMakeLists core target).
+    ${REPO_ROOT}/src/backend/OptimizerCommon.cpp
+    ${REPO_ROOT}/src/backend/OptimizerGlobal.cpp
+    ${REPO_ROOT}/src/backend/OptimizerPose.cpp
+    ${REPO_ROOT}/src/backend/OptimizerLocal.cpp
+    ${REPO_ROOT}/src/backend/OptimizerInertialInit.cpp
+    ${REPO_ROOT}/src/backend/OptimizerSim3Graph.cpp
     # g2o-fork parity restoration (docs/DIVERGENCES.md 10): modern-only, the
     # vendored variant already gets the criterion from its own Thirdparty/g2o.
     ${REPO_ROOT}/src/backend/OrbLevenberg.cpp
