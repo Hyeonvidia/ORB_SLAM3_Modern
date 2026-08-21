@@ -194,7 +194,6 @@ public:
 
     // For debugging
     double GetTimeFromIMUInit();
-    bool isLost();
     bool isFinished();
 
     void ChangeDataset();

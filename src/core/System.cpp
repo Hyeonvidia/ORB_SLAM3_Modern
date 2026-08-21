@@ -1051,20 +1051,6 @@ double System::GetTimeFromIMUInit()
         return 0.f;
 }
 
-bool System::isLost()
-{
-    if (!mpAtlas->isImuInitialized())
-        return false;
-    else
-    {
-        if (mpTracker->GetState()==Tracking::LOST)
-            return true;
-        else
-            return false;
-    }
-}
-
-
 bool System::isFinished()
 {
     return (GetTimeFromIMUInit()>0.1);

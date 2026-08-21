@@ -17,7 +17,6 @@
 */
 
 #include "map/Atlas.hpp"
-#include "viz/Viewer.hpp"
 
 #include "camera/GeometricCamera.hpp"
 #include "camera/Pinhole.hpp"
@@ -30,7 +29,7 @@ Atlas::Atlas(){
     mpCurrentMap = nullptr;
 }
 
-Atlas::Atlas(int initKFid): mnLastInitKFidMap(initKFid), mHasViewer(false)
+Atlas::Atlas(int initKFid): mnLastInitKFidMap(initKFid)
 {
     mpCurrentMap = nullptr;
     CreateNewMap();
@@ -100,12 +99,6 @@ unsigned long int Atlas::GetLastInitKFid()
 {
     std::unique_lock<std::mutex> lock(mMutexAtlas);
     return mnLastInitKFidMap;
-}
-
-void Atlas::SetViewer(Viewer* pViewer)
-{
-    mpViewer = pViewer;
-    mHasViewer = true;
 }
 
 // P11-A (Atlas lock batch): the upstream-inherited lock-free method group
