@@ -61,27 +61,64 @@ echo ">> $MODE $SEQ -> results/$(basename "$OUT")"
 if [[ -n "${RUN_TIMEOUT:-}" ]]; then
   CMD=(timeout "$RUN_TIMEOUT" "${CMD[@]}")
 fi
-if [[ "${XEPHYR:-0}" == "1" ]]; then
-  # XQuartz-native viewer: Xephyr is a nested X server that appears as a
-  # plain 2D window on the host XQuartz (DISPLAY from compose); the SLAM
-  # binaries render GL into it via llvmpipe on :99. XQuartz's GLX — which
-  # currently renders nothing for container clients — is never involved.
-  Xephyr :99 -screen "${VNC_GEOMETRY:-1600x1000}" -title "ORB_SLAM3_Modern viewer" &
-  XEPHYR_PID=$!
-  for _ in $(seq 1 50); do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep 0.1; done
-  [[ -S /tmp/.X11-unix/X99 ]] || { echo "ERROR: Xephyr failed to start (is XQuartz reachable?)" >&2; exit 1; }
+# Lay out the two SLAM windows on the :99 display once both appear: the
+# Pangolin Map Viewer is the main window (fills the screen), the OpenCV
+# Current Frame sits as a small overlay in the top-right corner (kept out
+# of the Map Viewer's left control panel). Runs in the background against a
+# window manager (openbox) so the user can still drag/resize afterwards.
+arrange_windows_99() {
+  # Cosmetic, best-effort: never let a transient xdotool non-zero (empty
+  # search before the windows exist, under the script's pipefail) abort it.
+  set +e +o pipefail
+  export DISPLAY=:99
+  local geo sw sh mv cf
+  geo="$(xdotool getdisplaygeometry 2>/dev/null)" || return
+  sw="${geo% *}"; sh="${geo#* }"
+  for _ in $(seq 1 90); do
+    mv="$(xdotool search --name '^ORB-SLAM3: Map Viewer$' 2>/dev/null | head -1)"
+    cf="$(xdotool search --name '^ORB-SLAM3: Current Frame$' 2>/dev/null | head -1)"
+    [[ -n "$mv" && -n "$cf" ]] && break
+    sleep 1
+  done
+  [[ -n "$mv" ]] || return
+  # Let openbox finish its own initial placement first, otherwise it overrides
+  # ours on the map event (the moves would silently not stick).
+  sleep 3
+  # Map Viewer = main window, fills the screen.
+  xdotool windowsize "$mv" "$sw" "$sh"; xdotool windowmove "$mv" 0 0
+  if [[ -n "$cf" ]]; then
+    # Current Frame = small overlay docked top-right (~30% width, aspect kept).
+    local W=0 H=0; eval "$(xdotool getwindowgeometry --shell "$cf" 2>/dev/null | grep -E '^(WIDTH|HEIGHT)=')"
+    local tw=$(( sw * 30 / 100 )) th=360
+    [[ "$W" -gt 0 && "$H" -gt 0 ]] && th=$(( tw * H / W ))
+    xdotool windowsize "$cf" "$tw" "$th"
+    xdotool windowmove "$cf" "$(( sw - tw - 12 ))" 12
+    xdotool windowraise "$cf"
+  fi
+}
+
+if [[ "${XEPHYR:-0}" == "1" || "${VNC:-0}" == "1" ]]; then
+  if [[ "${XEPHYR:-0}" == "1" ]]; then
+    # XQuartz-native viewer: Xephyr is a nested X server shown as a plain 2D
+    # window on the host XQuartz (DISPLAY from compose); the SLAM binaries
+    # render GL into it via llvmpipe on :99. XQuartz's own GLX — which renders
+    # nothing for container clients — is never involved.
+    Xephyr :99 -screen "${VNC_GEOMETRY:-1600x1000}" -title "ORB_SLAM3_Modern viewer" &
+    DISP_PID=$!
+    for _ in $(seq 1 50); do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep 0.1; done
+    [[ -S /tmp/.X11-unix/X99 ]] || { echo "ERROR: Xephyr failed to start (is XQuartz reachable?)" >&2; exit 1; }
+  else
+    # VNC path: render into Xvfb via llvmpipe, export over VNC/Screen Sharing.
+    Xvfb :99 -screen 0 "${VNC_GEOMETRY:-1600x1000}x24" &
+    DISP_PID=$!
+    for _ in $(seq 1 50); do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep 0.1; done
+    x11vnc -display :99 -rfbport 5900 -forever -shared -nopw -quiet -bg >/dev/null 2>&1
+  fi
+  DISPLAY=:99 openbox &
+  OPENBOX_PID=$!
+  arrange_windows_99 &
   DISPLAY=:99 "${CMD[@]}" 2>&1 | tee run.log
-  kill "$XEPHYR_PID" 2>/dev/null || true
-elif [[ "${VNC:-0}" == "1" ]]; then
-  # Viewer path for macOS hosts: XQuartz GLX offers container clients only
-  # indirect OpenGL 1.4 (Pangolin renders a blank window there), so render
-  # into Xvfb via llvmpipe and export the framebuffer over VNC instead.
-  Xvfb :99 -screen 0 "${VNC_GEOMETRY:-1600x1000}x24" &
-  XVFB_PID=$!
-  for _ in $(seq 1 50); do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep 0.1; done
-  x11vnc -display :99 -rfbport 5900 -forever -shared -nopw -quiet -bg >/dev/null 2>&1
-  DISPLAY=:99 "${CMD[@]}" 2>&1 | tee run.log
-  kill "$XVFB_PID" 2>/dev/null || true
+  kill "$OPENBOX_PID" "$DISP_PID" 2>/dev/null || true
 elif [[ "${HEADLESS:-0}" == "1" ]]; then
   xvfb-run -a "${CMD[@]}" 2>&1 | tee run.log
 else

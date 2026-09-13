@@ -61,7 +61,7 @@ RUN ldconfig
 #  - x11vnc: same idea over VNC/Screen Sharing, for --vnc.
 # Separate layer: keeps the base/pangolin cache intact.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    x11vnc xserver-xephyr \
+    x11vnc xserver-xephyr openbox xdotool \
     && rm -rf /var/lib/apt/lists/*
 ENV CCACHE_DIR=/ccache
 WORKDIR /workspace

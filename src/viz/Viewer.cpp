@@ -108,7 +108,9 @@ void Viewer::Run()
     Twc.SetIdentity();
     pangolin::OpenGlMatrix Ow; // Oriented with g in the z axis
     Ow.SetIdentity();
-    cv::namedWindow("ORB-SLAM3: Current Frame");
+    // WINDOW_NORMAL (not the default AUTOSIZE) so the frame view can be resized
+    // — lets the run.sh viewer dock it as a small corner overlay on the map.
+    cv::namedWindow("ORB-SLAM3: Current Frame", cv::WINDOW_NORMAL);
 
     bool bFollow = true;
     bool bLocalizationMode = false;
