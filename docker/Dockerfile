@@ -54,6 +54,12 @@ RUN cmake -S /tmp/Pangolin -B /tmp/pangolin_build -GNinja \
 FROM base AS dev
 COPY --from=pangolin /usr/local/ /usr/local/
 RUN ldconfig
+# x11vnc for the VNC viewer path (macOS XQuartz GLX only offers indirect
+# GL 1.4 to container clients — Pangolin renders blank there; instead we
+# render into Xvfb via llvmpipe and export the framebuffer over VNC).
+# Separate layer: keeps the base/pangolin cache intact.
+RUN apt-get update && apt-get install -y --no-install-recommends x11vnc \
+    && rm -rf /var/lib/apt/lists/*
 ENV CCACHE_DIR=/ccache
 WORKDIR /workspace
 CMD ["bash"]

@@ -61,7 +61,17 @@ echo ">> $MODE $SEQ -> results/$(basename "$OUT")"
 if [[ -n "${RUN_TIMEOUT:-}" ]]; then
   CMD=(timeout "$RUN_TIMEOUT" "${CMD[@]}")
 fi
-if [[ "${HEADLESS:-0}" == "1" ]]; then
+if [[ "${VNC:-0}" == "1" ]]; then
+  # Viewer path for macOS hosts: XQuartz GLX offers container clients only
+  # indirect OpenGL 1.4 (Pangolin renders a blank window there), so render
+  # into Xvfb via llvmpipe and export the framebuffer over VNC instead.
+  Xvfb :99 -screen 0 "${VNC_GEOMETRY:-1600x1000}x24" &
+  XVFB_PID=$!
+  for _ in $(seq 1 50); do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep 0.1; done
+  x11vnc -display :99 -rfbport 5900 -forever -shared -nopw -quiet -bg >/dev/null 2>&1
+  DISPLAY=:99 "${CMD[@]}" 2>&1 | tee run.log
+  kill "$XVFB_PID" 2>/dev/null || true
+elif [[ "${HEADLESS:-0}" == "1" ]]; then
   xvfb-run -a "${CMD[@]}" 2>&1 | tee run.log
 else
   "${CMD[@]}" 2>&1 | tee run.log

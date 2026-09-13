@@ -2,8 +2,10 @@
 #   docker compose build
 #   docker compose run --rm dev docker/scripts/container_build.sh   # build
 #   docker compose run --rm dev docker/scripts/run_slam.sh euroc_stereo MH01
-# GUI via XQuartz: same policy as orb_slam3_docker — never set
-# LIBGL_ALWAYS_INDIRECT (breaks Pangolin on macOS Docker).
+# GUI: prefer ./run.sh (VNC path — in-container Xvfb/llvmpipe render,
+# viewed at vnc://127.0.0.1:5901). Direct XQuartz X11 forwarding currently
+# yields only indirect GL 1.4 for container clients (blank Pangolin window,
+# measured 2026-09-13); never set LIBGL_ALWAYS_INDIRECT either way.
 services:
   dev:
     build:
