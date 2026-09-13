@@ -61,7 +61,18 @@ echo ">> $MODE $SEQ -> results/$(basename "$OUT")"
 if [[ -n "${RUN_TIMEOUT:-}" ]]; then
   CMD=(timeout "$RUN_TIMEOUT" "${CMD[@]}")
 fi
-if [[ "${VNC:-0}" == "1" ]]; then
+if [[ "${XEPHYR:-0}" == "1" ]]; then
+  # XQuartz-native viewer: Xephyr is a nested X server that appears as a
+  # plain 2D window on the host XQuartz (DISPLAY from compose); the SLAM
+  # binaries render GL into it via llvmpipe on :99. XQuartz's GLX — which
+  # currently renders nothing for container clients — is never involved.
+  Xephyr :99 -screen "${VNC_GEOMETRY:-1600x1000}" -title "ORB_SLAM3_Modern viewer" &
+  XEPHYR_PID=$!
+  for _ in $(seq 1 50); do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep 0.1; done
+  [[ -S /tmp/.X11-unix/X99 ]] || { echo "ERROR: Xephyr failed to start (is XQuartz reachable?)" >&2; exit 1; }
+  DISPLAY=:99 "${CMD[@]}" 2>&1 | tee run.log
+  kill "$XEPHYR_PID" 2>/dev/null || true
+elif [[ "${VNC:-0}" == "1" ]]; then
   # Viewer path for macOS hosts: XQuartz GLX offers container clients only
   # indirect OpenGL 1.4 (Pangolin renders a blank window there), so render
   # into Xvfb via llvmpipe and export the framebuffer over VNC instead.

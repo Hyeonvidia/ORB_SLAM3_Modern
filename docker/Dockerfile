@@ -54,11 +54,14 @@ RUN cmake -S /tmp/Pangolin -B /tmp/pangolin_build -GNinja \
 FROM base AS dev
 COPY --from=pangolin /usr/local/ /usr/local/
 RUN ldconfig
-# x11vnc for the VNC viewer path (macOS XQuartz GLX only offers indirect
-# GL 1.4 to container clients — Pangolin renders blank there; instead we
-# render into Xvfb via llvmpipe and export the framebuffer over VNC).
+# Viewer transports (macOS XQuartz GLX renders nothing for container
+# clients — even indirect glxgears is blank; measured 2026-09-13):
+#  - xserver-xephyr: nested X server shown as a plain 2D window in XQuartz;
+#    SLAM renders GL into it via llvmpipe (XQuartz GLX never involved).
+#  - x11vnc: same idea over VNC/Screen Sharing, for --vnc.
 # Separate layer: keeps the base/pangolin cache intact.
-RUN apt-get update && apt-get install -y --no-install-recommends x11vnc \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    x11vnc xserver-xephyr \
     && rm -rf /var/lib/apt/lists/*
 ENV CCACHE_DIR=/ccache
 WORKDIR /workspace

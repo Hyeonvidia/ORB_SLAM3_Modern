@@ -55,7 +55,7 @@ on first load) automatically.
 
 ```bash
 ./run.sh --list                              # available modes and sequences
-./run.sh euroc_stereo MH01                   # GUI: Pangolin viewer over VNC
+./run.sh euroc_stereo MH01                   # GUI: viewer window in XQuartz
 ./run.sh euroc_mono_inertial V102 --headless # headless + auto ATE evaluation
 ./run.sh kitti_stereo 07 --timeout 300       # bounded run (exit 124 = timeout)
 ```
@@ -64,11 +64,15 @@ Modes: `euroc_mono | euroc_stereo | euroc_mono_inertial | euroc_stereo_inertial 
 kitti_mono | kitti_stereo`. Results land in `./results/<mode>_<seq>_<timestamp>/`
 and ATE RMSE is printed automatically when ground truth is available.
 
-The GUI renders **in-container (Xvfb + llvmpipe) and is viewed over VNC** — macOS
-Screen Sharing opens automatically at `vnc://127.0.0.1:5901`. This is deliberate:
-current macOS XQuartz GLX only offers container clients indirect OpenGL 1.4
-(`No matching fbConfigs or visuals found` → Pangolin draws a blank window);
-`--xquartz` keeps the legacy X11-forwarding path available should that change.
+The GUI opens a single **"ORB_SLAM3_Modern viewer" window on your XQuartz** (both
+the tracking view and the map). It is a nested X server (Xephyr) drawn as a plain
+2D window, with the SLAM GUI rendered into it in-container via llvmpipe — XQuartz's
+own GLX is bypassed because current macOS XQuartz renders nothing over GLX for
+container clients (even indirect `glxgears` is blank). `--vnc` is an alternative
+that uses macOS Screen Sharing (`vnc://127.0.0.1:5901`, opened automatically);
+`--headless` skips the GUI entirely. XQuartz needs *Settings → Security → "Allow
+connections from network clients"* enabled (one time); `run.sh` starts XQuartz and
+grants local access for you.
 
 Datasets are mounted from `../Datasets` (see `docker-compose.yml`). EuRoC downloads:
 the old ASL URLs are dead — use the

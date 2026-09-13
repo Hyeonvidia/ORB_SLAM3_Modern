@@ -2,10 +2,11 @@
 #   docker compose build
 #   docker compose run --rm dev docker/scripts/container_build.sh   # build
 #   docker compose run --rm dev docker/scripts/run_slam.sh euroc_stereo MH01
-# GUI: prefer ./run.sh (VNC path — in-container Xvfb/llvmpipe render,
-# viewed at vnc://127.0.0.1:5901). Direct XQuartz X11 forwarding currently
-# yields only indirect GL 1.4 for container clients (blank Pangolin window,
-# measured 2026-09-13); never set LIBGL_ALWAYS_INDIRECT either way.
+# GUI: use ./run.sh. Default shows the viewer in a nested X server (Xephyr)
+# window on the host XQuartz, with the SLAM GUI rendered into it via llvmpipe;
+# XQuartz's own GLX is bypassed because it renders nothing for container
+# clients (measured 2026-09-13). ./run.sh --vnc is the Screen Sharing
+# alternative. Never set LIBGL_ALWAYS_INDIRECT either way.
 services:
   dev:
     build:
